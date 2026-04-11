@@ -703,6 +703,11 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
     case TxoutType::WITNESS_V1_TAPROOT:
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
 
+    case TxoutType::WITNESS_V2_QRH:
+        // TODO: Implement P2QRH signing with hybrid classical+PQ keys.
+        // Requires both Schnorr and ML-DSA-44 key material.
+        return false;
+
     case TxoutType::ANCHOR:
         return true;
     } // no default case, so the compiler can warn about missing cases

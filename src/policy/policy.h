@@ -56,6 +56,9 @@ static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS{100};
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{80};
 /** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0) */
 static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{80};
+/** The maximum size in bytes of each witness stack item in a standard P2QRH (BIP-360) spend.
+ *  Must accommodate ML-DSA-44 signatures (2420 bytes) and public keys (1312 bytes). */
+static constexpr unsigned int MAX_STANDARD_P2QRH_STACK_ITEM_SIZE{2500};
 /** The maximum size in bytes of a standard witnessScript */
 static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{3600};
 /** The maximum size of a standard ScriptSig */

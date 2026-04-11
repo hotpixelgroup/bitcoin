@@ -347,6 +347,16 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 return false;
             }
         }
+
+        // Check policy limits for P2QRH spends:
+        // - MAX_STANDARD_P2QRH_STACK_ITEM_SIZE limit for stack item size
+        if (witnessversion == 2 && witnessprogram.size() == WITNESS_V2_QRH_SIZE && !p2sh) {
+            // P2QRH spend (non-P2SH-wrapped, version 2, witness program size 32; see BIP 360)
+            const auto& stack = tx.vin[i].scriptWitness.stack;
+            for (const auto& item : stack) {
+                if (item.size() > MAX_STANDARD_P2QRH_STACK_ITEM_SIZE) return false;
+            }
+        }
     }
     return true;
 }

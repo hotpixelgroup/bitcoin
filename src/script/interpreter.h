@@ -203,6 +203,7 @@ enum class SigVersion
     WITNESS_V0 = 1,  //!< Witness v0 (P2WPKH and P2WSH); see BIP 141
     TAPROOT = 2,     //!< Witness v1 with 32-byte program, not BIP16 P2SH-wrapped, key path spending; see BIP 341
     TAPSCRIPT = 3,   //!< Witness v1 with 32-byte program, not BIP16 P2SH-wrapped, script path spending, leaf version 0xc0; see BIP 342
+    QRH = 4,         //!< Witness v2 with 32-byte program, hybrid classical+PQ key-path spending; see BIP 360
 };
 
 struct ScriptExecutionData
@@ -237,6 +238,7 @@ struct ScriptExecutionData
 static constexpr size_t WITNESS_V0_SCRIPTHASH_SIZE = 32;
 static constexpr size_t WITNESS_V0_KEYHASH_SIZE = 20;
 static constexpr size_t WITNESS_V1_TAPROOT_SIZE = 32;
+static constexpr size_t WITNESS_V2_QRH_SIZE = 32;
 
 static constexpr uint8_t TAPROOT_LEAF_MASK = 0xfe;
 static constexpr uint8_t TAPROOT_LEAF_TAPSCRIPT = 0xc0;
@@ -280,6 +282,20 @@ public:
     }
 
     virtual bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const
+    {
+        return false;
+    }
+
+    /** Verify a hybrid P2QRH signature (classical Schnorr + ML-DSA-44).
+     *  Used for witness v2 key-path spends (BIP-360). */
+    virtual bool CheckPQSignature(std::span<const unsigned char> classical_sig,
+                                  std::span<const unsigned char> pq_sig,
+                                  std::span<const unsigned char> classical_pubkey,
+                                  std::span<const unsigned char> pq_pubkey,
+                                  std::span<const unsigned char> program,
+                                  SigVersion sigversion,
+                                  ScriptExecutionData& execdata,
+                                  ScriptError* serror = nullptr) const
     {
         return false;
     }
@@ -329,6 +345,7 @@ public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
+    bool CheckPQSignature(std::span<const unsigned char> classical_sig, std::span<const unsigned char> pq_sig, std::span<const unsigned char> classical_pubkey, std::span<const unsigned char> pq_pubkey, std::span<const unsigned char> program, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
 };
@@ -352,6 +369,11 @@ public:
     bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override
     {
         return m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror);
+    }
+
+    bool CheckPQSignature(std::span<const unsigned char> classical_sig, std::span<const unsigned char> pq_sig, std::span<const unsigned char> classical_pubkey, std::span<const unsigned char> pq_pubkey, std::span<const unsigned char> program, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override
+    {
+        return m_checker.CheckPQSignature(classical_sig, pq_sig, classical_pubkey, pq_pubkey, program, sigversion, execdata, serror);
     }
 
     bool CheckLockTime(const CScriptNum& nLockTime) const override
