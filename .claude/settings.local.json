@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/harrybeckwith/bitcoin branch -a)",
+      "Bash(git log:*)",
+      "Bash(grep -rn \"class.*KeyStore\\\\|class.*ScriptPubKeyMan\" /Users/harrybeckwith/bitcoin/src/wallet/*.h)",
+      "Bash(git -C /Users/harrybeckwith/bitcoin log --all --grep=\"quantum\\\\|post-quantum\\\\|PQC\\\\|BIP-360\\\\|QuBit\" --oneline)",
+      "Bash(wc -l /Users/harrybeckwith/bitcoin/src/script/*.cpp /Users/harrybeckwith/bitcoin/src/key*.cpp /Users/harrybeckwith/bitcoin/src/pubkey.cpp)",
+      "Bash(git -C /Users/harrybeckwith/bitcoin log --all --grep=\"CRYSTALS\\\\|Dilithium\\\\|SPHINCS\\\\|FALCON\" --oneline)",
+      "Bash(git -C /Users/harrybeckwith/bitcoin log --all --grep=\"witness.*version\\\\|witness.*v2\" --oneline)",
+      "Bash(git -C /Users/harrybeckwith/bitcoin show b025aa3b9e --stat)",
+      "Bash(git checkout:*)",
+      "Bash(ls /Users/harrybeckwith/bitcoin/src/pqcrypto*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create --repo hotpixelgroup/bitcoin --title 'consensus: P2QRH \\(BIP-360\\) post-quantum signature verification' --body ':*)",
+      "Bash(brew list:*)",
+      "Bash(brew install:*)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
