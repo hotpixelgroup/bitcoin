@@ -113,6 +113,22 @@ std::string ScriptErrorString(const ScriptError serror)
             return "OP_IF/NOTIF argument must be minimal in tapscript";
         case SCRIPT_ERR_TAPSCRIPT_EMPTY_PUBKEY:
             return "Empty public key in tapscript";
+        case SCRIPT_ERR_P2QRH_WRONG_WITNESS_SIZE:
+            return "P2QRH witness must contain exactly 4 items (classical_sig, pq_sig, classical_pubkey, pq_pubkey)";
+        case SCRIPT_ERR_P2QRH_INVALID_CLASSICAL_PUBKEY:
+            return "P2QRH classical public key must be 32 bytes (x-only)";
+        case SCRIPT_ERR_P2QRH_INVALID_PQ_PUBKEY:
+            return "P2QRH post-quantum public key has invalid size for declared algorithm";
+        case SCRIPT_ERR_P2QRH_INVALID_PQ_SIG_SIZE:
+            return "P2QRH post-quantum signature has invalid size for declared algorithm";
+        case SCRIPT_ERR_P2QRH_COMMITMENT_MISMATCH:
+            return "P2QRH hybrid key commitment does not match witness program";
+        case SCRIPT_ERR_P2QRH_CLASSICAL_SIG:
+            return "P2QRH classical Schnorr signature verification failed";
+        case SCRIPT_ERR_P2QRH_PQ_SIG:
+            return "P2QRH post-quantum signature verification failed";
+        case SCRIPT_ERR_P2QRH_UNKNOWN_ALGORITHM:
+            return "P2QRH post-quantum algorithm identifier not recognized";
         case SCRIPT_ERR_OP_CODESEPARATOR:
             return "Using OP_CODESEPARATOR in non-witness script";
         case SCRIPT_ERR_SIG_FINDANDDELETE:

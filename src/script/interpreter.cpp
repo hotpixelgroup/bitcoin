@@ -1484,6 +1484,7 @@ template<typename T>
 bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, const T& tx_to, uint32_t in_pos, uint8_t hash_type, SigVersion sigversion, const PrecomputedTransactionData& cache, MissingDataBehavior mdb)
 {
     uint8_t ext_flag, key_version;
+    bool is_qrh = false;
     switch (sigversion) {
     case SigVersion::TAPROOT:
         ext_flag = 0;
@@ -1497,6 +1498,12 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         // request a different key_version with a new sigversion.
         key_version = 0;
         break;
+    case SigVersion::QRH:
+        ext_flag = 2;
+        // P2QRH key-path spends use ext_flag=2 to domain-separate from Taproot.
+        // key_version is not used for QRH key-path spends.
+        is_qrh = true;
+        break;
     default:
         assert(false);
     }
@@ -1505,7 +1512,9 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         return HandleMissingData(mdb);
     }
 
-    HashWriter ss{HASHER_TAPSIGHASH};
+    // Use QRH-specific tagged hash for domain separation when spending P2QRH outputs.
+    // This prevents signature replay between Taproot and P2QRH outputs.
+    HashWriter ss = is_qrh ? HasherQRHSighash() : HashWriter{HASHER_TAPSIGHASH};
 
     // Epoch
     static constexpr uint8_t EPOCH = 0;
@@ -1747,27 +1756,39 @@ bool GenericTransactionSignatureChecker<T>::CheckPQSignature(std::span<const uns
 {
     assert(sigversion == SigVersion::QRH);
 
-    // Step 1: Verify the hybrid key commitment matches the witness program.
-    // program == SHA256(classical_pubkey || pq_pubkey)
-    HashWriter commitment{};
-    commitment.write(MakeByteSpan(classical_pubkey));
-    commitment.write(MakeByteSpan(pq_pubkey));
-    uint256 expected = commitment.GetSHA256();
-    if (memcmp(expected.begin(), program.data(), 32) != 0) {
-        return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+    // Step 1: Validate the PQ public key blob (algorithm + key material).
+    auto algo = ValidatePQPubKeyBlob(pq_pubkey);
+    if (!algo) {
+        return set_error(serror, SCRIPT_ERR_P2QRH_UNKNOWN_ALGORITHM);
     }
 
-    // Step 2: Verify the classical Schnorr signature (BIP340).
-    // Reuse the Taproot sighash computation for the classical signature.
+    // Step 2: Validate classical pubkey size.
+    if (classical_pubkey.size() != P2QRH_CLASSICAL_PUBKEY_SIZE) {
+        return set_error(serror, SCRIPT_ERR_P2QRH_INVALID_CLASSICAL_PUBKEY);
+    }
+
+    // Step 3: Validate PQ signature size for the declared algorithm.
+    if (!ValidatePQSignatureSize(*algo, pq_sig.size())) {
+        return set_error(serror, SCRIPT_ERR_P2QRH_INVALID_PQ_SIG_SIZE);
+    }
+
+    // Step 4: Verify the tagged hybrid key commitment matches the witness program.
+    // program == TaggedHash("QRHCommitment", classical_pubkey || pq_pubkey)
+    uint256 expected = ComputeP2QRHCommitment(classical_pubkey, pq_pubkey);
+    if (memcmp(expected.begin(), program.data(), 32) != 0) {
+        return set_error(serror, SCRIPT_ERR_P2QRH_COMMITMENT_MISMATCH);
+    }
+
+    // Step 5: Compute the QRH sighash (domain-separated from Taproot via tagged hash).
+    // Extract hash type from classical signature.
     if (classical_sig.size() != 64 && classical_sig.size() != 65) {
         return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_SIZE);
     }
-    XOnlyPubKey schnorr_pubkey{classical_pubkey};
-    auto classical_sig_copy = classical_sig;
+    auto sig_bytes = classical_sig;
     uint8_t hashtype = SIGHASH_DEFAULT;
-    if (classical_sig_copy.size() == 65) {
-        hashtype = classical_sig_copy.back();
-        classical_sig_copy = classical_sig_copy.first(64);
+    if (sig_bytes.size() == 65) {
+        hashtype = sig_bytes.back();
+        sig_bytes = sig_bytes.first(64);
         if (hashtype == SIGHASH_DEFAULT) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_HASHTYPE);
     }
     uint256 sighash;
@@ -1775,18 +1796,21 @@ bool GenericTransactionSignatureChecker<T>::CheckPQSignature(std::span<const uns
     if (!SignatureHashSchnorr(sighash, execdata, *txTo, nIn, hashtype, sigversion, *this->txdata, m_mdb)) {
         return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_HASHTYPE);
     }
-    if (!VerifySchnorrSignature(classical_sig_copy, schnorr_pubkey, sighash)) {
-        return set_error(serror, SCRIPT_ERR_SCHNORR_SIG);
+
+    // Step 6: Verify classical Schnorr signature (BIP340).
+    XOnlyPubKey schnorr_pubkey{classical_pubkey};
+    if (!VerifySchnorrSignature(sig_bytes, schnorr_pubkey, sighash)) {
+        return set_error(serror, SCRIPT_ERR_P2QRH_CLASSICAL_SIG);
     }
 
-    // Step 3: Verify the ML-DSA-44 post-quantum signature.
-    // The PQ signature signs the same sighash as the classical signature.
+    // Step 7: Verify post-quantum signature against the same sighash.
+    // Both signatures must be valid for the spend to succeed.
     PQPubKey pq_key{pq_pubkey};
     if (!pq_key.IsValid()) {
-        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
+        return set_error(serror, SCRIPT_ERR_P2QRH_INVALID_PQ_PUBKEY);
     }
     if (!pq_key.Verify(sighash, pq_sig)) {
-        return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
+        return set_error(serror, SCRIPT_ERR_P2QRH_PQ_SIG);
     }
 
     return true;
@@ -2040,15 +2064,29 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         }
     } else if (witversion == 2 && program.size() == WITNESS_V2_QRH_SIZE && !is_p2sh) {
         // BIP-360 P2QRH: 32-byte non-P2SH witness v2 program (hybrid key commitment)
+        if (!(flags & SCRIPT_VERIFY_QRH)) return set_success(serror);
         if (stack.size() == 0) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
 
-        // P2QRH key-path spend requires exactly 4 witness items:
+        // Handle optional annex (last witness item starting with 0x50).
+        // Annexes are reserved for future extensions (e.g., fee bumping hints,
+        // algorithm migration metadata). Currently they are included in the
+        // sighash but have no consensus-enforced semantics.
+        if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+            const valtype& annex = SpanPopBack(stack);
+            execdata.m_annex_hash = (HashWriter{} << annex).GetSHA256();
+            execdata.m_annex_present = true;
+        } else {
+            execdata.m_annex_present = false;
+        }
+        execdata.m_annex_init = true;
+
+        // P2QRH key-path spend requires exactly 4 witness items (after annex removal):
         //   [0] classical_signature  (64-65 bytes, Schnorr BIP340)
-        //   [1] pq_signature         (2420 bytes, ML-DSA-44)
+        //   [1] pq_signature         (variable, depends on algorithm)
         //   [2] classical_pubkey     (32 bytes, x-only)
-        //   [3] pq_pubkey            (1312 bytes, ML-DSA-44)
+        //   [3] pq_pubkey            (1+N bytes, [algo_id | raw_key])
         if (stack.size() != P2QRH_WITNESS_ITEMS) {
-            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            return set_error(serror, SCRIPT_ERR_P2QRH_WRONG_WITNESS_SIZE);
         }
 
         const auto& classical_sig = stack[P2QRH_WITNESS_CLASSICAL_SIG];
@@ -2056,15 +2094,20 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         const auto& classical_pubkey = stack[P2QRH_WITNESS_CLASSICAL_PUBKEY];
         const auto& pq_pubkey = stack[P2QRH_WITNESS_PQ_PUBKEY];
 
-        // Validate item sizes
+        // Validate classical pubkey size (must be 32-byte x-only).
         if (classical_pubkey.size() != P2QRH_CLASSICAL_PUBKEY_SIZE) {
-            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            return set_error(serror, SCRIPT_ERR_P2QRH_INVALID_CLASSICAL_PUBKEY);
         }
-        if (pq_pubkey.size() != MLDSA44_PUBKEY_SIZE) {
-            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+
+        // Validate PQ pubkey has a recognized algorithm prefix and correct size.
+        auto algo = ValidatePQPubKeyBlob(pq_pubkey);
+        if (!algo) {
+            return set_error(serror, SCRIPT_ERR_P2QRH_UNKNOWN_ALGORITHM);
         }
-        if (pq_sig.size() != MLDSA44_SIGNATURE_SIZE) {
-            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+
+        // Validate PQ signature size matches the declared algorithm.
+        if (!ValidatePQSignatureSize(*algo, pq_sig.size())) {
+            return set_error(serror, SCRIPT_ERR_P2QRH_INVALID_PQ_SIG_SIZE);
         }
 
         if (!checker.CheckPQSignature(classical_sig, pq_sig, classical_pubkey, pq_pubkey, program, SigVersion::QRH, execdata, serror)) {

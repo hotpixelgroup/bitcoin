@@ -12,6 +12,7 @@
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <policy/feerate.h>
+#include <pqcrypto.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
@@ -350,9 +351,17 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 
         // Check policy limits for P2QRH spends:
         // - MAX_STANDARD_P2QRH_STACK_ITEM_SIZE limit for stack item size
+        // - Exactly P2QRH_WITNESS_ITEMS (4) items, plus optional annex
+        // - No annexes (reserved for future use, nonstandard until semantics defined)
         if (witnessversion == 2 && witnessprogram.size() == WITNESS_V2_QRH_SIZE && !p2sh) {
             // P2QRH spend (non-P2SH-wrapped, version 2, witness program size 32; see BIP 360)
-            const auto& stack = tx.vin[i].scriptWitness.stack;
+            std::span stack{tx.vin[i].scriptWitness.stack};
+            if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+                // Annexes are nonstandard as long as no semantics are defined.
+                return false;
+            }
+            // After annex removal, must have exactly 4 items for key-path spend.
+            if (stack.size() != P2QRH_WITNESS_ITEMS) return false;
             for (const auto& item : stack) {
                 if (item.size() > MAX_STANDARD_P2QRH_STACK_ITEM_SIZE) return false;
             }

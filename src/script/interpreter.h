@@ -145,6 +145,10 @@ enum class script_verify_flag_name : uint8_t {
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE,
 
+    // P2QRH/BIP-360 validation (witness v2 with 32-byte program, hybrid classical+PQ signatures)
+    //
+    SCRIPT_VERIFY_QRH,
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER

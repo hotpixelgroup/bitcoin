@@ -57,8 +57,12 @@ static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{80};
 /** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0) */
 static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{80};
 /** The maximum size in bytes of each witness stack item in a standard P2QRH (BIP-360) spend.
- *  Must accommodate ML-DSA-44 signatures (2420 bytes) and public keys (1312 bytes). */
-static constexpr unsigned int MAX_STANDARD_P2QRH_STACK_ITEM_SIZE{2500};
+ *  Must accommodate the largest supported PQ algorithm:
+ *    - SLH-DSA-128s signatures: 7856 bytes
+ *    - ML-DSA-65 signatures:    3309 bytes
+ *    - ML-DSA-65 public keys:   1952 bytes (+ 1 byte algo prefix)
+ *  Set to 8000 to allow headroom for all current NIST PQ standards. */
+static constexpr unsigned int MAX_STANDARD_P2QRH_STACK_ITEM_SIZE{8000};
 /** The maximum size in bytes of a standard witnessScript */
 static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{3600};
 /** The maximum size of a standard ScriptSig */
@@ -131,7 +135,8 @@ static constexpr script_verify_flags STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRI
                                                              SCRIPT_VERIFY_CONST_SCRIPTCODE |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION |
                                                              SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS |
-                                                             SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE};
+                                                             SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE |
+                                                             SCRIPT_VERIFY_QRH};
 
 /** For convenience, standard but not mandatory verify flags. */
 static constexpr script_verify_flags STANDARD_NOT_MANDATORY_VERIFY_FLAGS{STANDARD_SCRIPT_VERIFY_FLAGS & ~MANDATORY_SCRIPT_VERIFY_FLAGS};
