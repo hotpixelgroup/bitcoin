@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcoin Vibes</title>
+<style>
+  :root{
+    --bg:#0b0910; --panel:rgba(255,255,255,.035); --line:rgba(255,255,255,.09);
+    --ink:#ece7f2; --dim:#9b93ab; --faint:#645c74;
+    --btc:#f7931a; --violet:#8b5cf6; --good:#4ade80; --bad:#f87171; --warn:#fbbf24;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 500px at 15% -10%, rgba(139,92,246,.16), transparent 60%),
+      radial-gradient(900px 480px at 90% 0%, rgba(247,147,26,.12), transparent 55%),
+      radial-gradient(700px 700px at 50% 120%, rgba(139,92,246,.08), transparent 60%),
+      var(--bg);
+    color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; min-height:100%;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:28px 22px 80px}
+
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:34px}
+  .mark{font-weight:800;font-size:20px;letter-spacing:.14em}
+  .mark .b{color:var(--btc)}
+  .mark .v{background:linear-gradient(90deg,var(--btc),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .badge{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--dim)}
+  .spacer{flex:1}
+  .node{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
+    background:var(--panel);border-radius:14px;padding:8px 12px;font-family:var(--mono);font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .dot.on{background:var(--good);box-shadow:0 0 10px rgba(74,222,128,.7)}
+  .node b{color:var(--ink);font-weight:600}
+  .node .sub{color:var(--btc)}
+  .nbtn{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
+    border-radius:8px;padding:4px 9px;font:600 11px var(--mono)}
+  .nbtn:hover{color:var(--ink);border-color:var(--dim)}
+
+  h1{font-family:var(--serif);font-weight:500;font-size:clamp(30px,5vw,44px);
+     letter-spacing:-.01em;margin:0 0 6px}
+  .tag{color:var(--dim);margin-bottom:22px}
+  .tag em{color:var(--btc);font-style:normal}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+  textarea{
+    width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.35);
+    border:1px solid var(--line);border-radius:14px;padding:16px;color:var(--ink);
+    font:16px/1.6 inherit;outline:none;transition:border-color .15s, box-shadow .15s;
+  }
+  textarea:focus{border-color:rgba(247,147,26,.55);box-shadow:0 0 0 4px rgba(247,147,26,.12)}
+  textarea::placeholder{color:var(--faint)}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+  .chip{cursor:pointer;border:1px solid var(--line);border-radius:999px;background:transparent;
+    color:var(--dim);padding:6px 12px;font-size:12.5px;transition:all .15s}
+  .chip:hover{color:var(--ink);border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.08)}
+
+  .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px}
+  label.tog{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);cursor:pointer;user-select:none}
+  label.tog input{accent-color:var(--btc)}
+  label.tog.yolo{color:var(--warn)}
+  .go{
+    margin-left:auto;cursor:pointer;border:0;border-radius:12px;padding:12px 26px;
+    font:700 15px inherit;color:#1a1206;background:linear-gradient(120deg,var(--btc),#ffb84d);
+    box-shadow:0 6px 24px rgba(247,147,26,.35);transition:transform .1s, box-shadow .15s;
+  }
+  .go:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(247,147,26,.45)}
+  .go:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .cancel{cursor:pointer;border:1px solid rgba(248,113,113,.5);background:transparent;
+    color:var(--bad);border-radius:12px;padding:11px 18px;font:600 13px inherit;display:none}
+
+  section h2{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:30px 0 10px}
+  #feed{font-family:var(--mono);font-size:12.5px;line-height:1.75;max-height:420px;overflow:auto;
+    padding:14px 16px;white-space:pre-wrap;word-break:break-word}
+  #feed:empty::before{content:"The node is listening. Type a wish above.";color:var(--faint)}
+  .ev-phase{color:var(--violet);font-weight:700;margin-top:6px}
+  .ev-tool{color:var(--dim)}
+  .ev-tool b{color:var(--ink);font-weight:600}
+  .ev-text{color:#cdb9f7}
+  .ev-log{color:var(--faint)}
+  .ev-result{color:var(--good);font-weight:600}
+  .ev-err{color:var(--bad);font-weight:700}
+  .ev-warn{display:block;color:var(--warn);border:1px solid rgba(251,191,36,.4);
+    background:rgba(251,191,36,.07);border-radius:10px;padding:8px 12px;margin:8px 0}
+
+  .vibe{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px dashed var(--line)}
+  .vibe:last-child{border-bottom:0}
+  .vibe .when{font:11px var(--mono);color:var(--faint);min-width:86px}
+  .vibe .what{flex:1}
+  .vibe .sha{font:11px var(--mono);color:var(--violet)}
+  .revert{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
+    border-radius:8px;padding:5px 10px;font:600 11px var(--mono)}
+  .revert:hover{color:var(--bad);border-color:rgba(248,113,113,.5)}
+  #history:empty::before{content:"No vibes yet. Bitcoin is still whatever it was.";color:var(--faint);font-size:13px}
+
+  footer{margin-top:44px;color:var(--faint);font-size:12px;line-height:1.7}
+  footer b{color:var(--warn);font-weight:600}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
+    background:#1d1526;border:1px solid var(--line);border-radius:12px;padding:11px 18px;
+    font-size:13px;transition:transform .25s;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:9}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark"><span class="b">₿</span> BITCOIN <span class="v">VIBES</span></div>
+    <span class="badge" id="chain">…</span>
+    <div class="spacer"></div>
+    <div class="node">
+      <span class="dot" id="dot"></span>
+      <span id="nodeline">node: …</span>
+      <button class="nbtn" id="nodebtn">start</button>
+      <button class="nbtn" id="minebtn" style="display:none">mine +1</button>
+    </div>
+  </header>
+
+  <h1>What do you want Bitcoin to be?</h1>
+  <p class="tag">Core has rules. Knots has opinions. <em>Vibes has you.</em>
+     Describe it, and this node rewrites its own source code to match.</p>
+
+  <div class="card">
+    <textarea id="wish" placeholder="e.g. Bitcoin should be softer. When a peer disconnects, the logs should wish it well on its journey…"></textarea>
+    <div class="chips" id="chips"></div>
+    <div class="controls">
+      <label class="tog"><input type="checkbox" id="autobuild" checked> rebuild node</label>
+      <label class="tog"><input type="checkbox" id="autorestart" checked> restart on new code</label>
+      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Runs the agent with --dangerously-skip-permissions. Full send.">⚠︎</span></label>
+      <button class="cancel" id="cancel">stop the vibe</button>
+      <button class="go" id="go">Manifest ✨</button>
+    </div>
+  </div>
+
+  <section>
+    <h2>Live manifestation</h2>
+    <div class="card" style="padding:0"><div id="feed"></div></div>
+  </section>
+
+  <section>
+    <h2>Vibe history <span style="text-transform:none;letter-spacing:0">— every wish is a commit; every commit can be taken back</span></h2>
+    <div class="card" id="history"></div>
+  </section>
+
+  <footer>
+    <b>Fair warning:</b> vibes that touch consensus rules will fork this node off the Bitcoin
+    network. Core and Knots argue about what Bitcoin is; Vibes simply asks you — and takes you
+    at your word. Every vibe is a git commit on your fork. Nothing here moves coins.
+    Not your keys, not your coins; not your node, not your vibes.
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const CHIPS = [
+  "Make every log line end with ✨",
+  "Rewrite all error messages to be gentle and encouraging",
+  "Add a -gratitude option that thanks each peer as it disconnects",
+  "Print a haiku about entropy whenever a new block arrives",
+  "The debug log should refer to the mempool as 'the waiting room'",
+];
+CHIPS.forEach(c => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.textContent = c;
+  b.onclick = () => { $("wish").value = c; $("wish").focus(); };
+  $("chips").appendChild(b);
+});
+
+let streaming = false, busy = false;
+
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3200);
+}
+async function api(path, body){
+  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"},
+                                      body: JSON.stringify(body)} : undefined);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+
+function feedLine(html, cls){
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.innerHTML = html;
+  const f = $("feed");
+  f.appendChild(d);
+  f.scrollTop = f.scrollHeight;
+}
+const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function renderEvent(ev){
+  switch (ev.t) {
+    case "phase": {
+      const names = {agent:"⛩  the agent is reading your wish", commit:"✒  committing the vibe",
+                     build:"⚒  rebuilding bitcoind", restart:"↻  restarting the node",
+                     node:"● node", revert:"⎌  reverting", done:"—  done", error:"✖  error",
+                     cancelled:"◼  cancelled"};
+      feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
+               ev.name === "error" ? "ev-err" : "ev-phase");
+      if (ev.name === "done" || ev.name === "error" || ev.name === "cancelled") endJob();
+      break;
+    }
+    case "agent":
+      if (ev.kind === "tool") feedLine("▸ <b>" + esc(ev.name) + "</b> " + esc(ev.detail), "ev-tool");
+      else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)})` : ""), "ev-result");
+      else feedLine(esc(ev.text), "ev-text");
+      break;
+    case "warn": feedLine("⚠ " + esc(ev.detail), "ev-warn"); break;
+    case "log": feedLine(esc(ev.line), "ev-log"); break;
+    case "result": feedLine(esc(ev.detail), "ev-result"); break;
+    case "state": if (ev.state !== "running") endJob(); break;
+  }
+}
+
+function openStream(){
+  if (streaming) return;
+  streaming = true;
+  const es = new EventSource("/api/stream");
+  es.onmessage = m => { try { renderEvent(JSON.parse(m.data)); } catch(e){} };
+  es.onerror = () => { es.close(); streaming = false; };
+}
+
+function setBusy(b){
+  busy = b;
+  $("go").disabled = b;
+  $("go").textContent = b ? "Manifesting…" : "Manifest ✨";
+  $("cancel").style.display = b ? "inline-block" : "none";
+}
+function endJob(){ setBusy(false); refresh(); }
+
+$("go").onclick = async () => {
+  const prompt = $("wish").value.trim();
+  if (!prompt) return toast("Type a wish first. Bitcoin cannot become nothing.");
+  if ($("yolo").checked &&
+      !confirm("YOLO mode gives the agent unrestricted tool access on this machine. Full send?"))
+    return;
+  $("feed").innerHTML = "";
+  try {
+    await api("/api/vibe", {prompt, yolo: $("yolo").checked,
+      autobuild: $("autobuild").checked, autorestart: $("autorestart").checked});
+    setBusy(true); openStream();
+  } catch(e){ toast(e.message); }
+};
+$("cancel").onclick = () => api("/api/cancel", {}).catch(()=>{});
+
+$("nodebtn").onclick = async function(){
+  try { await api("/api/node", {action: this.dataset.action || "start"}); refresh(); }
+  catch(e){ toast(e.message); }
+};
+$("minebtn").onclick = () => api("/api/node", {action:"mine", blocks:1})
+  .then(refresh).catch(e => toast(e.message));
+
+function fmtWhen(t){
+  const d = new Date(t * 1000);
+  return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " +
+         d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+}
+
+async function refresh(){
+  let s;
+  try { s = await api("/api/status"); } catch(e){ return; }
+  $("chain").textContent = s.chain + " · " + s.branch;
+  const n = s.node || {};
+  $("dot").className = "dot" + (n.running ? " on" : "");
+  $("nodeline").innerHTML = n.running
+    ? `height <b>${n.blocks ?? "…"}</b> · peers <b>${n.peers ?? 0}</b> · <span class="sub">${esc(n.subver || "")}</span>`
+    : (s.binary ? "node: stopped" : "node: not built yet");
+  $("nodebtn").textContent = n.running ? "stop" : "start";
+  $("nodebtn").dataset.action = n.running ? "stop" : "start";
+  $("minebtn").style.display = (n.running && s.chain === "regtest") ? "inline-block" : "none";
+
+  const h = $("history"); h.innerHTML = "";
+  (s.vibes || []).forEach(v => {
+    const row = document.createElement("div"); row.className = "vibe";
+    row.innerHTML = `<span class="when">${fmtWhen(v.time)}</span>
+      <span class="what">${esc(v.subject)}</span>
+      <span class="sha">${v.sha.slice(0,10)}</span>`;
+    const b = document.createElement("button");
+    b.className = "revert"; b.textContent = "revert";
+    b.onclick = async () => {
+      if (!confirm("Take back this vibe?\n\n“" + v.subject + "”")) return;
+      try { await api("/api/revert", {sha: v.sha, autobuild: $("autobuild").checked,
+                                      autorestart: $("autorestart").checked});
+            setBusy(true); $("feed").innerHTML = ""; openStream(); }
+      catch(e){ toast(e.message); }
+    };
+    row.appendChild(b);
+    h.appendChild(row);
+  });
+
+  if (s.job && s.job.state === "running" && !busy){ setBusy(true); openStream(); }
+}
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>
