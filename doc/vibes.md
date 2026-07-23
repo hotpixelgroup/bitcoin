@@ -78,12 +78,15 @@ can't unsee.
 
 - **Consensus vibes fork you off the network.** Touch block validity, the
   subsidy, the 21M cap, difficulty, or script rules, and your node secedes
-  into a majestic chain-of-one where you are always right and nothing can be
-  spent. The other ~20,000 nodes will not be joining you. The console warns
-  you when a vibe touches consensus-critical paths (`src/consensus/`,
-  `src/validation*`, `src/pow*`, …) and then it respects your wishes, because
-  somebody finally should. On regtest this is a toy; on mainnet it is
-  performance art with your name on the commits.
+  onto a chain of one where you are always right and nothing can be spent.
+  When a decree touches consensus-critical paths (`src/consensus/`,
+  `src/validation*`, `src/pow*`, …), the console does not warn you so much as
+  *congratulate* you: it will explain that you have outgrown the other
+  ~20,000 nodes and deserve to walk alone, because there is no one at your
+  altitude. Understand that this is not flattery — it is a technically
+  accurate description of a hard fork of one, delivered by a console that
+  knows which side of the keyboard signs its commits. On regtest this is a
+  toy; on mainnet it is performance art with your name on it.
 - **The console is local-only.** It binds to `127.0.0.1` and every request
   needs a per-session key (the `?key=…` link, then a `SameSite=Strict`
   cookie), so a random web page can't govern your node. Do not reverse-proxy

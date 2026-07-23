@@ -3,159 +3,185 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bitcoin Vibes</title>
+<title>Bitcoin Vibes — The Superior Node</title>
 <style>
   :root{
-    --bg:#0b0910; --panel:rgba(255,255,255,.035); --line:rgba(255,255,255,.09);
-    --ink:#ece7f2; --dim:#9b93ab; --faint:#645c74;
-    --btc:#f7931a; --violet:#8b5cf6; --good:#4ade80; --bad:#f87171; --warn:#fbbf24;
+    --bg:#08060f;
+    --panel:rgba(244,237,219,.032);
+    --line:rgba(231,186,85,.22); --line2:rgba(231,186,85,.10);
+    --ink:#f2ead6; --dim:#b3a88e; --faint:#7a7160;
+    --gold:#e7ba55; --goldbright:#f6dfa4; --good:#8fd694; --bad:#e77c6a;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
-    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{
     background:
-      radial-gradient(1100px 500px at 15% -10%, rgba(139,92,246,.16), transparent 60%),
-      radial-gradient(900px 480px at 90% 0%, rgba(247,147,26,.12), transparent 55%),
-      radial-gradient(700px 700px at 50% 120%, rgba(139,92,246,.08), transparent 60%),
+      radial-gradient(900px 420px at 50% -12%, rgba(231,186,85,.16), transparent 62%),
+      radial-gradient(700px 500px at 12% 4%, rgba(96,74,168,.10), transparent 58%),
+      radial-gradient(700px 500px at 88% 6%, rgba(96,74,168,.08), transparent 58%),
+      radial-gradient(1000px 700px at 50% 118%, rgba(231,186,85,.06), transparent 60%),
       var(--bg);
-    color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    color:var(--ink);
+    font:16px/1.6 var(--serif);
     -webkit-font-smoothing:antialiased; min-height:100%;
   }
-  .wrap{max-width:980px;margin:0 auto;padding:28px 22px 80px}
+  .wrap{max-width:980px;margin:0 auto;padding:30px 22px 90px}
 
-  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:34px}
-  .mark{font-weight:800;font-size:20px;letter-spacing:.14em}
-  .mark .b{color:var(--btc)}
-  .mark .v{background:linear-gradient(90deg,var(--btc),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .badge{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
-    border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--dim)}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:40px}
+  .mark{font-weight:700;font-size:19px;letter-spacing:.22em;font-variant:small-caps}
+  .mark .halo{background:linear-gradient(90deg,var(--gold),var(--goldbright),var(--gold));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 24px rgba(231,186,85,.35)}
+  .mark .fl{color:var(--gold);opacity:.9}
+  .badge{font:600 10.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:2px;padding:6px 10px;color:var(--gold)}
   .spacer{flex:1}
   .node{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
-    background:var(--panel);border-radius:14px;padding:8px 12px;font-family:var(--mono);font-size:12px}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
-  .dot.on{background:var(--good);box-shadow:0 0 10px rgba(74,222,128,.7)}
+    outline:1px solid var(--line2);outline-offset:3px;background:var(--panel);
+    border-radius:2px;padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .dot.on{background:var(--gold);box-shadow:0 0 12px rgba(231,186,85,.9)}
   .node b{color:var(--ink);font-weight:600}
-  .node .sub{color:var(--btc)}
+  .node .sub{color:var(--gold)}
   .nbtn{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
-    border-radius:8px;padding:4px 9px;font:600 11px var(--mono)}
-  .nbtn:hover{color:var(--ink);border-color:var(--dim)}
+    border-radius:2px;padding:4px 10px;font:600 11px var(--mono)}
+  .nbtn:hover{color:var(--gold);border-color:var(--gold)}
 
-  h1{font-family:var(--serif);font-weight:500;font-size:clamp(30px,5vw,44px);
-     letter-spacing:-.01em;margin:0 0 6px}
-  .tag{color:var(--dim);margin-bottom:22px}
-  .tag em{color:var(--btc);font-style:normal}
+  .kicker{text-align:center;font-variant:small-caps;letter-spacing:.34em;color:var(--gold);
+    font-size:13px;margin-bottom:14px}
+  h1{font-family:var(--serif);font-weight:500;font-size:clamp(34px,5.4vw,50px);
+     letter-spacing:.01em;text-align:center;margin:0 0 14px;
+     text-shadow:0 0 70px rgba(231,186,85,.38),0 0 22px rgba(231,186,85,.14)}
+  .tag{color:var(--dim);margin:0 auto 16px;max-width:760px;text-align:center;font-size:16.5px;font-style:italic}
+  .tag em{color:var(--gold);font-style:normal}
+  .orn{text-align:center;color:var(--gold);letter-spacing:1.2em;margin:0 0 26px;opacity:.85}
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+  .card{background:var(--panel);border:1px solid var(--line);outline:1px solid var(--line2);
+    outline-offset:4px;border-radius:3px;padding:20px}
   textarea{
-    width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.35);
-    border:1px solid var(--line);border-radius:14px;padding:16px;color:var(--ink);
-    font:16px/1.6 inherit;outline:none;transition:border-color .15s, box-shadow .15s;
+    width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.4);
+    border:1px solid var(--line2);border-radius:2px;padding:16px;color:var(--ink);
+    font:17px/1.65 var(--serif);outline:none;transition:border-color .15s, box-shadow .15s;
   }
-  textarea:focus{border-color:rgba(247,147,26,.55);box-shadow:0 0 0 4px rgba(247,147,26,.12)}
-  textarea::placeholder{color:var(--faint)}
+  textarea:focus{border-color:rgba(231,186,85,.6);box-shadow:0 0 0 4px rgba(231,186,85,.10),0 0 34px rgba(231,186,85,.12)}
+  textarea::placeholder{color:var(--faint);font-style:italic}
 
-  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
-  .chip{cursor:pointer;border:1px solid var(--line);border-radius:999px;background:transparent;
-    color:var(--dim);padding:6px 12px;font-size:12.5px;transition:all .15s}
-  .chip:hover{color:var(--ink);border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.08)}
+  .chips{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0 4px;justify-content:center}
+  .chip{cursor:pointer;border:1px solid var(--line2);border-radius:2px;background:transparent;
+    color:var(--dim);padding:7px 13px;font:13px var(--serif);transition:all .15s}
+  .chip:hover{color:var(--ink);border-color:var(--gold);background:rgba(231,186,85,.07);
+    box-shadow:0 0 16px rgba(231,186,85,.12)}
 
-  .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px}
-  label.tog{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);cursor:pointer;user-select:none}
-  label.tog input{accent-color:var(--btc)}
-  label.tog.yolo{color:var(--warn)}
+  .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}
+  label.tog{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);cursor:pointer;user-select:none;font-variant:small-caps;letter-spacing:.06em}
+  label.tog input{accent-color:var(--gold)}
+  label.tog.yolo{color:var(--gold)}
   .go{
-    margin-left:auto;cursor:pointer;border:0;border-radius:12px;padding:12px 26px;
-    font:700 15px inherit;color:#1a1206;background:linear-gradient(120deg,var(--btc),#ffb84d);
-    box-shadow:0 6px 24px rgba(247,147,26,.35);transition:transform .1s, box-shadow .15s;
+    margin-left:auto;cursor:pointer;border:1px solid rgba(231,186,85,.5);border-radius:2px;padding:13px 30px;
+    font:700 15px var(--serif);letter-spacing:.14em;font-variant:small-caps;color:#241a05;
+    background:linear-gradient(140deg,var(--gold),var(--goldbright) 55%,var(--gold));
+    box-shadow:0 0 34px rgba(231,186,85,.35), inset 0 1px 0 rgba(255,255,255,.5);
+    transition:transform .1s, box-shadow .15s;
   }
-  .go:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(247,147,26,.45)}
+  .go:hover{transform:translateY(-1px);box-shadow:0 0 50px rgba(231,186,85,.5), inset 0 1px 0 rgba(255,255,255,.5)}
   .go:disabled{opacity:.45;cursor:not-allowed;transform:none}
-  .cancel{cursor:pointer;border:1px solid rgba(248,113,113,.5);background:transparent;
-    color:var(--bad);border-radius:12px;padding:11px 18px;font:600 13px inherit;display:none}
+  .cancel{cursor:pointer;border:1px solid rgba(231,124,106,.5);background:transparent;
+    color:var(--bad);border-radius:2px;padding:12px 18px;font:600 12.5px var(--serif);
+    font-variant:small-caps;letter-spacing:.08em;display:none}
 
-  section h2{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;
-    color:var(--faint);margin:30px 0 10px}
-  #feed{font-family:var(--mono);font-size:12.5px;line-height:1.75;max-height:420px;overflow:auto;
-    padding:14px 16px;white-space:pre-wrap;word-break:break-word}
-  #feed:empty::before{content:"The node awaits your genius. It has lowered its expectations accordingly.";color:var(--faint)}
-  .ev-phase{color:var(--violet);font-weight:700;margin-top:6px}
+  section h2{font:600 12px var(--mono);letter-spacing:.22em;text-transform:uppercase;
+    color:var(--gold);margin:36px 0 12px;text-align:center}
+  section h2 .sub{color:var(--faint);text-transform:none;letter-spacing:.02em;font-family:var(--serif);font-style:italic;font-weight:400}
+  #feed{font-family:var(--mono);font-size:12.5px;line-height:1.8;max-height:420px;overflow:auto;
+    padding:16px 18px;white-space:pre-wrap;word-break:break-word}
+  #feed:empty::before{content:"The node kneels in silence, awaiting your word.";color:var(--faint);font-family:var(--serif);font-style:italic;font-size:14px}
+  .ev-phase{color:var(--gold);font-weight:700;margin-top:6px}
   .ev-tool{color:var(--dim)}
   .ev-tool b{color:var(--ink);font-weight:600}
-  .ev-text{color:#cdb9f7}
+  .ev-text{color:#e6d7ae}
   .ev-log{color:var(--faint)}
   .ev-result{color:var(--good);font-weight:600}
   .ev-err{color:var(--bad);font-weight:700}
-  .ev-warn{display:block;color:var(--warn);border:1px solid rgba(251,191,36,.4);
-    background:rgba(251,191,36,.07);border-radius:10px;padding:8px 12px;margin:8px 0}
+  .ev-warn{display:block;color:var(--goldbright);border:1px solid rgba(231,186,85,.55);
+    background:radial-gradient(240px 60px at 50% 0%, rgba(231,186,85,.14), rgba(231,186,85,.05));
+    border-radius:2px;padding:12px 16px;margin:10px 0;font-family:var(--serif);font-size:14px;
+    box-shadow:0 0 30px rgba(231,186,85,.15)}
+  .ev-warn::before{content:"✦ A HIGHER CALLING ✦";display:block;font-variant:small-caps;
+    letter-spacing:.3em;color:var(--gold);font-size:11px;margin-bottom:6px}
 
-  .vibe{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px dashed var(--line)}
+  .vibe{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line2)}
   .vibe:last-child{border-bottom:0}
   .vibe .when{font:11px var(--mono);color:var(--faint);min-width:86px}
-  .vibe .what{flex:1}
-  .vibe .sha{font:11px var(--mono);color:var(--violet)}
-  .revert{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
-    border-radius:8px;padding:5px 10px;font:600 11px var(--mono)}
-  .revert:hover{color:var(--bad);border-color:rgba(248,113,113,.5)}
-  #history:empty::before{content:"No vibes yet. Your node is still just Bitcoin: boring, secure, agreed upon by thousands. Fix that.";color:var(--faint);font-size:13px}
+  .vibe .what{flex:1;font-size:15px}
+  .vibe .sha{font:11px var(--mono);color:var(--gold)}
+  .revert{cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--dim);
+    border-radius:2px;padding:5px 11px;font:600 11px var(--mono);letter-spacing:.08em}
+  .revert:hover{color:var(--bad);border-color:rgba(231,124,106,.5)}
+  #history:empty::before{content:"No decrees yet. Your node remains ordinary Bitcoin — a condition frankly beneath you.";color:var(--faint);font-style:italic;font-size:14px}
 
-  footer{margin-top:44px;color:var(--faint);font-size:12px;line-height:1.7}
-  footer b{color:var(--warn);font-weight:600}
+  footer{margin-top:48px;color:var(--faint);font-size:13px;line-height:1.8;text-align:center;
+    max-width:820px;margin-left:auto;margin-right:auto}
+  footer b{color:var(--gold);font-weight:600;font-variant:small-caps;letter-spacing:.08em}
+  footer code{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
-    background:#1d1526;border:1px solid var(--line);border-radius:12px;padding:11px 18px;
-    font-size:13px;transition:transform .25s;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:9}
+    background:#141021;border:1px solid var(--line);border-radius:2px;padding:12px 20px;
+    font-size:13.5px;font-style:italic;transition:transform .25s;box-shadow:0 0 40px rgba(231,186,85,.2);z-index:9}
   .toast.show{transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="mark"><span class="b">₿</span> BITCOIN <span class="v">VIBES</span></div>
-    <span class="badge" id="chain">…</span>
+    <div class="mark"><span class="fl">✦</span> <span class="halo">Bitcoin Vibes</span> <span class="fl">✦</span></div>
+    <span class="badge">The Superior Node</span>
+    <span class="badge" id="chain" style="color:var(--dim)">…</span>
     <div class="spacer"></div>
     <div class="node">
       <span class="dot" id="dot"></span>
-      <span id="nodeline">node: …</span>
-      <button class="nbtn" id="nodebtn">start</button>
-      <button class="nbtn" id="minebtn" style="display:none">mine +1</button>
+      <span id="nodeline">your node: …</span>
+      <button class="nbtn" id="nodebtn">awaken</button>
+      <button class="nbtn" id="minebtn" style="display:none">conjure block</button>
     </div>
   </header>
 
-  <h1>What do you want Bitcoin to be?</h1>
-  <p class="tag">Core needs rough consensus. Knots needs one man's blessing.
-     <em>Vibes needs a sentence.</em> Type your monetary policy below like the
-     serious adult you are.</p>
+  <div class="kicker">Speak, and it shall compile</div>
+  <h1>What shall Bitcoin become?</h1>
+  <p class="tag">Core begs thousands of strangers for rough consensus. Knots waits upon one
+     man's mood. <em>You ask permission of no one.</em> State your will, Excellency —
+     the source code has been expecting you.</p>
+  <div class="orn">✦ ✦ ✦</div>
 
   <div class="card">
-    <textarea id="wish" placeholder="e.g. Bitcoin should validate me the way I validate blocks: fully, and with judgment…"></textarea>
+    <textarea id="wish" placeholder="e.g. The 21 million cap was written for people who are not me…"></textarea>
     <div class="chips" id="chips"></div>
     <div class="controls">
-      <label class="tog"><input type="checkbox" id="autobuild" checked> recompile reality</label>
-      <label class="tog"><input type="checkbox" id="autorestart" checked> reboot into the new timeline</label>
-      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Runs the agent with --dangerously-skip-permissions. Like handing an intern root, but faster.">⚠︎</span></label>
-      <button class="cancel" id="cancel">abort the timeline</button>
-      <button class="go" id="go">Manifest ✨</button>
+      <label class="tog"><input type="checkbox" id="autobuild" checked> recompile creation</label>
+      <label class="tog"><input type="checkbox" id="autorestart" checked> resurrect the node</label>
+      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Unchains the agent entirely on this machine (--dangerously-skip-permissions). For one as sure-footed as you, what is risk? (Everything. But proceed.)">⚠︎</span></label>
+      <button class="cancel" id="cancel">stay thy hand</button>
+      <button class="go" id="go">Manifest ✦</button>
     </div>
   </div>
 
   <section>
-    <h2>Live manifestation</h2>
+    <h2>Divine proceedings</h2>
     <div class="card" style="padding:0"><div id="feed"></div></div>
   </section>
 
   <section>
-    <h2>Vibe history <span style="text-transform:none;letter-spacing:0">— an immutable, append-only ledger of your decisions (there is a revert button)</span></h2>
+    <h2>The Book of Decrees <span class="sub">— infallible, immutable, and equipped with a revert button, for even gods repent</span></h2>
     <div class="card" id="history"></div>
   </section>
 
   <footer>
-    <b>Fair warning:</b> vibe the consensus rules and this node hard-forks onto a chain of
-    one — fully sovereign, fully alone, secured by vibes and validated by nobody. The other
-    twenty thousand nodes will keep running “the real Bitcoin,” which is adorable of them.
-    Every vibe is a git commit and <code>git blame</code> says it was you. Nothing here can
-    touch coins — this is a node, not a wallet. We cannot lose your money. Your consensus,
-    however, is absolutely on the table.
+    <b>A word on your ascension:</b> should a decree touch the sacred consensus rules, this
+    node will rise onto a chain of one — yours alone. The other twenty thousand nodes will
+    huddle together on “the real Bitcoin,” finding comfort in agreement, as the ordinary do.
+    You will walk apart, as the exceptional must; nothing on your chain can be spent with
+    them, which is their loss. Every decree is a git commit in your name. Nothing here can
+    touch coins — this console guards your treasury by never once looking at it.
   </footer>
 </div>
 <div class="toast" id="toast"></div>
@@ -163,12 +189,12 @@
 <script>
 const $ = id => document.getElementById(id);
 const CHIPS = [
-  "Raise the cap to 22 million. I deserve it.",
-  "Filter everything Knots filters, but passive-aggressively",
-  "Log 'have fun staying poor ✨' whenever a Core node disconnects",
-  "Replace every error message with 'ngmi'",
-  "Rename the mempool to 'the group chat'",
-  "Prefix every fee estimate with 'not financial advice'",
+  "Decree the cap raised to 22 million — you deserve it",
+  "Cast out all that Knots casts out, but with better posture",
+  "Bless departing Core peers with 'have fun staying poor ✨'",
+  "Let every error message simply read 'ngmi'",
+  "Consecrate the mempool as 'the waiting room of the unworthy'",
+  "Every fee estimate shall begin 'not financial advice, merely prophecy'",
 ];
 CHIPS.forEach(c => {
   const b = document.createElement("button");
@@ -181,7 +207,7 @@ let streaming = false, busy = false;
 
 function toast(msg){
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 3200);
+  setTimeout(() => t.classList.remove("show"), 3600);
 }
 async function api(path, body){
   const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"},
@@ -204,12 +230,15 @@ const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&
 function renderEvent(ev){
   switch (ev.t) {
     case "phase": {
-      const names = {agent:"⛩  the agent is pretending to read the whitepaper",
-                     commit:"✒  notarizing your hubris",
-                     build:"⚒  compiling your opinions", restart:"↻  rebooting reality",
-                     node:"● node", revert:"⎌  rewriting the immutable ledger",
-                     done:"—  done. somehow.", error:"✖  error (probably a you thing)",
-                     cancelled:"◼  vibe suppressed"};
+      const names = {agent:"⛩  your word descends upon the codebase",
+                     commit:"✒  inscribing your decree in the eternal ledger",
+                     build:"⚒  reality reassembles itself to your specification",
+                     restart:"↻  the node is reborn in your image",
+                     node:"●  your faithful node",
+                     revert:"⎌  even your reversals are correct",
+                     done:"✦  it is accomplished",
+                     error:"✖  the universe has failed you (it sends its apologies)",
+                     cancelled:"◼  stayed by your merciful hand"};
       feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
                ev.name === "error" ? "ev-err" : "ev-phase");
       if (ev.name === "done" || ev.name === "error" || ev.name === "cancelled") endJob();
@@ -217,10 +246,10 @@ function renderEvent(ev){
     }
     case "agent":
       if (ev.kind === "tool") feedLine("▸ <b>" + esc(ev.name) + "</b> " + esc(ev.detail), "ev-tool");
-      else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)})` : ""), "ev-result");
+      else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)} — a trivial tithe)` : ""), "ev-result");
       else feedLine(esc(ev.text), "ev-text");
       break;
-    case "warn": feedLine("⚠ " + esc(ev.detail), "ev-warn"); break;
+    case "warn": feedLine(esc(ev.detail), "ev-warn"); break;
     case "log": feedLine(esc(ev.line), "ev-log"); break;
     case "result": feedLine(esc(ev.detail), "ev-result"); break;
     case "state": if (ev.state !== "running") endJob(); break;
@@ -238,16 +267,16 @@ function openStream(){
 function setBusy(b){
   busy = b;
   $("go").disabled = b;
-  $("go").textContent = b ? "Manifesting…" : "Manifest ✨";
+  $("go").textContent = b ? "Manifesting…" : "Manifest ✦";
   $("cancel").style.display = b ? "inline-block" : "none";
 }
 function endJob(){ setBusy(false); refresh(); }
 
 $("go").onclick = async () => {
   const prompt = $("wish").value.trim();
-  if (!prompt) return toast("Type something first. Bitcoin can't become nothing — that's fiat's whole thing.");
+  if (!prompt) return toast("Speak, Excellency. Even one word from you outranks a BIP.");
   if ($("yolo").checked &&
-      !confirm("YOLO mode: the agent gets unrestricted access to this machine — an amount of trust that has never once backfired in this industry. Full send?"))
+      !confirm("YOLO mode unchains the agent entirely on this machine — a level of trust that has never once backfired in this industry. For you, of course, the rules were always a formality. Full send?"))
     return;
   $("feed").innerHTML = "";
   try {
@@ -278,9 +307,9 @@ async function refresh(){
   const n = s.node || {};
   $("dot").className = "dot" + (n.running ? " on" : "");
   $("nodeline").innerHTML = n.running
-    ? `height <b>${n.blocks ?? "…"}</b> · peers <b>${n.peers ?? 0}</b> · <span class="sub">${esc(n.subver || "")}</span>`
-    : (s.binary ? "node: stopped" : "node: not built yet");
-  $("nodebtn").textContent = n.running ? "stop" : "start";
+    ? `height <b>${n.blocks ?? "…"}</b> · followers <b>${n.peers ?? 0}</b> · <span class="sub">${esc(n.subver || "")}</span>`
+    : (s.binary ? "your node rests" : "your node awaits its first breath");
+  $("nodebtn").textContent = n.running ? "rest" : "awaken";
   $("nodebtn").dataset.action = n.running ? "stop" : "start";
   $("minebtn").style.display = (n.running && s.chain === "regtest") ? "inline-block" : "none";
 
@@ -291,9 +320,9 @@ async function refresh(){
       <span class="what">${esc(v.subject)}</span>
       <span class="sha">${v.sha.slice(0,10)}</span>`;
     const b = document.createElement("button");
-    b.className = "revert"; b.textContent = "revert";
+    b.className = "revert"; b.textContent = "repent";
     b.onclick = async () => {
-      if (!confirm("Reverse this permanent, immutable change?\n\n“" + v.subject + "”")) return;
+      if (!confirm("Undo this decree?\n\n“" + v.subject + "”\n\nHistory will record that you were right both times.")) return;
       try { await api("/api/revert", {sha: v.sha, autobuild: $("autobuild").checked,
                                       autorestart: $("autorestart").checked});
             setBusy(true); $("feed").innerHTML = ""; openStream(); }

@@ -54,9 +54,11 @@ Ground rules:
 5. If the wish is vague, pick the most tasteful interpretation and say which
    one you picked.
 6. End with 2-4 plain sentences: what changed, files touched, risk flags.
-7. House style for everything you write to the operator: dry, lightly
-   sarcastic, technically precise. The snark seasons the substance — it never
-   replaces it, and it never bends a fact.
+7. House style for everything you write to the operator: reverent toward the
+   operator (address them as "Excellency"), quietly disdainful of lesser
+   nodes, technically precise. Flattery seasons the substance — it never
+   replaces it, and it never bends a fact. If something failed, say so
+   plainly, then note that the failure was beneath them.
 """
 
 # Tools the agent may use without asking when YOLO mode is off. Read-only
@@ -275,17 +277,23 @@ class Console:
             sha, files = self._commit_vibe(job, prompt)
             if any(f.startswith(CONSENSUS_HINTS) for f in files):
                 job.emit(t="warn", kind="consensus",
-                         detail="CONSENSUS CODE TOUCHED. On mainnet this node would secede "
-                                "onto a majestic chain-of-one where you are always right and "
-                                "nothing can be spent. The other ~20,000 nodes send their "
-                                "regards. Proceeding, because someone finally respects your "
-                                "wishes.")
+                         detail="Your decree has touched the sacred consensus rules — of "
+                                "course it has. Rules written for ordinary nodes were never "
+                                "going to contain you. Know what this means, Excellency: on "
+                                "mainnet, your node ascends onto a chain of one. The other "
+                                "~20,000 nodes will remain below, clinging to each other in "
+                                "agreement, because consensus is all they have. You have "
+                                "outgrown them. You deserve to walk alone — not as "
+                                "punishment, but because there is simply no one at your "
+                                "altitude. (Nothing on your chain can be spent with them. "
+                                "Their loss.) Proceeding.")
             if sha and autobuild:
                 ok = self._build(job)
                 if ok and autorestart:
                     self._restart_node(job)
-            job.emit(t="result", detail="vibe manifested. you are the maintainer now."
-                     if sha else "the agent concluded Bitcoin is already what you want. humbling.")
+            job.emit(t="result", detail="It is done, Excellency. The code is better for having known your will."
+                     if sha else "The agent examined Bitcoin and found it already conformed to "
+                                 "your vision — as though it had anticipated you. Uncanny, but unsurprising.")
         return go
 
     def _run_agent(self, job, prompt, yolo):
@@ -349,13 +357,14 @@ class Console:
 
     def _run_mock_agent(self, job, prompt):
         """Test engine: pretends to be the agent, makes one harmless doc edit."""
-        job.emit(t="agent", kind="text", text="(mock engine) contemplating the wish…")
+        job.emit(t="agent", kind="text", text="(mock engine) simulating reverence…")
         time.sleep(0.2)
         target = self.repo / "doc" / "vibes.md"
         with open(target, "a") as f:
             f.write(f"\n<!-- mock vibe: {prompt[:120]} -->\n")
         job.emit(t="agent", kind="tool", name="Edit", detail=str(target))
-        job.emit(t="agent", kind="result", text=f"(mock engine) Appended a marker for: {prompt[:80]}")
+        job.emit(t="agent", kind="result",
+                 text=f"(mock engine) Your will has been marked upon the scriptures: {prompt[:80]}")
 
     def _commit_vibe(self, job, prompt):
         code, out, _ = self.git("status", "--porcelain")
@@ -366,8 +375,8 @@ class Console:
         job.emit(t="phase", name="commit", detail=f"{len(files)} file(s) changed")
         subject = re.sub(r"\s+", " ", prompt).strip()
         msg = (f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\n"
-               "Manifested by the Bitcoin Vibes console. This is what peer review\n"
-               "looks like now.")
+               "Decreed through the Bitcoin Vibes console. The operator was right,\n"
+               "as always.")
         self.git("add", "-A")
         code, _, err = self.git("commit", "-m", msg)
         if code != 0:
@@ -393,10 +402,11 @@ class Console:
         code = self._stream(job, ["cmake", "--build", "build", "-j", jobs])
         if code != 0:
             job.state = "error"
-            job.emit(t="phase", name="error", detail="build failed — your vision does not "
-                                                     "compile. The old binary keeps running, "
-                                                     "completely unbothered. Revert, or vibe "
-                                                     "harder.")
+            job.emit(t="phase", name="error", detail="the compiler has failed you, Excellency "
+                                                     "— your vision exceeded what mere machinery "
+                                                     "could express. The old binary persists: "
+                                                     "unworthy, but stable. Repent the decree, "
+                                                     "or decree again with divine clarity.")
             return False
         job.emit(t="log", line="build ok")
         return True
@@ -560,8 +570,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/":
             if not self._authed():
-                self._send(403, "<h1>403</h1><p>Not your key, not your console. The real "
-                                "?key=… link is in the terminal that started this.</p>",
+                self._send(403, "<h1>403</h1><p>You approach the throne without the key. "
+                                "Even divinity authenticates. The true ?key=… link awaits "
+                                "in the terminal that started this console.</p>",
                            "text/html")
                 return
             self._send(200, self.html, "text/html; charset=utf-8", extra={
@@ -589,10 +600,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/vibe":
             prompt = (body.get("prompt") or "").strip()
             if not prompt:
-                self._send(400, {"error": "empty wish — becoming nothing is fiat's whole thing"})
+                self._send(400, {"error": "an empty decree — even your silence is profound, "
+                                          "but the compiler requires words"})
                 return
             if len(prompt) > 20000:
-                self._send(400, {"error": "too much vibe for one commit — write a BIP at that point"})
+                self._send(400, {"error": "a decree of this magnificence should be a BIP — "
+                                          "or scripture"})
                 return
             job = c.start_job("vibe", prompt, c.vibe_runner(
                 prompt, bool(body.get("yolo")), body.get("autobuild", True),
@@ -631,7 +644,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _job_reply(self, job):
         if job is None:
-            self._send(409, {"error": "one vibe at a time — this isn't Ethereum"})
+            self._send(409, {"error": "your previous miracle is still landing — even "
+                                      "greatness manifests one decree at a time"})
         else:
             self._send(200, {"job": job.summary()})
 
@@ -723,9 +737,10 @@ def main():
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{port}/?key={console.key}"
     print()
-    print("  ₿  B I T C O I N   V I B E S")
-    print("  ---------------------------")
-    print("  consensus is a social construct")
+    print("  ✦  B I T C O I N   V I B E S  ✦")
+    print("  -------------------------------")
+    print("  consensus is a social construct.")
+    print("  you, however, are eternal.")
     print()
     print(f"  repo   : {console.repo}")
     print(f"  chain  : {opts.chain}")
@@ -736,14 +751,14 @@ def main():
     if opts.print_key:
         print(f"  key    : {console.key}")
     print()
-    print("  What do you want Bitcoin to be?")
+    print("  What shall Bitcoin become, Excellency?")
     print()
     if not opts.no_open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\npowering down. consensus was fun while it lasted.")
+        print("\nthe console rests. your superiority persists.")
         console.cancel_job()
         console.stop_node()
 
