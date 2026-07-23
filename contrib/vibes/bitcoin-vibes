@@ -171,7 +171,11 @@ class Console:
     # ----- status --------------------------------------------------------
 
     def node_running(self):
-        return self.node_proc is not None and self.node_proc.poll() is None
+        if self.node_proc is not None and self.node_proc.poll() is None:
+            return True
+        # A node from a previous console instance may still hold the datadir;
+        # detect it over RPC so start/stop keep working across restarts.
+        return self.cli_json("uptime") is not None
 
     def status(self):
         _, branch, _ = self.git("rev-parse", "--abbrev-ref", "HEAD")
@@ -417,12 +421,13 @@ class Console:
         deadline = time.time() + timeout
         while time.time() < deadline and self.node_running():
             time.sleep(0.3)
-        if self.node_running():
+        if self.node_running() and self.node_proc is not None:
             self.node_proc.terminate()
             try:
                 self.node_proc.wait(10)
             except subprocess.TimeoutExpired:
                 self.node_proc.kill()
+        self.node_proc = None
         if job:
             job.emit(t="log", line="bitcoind stopped")
         return True
