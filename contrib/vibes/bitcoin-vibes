@@ -284,11 +284,15 @@ class Console:
             cmd.append("--dangerously-skip-permissions")
         else:
             cmd += ["--permission-mode", "acceptEdits", "--allowedTools", SAFE_ALLOWED_TOOLS]
-        cmd.append(prompt)
         job.emit(t="log", line=f"engine: claude ({'YOLO' if yolo else 'guarded'} mode)")
-        proc = subprocess.Popen(cmd, cwd=self.repo, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        # The wish goes in via stdin: --allowedTools is variadic, so a trailing
+        # positional prompt can be swallowed as one of its values.
+        proc = subprocess.Popen(cmd, cwd=self.repo, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, start_new_session=True)
         job.proc = proc
+        proc.stdin.write(prompt)
+        proc.stdin.close()
         for line in proc.stdout:
             line = line.strip()
             if not line:
