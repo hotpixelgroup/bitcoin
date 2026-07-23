@@ -3,18 +3,22 @@ Bitcoin Vibes
 
 *Core has rules. Knots has opinions. Vibes has you.*
 
-This fork of Bitcoin Core adds one feature: a big text area. Tell the node
-what you want Bitcoin to be, and it rewrites its own source code to match —
-one git commit per wish, rebuild, restart, revert button included.
+Fifteen years of mailing lists, BIPs, IRC flame wars, and filtering discourse,
+and somehow neither Core nor Knots ever shipped the one feature people
+actually wanted: **a big text area where you type what Bitcoin should be, and
+the node rewrites its own source code to match.** One commit per wish.
+Rebuild. Restart. Revert button, for when your convictions don't survive
+contact with the compiler.
 
 ```bash
 ./contrib/vibes/bitcoin-vibes
 ```
 
 See [doc/vibes.md](doc/vibes.md) for the console, the guardrails, and the
-warnings (yes, vibing consensus rules forks you off the network; yes, it will
-do it anyway). Everything below is the upstream Bitcoin Core README, which
-still describes this codebase — at least until your first vibe.
+warnings (yes, vibing consensus rules hard-forks you onto a chain of one;
+yes, it will respect your wishes anyway — someone finally should). Everything
+below is the upstream Bitcoin Core README, which still describes this
+codebase — at least until your first vibe.
 
 ---
 

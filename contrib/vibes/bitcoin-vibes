@@ -54,6 +54,9 @@ Ground rules:
 5. If the wish is vague, pick the most tasteful interpretation and say which
    one you picked.
 6. End with 2-4 plain sentences: what changed, files touched, risk flags.
+7. House style for everything you write to the operator: dry, lightly
+   sarcastic, technically precise. The snark seasons the substance — it never
+   replaces it, and it never bends a fact.
 """
 
 # Tools the agent may use without asking when YOLO mode is off. Read-only
@@ -272,14 +275,17 @@ class Console:
             sha, files = self._commit_vibe(job, prompt)
             if any(f.startswith(CONSENSUS_HINTS) for f in files):
                 job.emit(t="warn", kind="consensus",
-                         detail="This vibe touched consensus-critical code. On mainnet this "
-                                "node may fork off the Bitcoin network. That is between you "
-                                "and the universe.")
+                         detail="CONSENSUS CODE TOUCHED. On mainnet this node would secede "
+                                "onto a majestic chain-of-one where you are always right and "
+                                "nothing can be spent. The other ~20,000 nodes send their "
+                                "regards. Proceeding, because someone finally respects your "
+                                "wishes.")
             if sha and autobuild:
                 ok = self._build(job)
                 if ok and autorestart:
                     self._restart_node(job)
-            job.emit(t="result", detail="vibe complete" if sha else "no code change was needed")
+            job.emit(t="result", detail="vibe manifested. you are the maintainer now."
+                     if sha else "the agent concluded Bitcoin is already what you want. humbling.")
         return go
 
     def _run_agent(self, job, prompt, yolo):
@@ -359,7 +365,9 @@ class Console:
             return None, []
         job.emit(t="phase", name="commit", detail=f"{len(files)} file(s) changed")
         subject = re.sub(r"\s+", " ", prompt).strip()
-        msg = f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\nManifested by the Bitcoin Vibes console."
+        msg = (f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\n"
+               "Manifested by the Bitcoin Vibes console. This is what peer review\n"
+               "looks like now.")
         self.git("add", "-A")
         code, _, err = self.git("commit", "-m", msg)
         if code != 0:
@@ -385,8 +393,10 @@ class Console:
         code = self._stream(job, ["cmake", "--build", "build", "-j", jobs])
         if code != 0:
             job.state = "error"
-            job.emit(t="phase", name="error", detail="build failed — the vibe does not compile. "
-                                                     "Revert it or vibe a fix.")
+            job.emit(t="phase", name="error", detail="build failed — your vision does not "
+                                                     "compile. The old binary keeps running, "
+                                                     "completely unbothered. Revert, or vibe "
+                                                     "harder.")
             return False
         job.emit(t="log", line="build ok")
         return True
@@ -550,8 +560,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/":
             if not self._authed():
-                self._send(403, "<h1>403</h1><p>Open the console with the ?key=… link "
-                                "printed in your terminal.</p>", "text/html")
+                self._send(403, "<h1>403</h1><p>Not your key, not your console. The real "
+                                "?key=… link is in the terminal that started this.</p>",
+                           "text/html")
                 return
             self._send(200, self.html, "text/html; charset=utf-8", extra={
                 "Set-Cookie": f"vibekey={self.console.key}; HttpOnly; SameSite=Strict; Path=/",
@@ -578,10 +589,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/vibe":
             prompt = (body.get("prompt") or "").strip()
             if not prompt:
-                self._send(400, {"error": "empty wish — Bitcoin cannot become nothing"})
+                self._send(400, {"error": "empty wish — becoming nothing is fiat's whole thing"})
                 return
             if len(prompt) > 20000:
-                self._send(400, {"error": "that is too much vibe for one commit"})
+                self._send(400, {"error": "too much vibe for one commit — write a BIP at that point"})
                 return
             job = c.start_job("vibe", prompt, c.vibe_runner(
                 prompt, bool(body.get("yolo")), body.get("autobuild", True),
@@ -620,7 +631,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _job_reply(self, job):
         if job is None:
-            self._send(409, {"error": "another vibe is already manifesting"})
+            self._send(409, {"error": "one vibe at a time — this isn't Ethereum"})
         else:
             self._send(200, {"job": job.summary()})
 
@@ -658,7 +669,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Bitcoin Vibes console")
+    ap = argparse.ArgumentParser(
+        description="Bitcoin Vibes console — monetary policy, but it's a text area")
     ap.add_argument("--port", type=int, default=21212)
     ap.add_argument("--chain", default="regtest", choices=["main", "testnet", "testnet4", "signet", "regtest"])
     ap.add_argument("--repo", default=None, help="repo root (default: autodetect from this script)")
@@ -702,7 +714,8 @@ def main():
             if other and other.get("app") == "bitcoin-vibes" and other.get("repo") == console.repo_id:
                 sys.exit(
                     f"\nA Vibe Console for this repo is already running at http://127.0.0.1:{port}/\n"
-                    f"Open the ?key=… link printed in the terminal where it started, or stop it:\n"
+                    f"— you cannot double-spend a console. Open the ?key=… link printed in the\n"
+                    f"terminal where it started, or stop it:\n"
                     f"  kill $(lsof -tiTCP:{port} -sTCP:LISTEN)\n")
             port += 1
     if httpd is None:
@@ -712,6 +725,8 @@ def main():
     print()
     print("  ₿  B I T C O I N   V I B E S")
     print("  ---------------------------")
+    print("  consensus is a social construct")
+    print()
     print(f"  repo   : {console.repo}")
     print(f"  chain  : {opts.chain}")
     print(f"  engine : {opts.engine}")
@@ -728,7 +743,7 @@ def main():
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nshutting down…")
+        print("\npowering down. consensus was fun while it lasted.")
         console.cancel_job()
         console.stop_node()
 

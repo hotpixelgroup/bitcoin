@@ -79,7 +79,7 @@
     color:var(--faint);margin:30px 0 10px}
   #feed{font-family:var(--mono);font-size:12.5px;line-height:1.75;max-height:420px;overflow:auto;
     padding:14px 16px;white-space:pre-wrap;word-break:break-word}
-  #feed:empty::before{content:"The node is listening. Type a wish above.";color:var(--faint)}
+  #feed:empty::before{content:"The node awaits your genius. It has lowered its expectations accordingly.";color:var(--faint)}
   .ev-phase{color:var(--violet);font-weight:700;margin-top:6px}
   .ev-tool{color:var(--dim)}
   .ev-tool b{color:var(--ink);font-weight:600}
@@ -98,7 +98,7 @@
   .revert{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
     border-radius:8px;padding:5px 10px;font:600 11px var(--mono)}
   .revert:hover{color:var(--bad);border-color:rgba(248,113,113,.5)}
-  #history:empty::before{content:"No vibes yet. Bitcoin is still whatever it was.";color:var(--faint);font-size:13px}
+  #history:empty::before{content:"No vibes yet. Your node is still just Bitcoin: boring, secure, agreed upon by thousands. Fix that.";color:var(--faint);font-size:13px}
 
   footer{margin-top:44px;color:var(--faint);font-size:12px;line-height:1.7}
   footer b{color:var(--warn);font-weight:600}
@@ -123,17 +123,18 @@
   </header>
 
   <h1>What do you want Bitcoin to be?</h1>
-  <p class="tag">Core has rules. Knots has opinions. <em>Vibes has you.</em>
-     Describe it, and this node rewrites its own source code to match.</p>
+  <p class="tag">Core needs rough consensus. Knots needs one man's blessing.
+     <em>Vibes needs a sentence.</em> Type your monetary policy below like the
+     serious adult you are.</p>
 
   <div class="card">
-    <textarea id="wish" placeholder="e.g. Bitcoin should be softer. When a peer disconnects, the logs should wish it well on its journey…"></textarea>
+    <textarea id="wish" placeholder="e.g. Bitcoin should validate me the way I validate blocks: fully, and with judgment…"></textarea>
     <div class="chips" id="chips"></div>
     <div class="controls">
-      <label class="tog"><input type="checkbox" id="autobuild" checked> rebuild node</label>
-      <label class="tog"><input type="checkbox" id="autorestart" checked> restart on new code</label>
-      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Runs the agent with --dangerously-skip-permissions. Full send.">⚠︎</span></label>
-      <button class="cancel" id="cancel">stop the vibe</button>
+      <label class="tog"><input type="checkbox" id="autobuild" checked> recompile reality</label>
+      <label class="tog"><input type="checkbox" id="autorestart" checked> reboot into the new timeline</label>
+      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Runs the agent with --dangerously-skip-permissions. Like handing an intern root, but faster.">⚠︎</span></label>
+      <button class="cancel" id="cancel">abort the timeline</button>
       <button class="go" id="go">Manifest ✨</button>
     </div>
   </div>
@@ -144,15 +145,17 @@
   </section>
 
   <section>
-    <h2>Vibe history <span style="text-transform:none;letter-spacing:0">— every wish is a commit; every commit can be taken back</span></h2>
+    <h2>Vibe history <span style="text-transform:none;letter-spacing:0">— an immutable, append-only ledger of your decisions (there is a revert button)</span></h2>
     <div class="card" id="history"></div>
   </section>
 
   <footer>
-    <b>Fair warning:</b> vibes that touch consensus rules will fork this node off the Bitcoin
-    network. Core and Knots argue about what Bitcoin is; Vibes simply asks you — and takes you
-    at your word. Every vibe is a git commit on your fork. Nothing here moves coins.
-    Not your keys, not your coins; not your node, not your vibes.
+    <b>Fair warning:</b> vibe the consensus rules and this node hard-forks onto a chain of
+    one — fully sovereign, fully alone, secured by vibes and validated by nobody. The other
+    twenty thousand nodes will keep running “the real Bitcoin,” which is adorable of them.
+    Every vibe is a git commit and <code>git blame</code> says it was you. Nothing here can
+    touch coins — this is a node, not a wallet. We cannot lose your money. Your consensus,
+    however, is absolutely on the table.
   </footer>
 </div>
 <div class="toast" id="toast"></div>
@@ -160,11 +163,12 @@
 <script>
 const $ = id => document.getElementById(id);
 const CHIPS = [
-  "Make every log line end with ✨",
-  "Rewrite all error messages to be gentle and encouraging",
-  "Add a -gratitude option that thanks each peer as it disconnects",
-  "Print a haiku about entropy whenever a new block arrives",
-  "The debug log should refer to the mempool as 'the waiting room'",
+  "Raise the cap to 22 million. I deserve it.",
+  "Filter everything Knots filters, but passive-aggressively",
+  "Log 'have fun staying poor ✨' whenever a Core node disconnects",
+  "Replace every error message with 'ngmi'",
+  "Rename the mempool to 'the group chat'",
+  "Prefix every fee estimate with 'not financial advice'",
 ];
 CHIPS.forEach(c => {
   const b = document.createElement("button");
@@ -200,10 +204,12 @@ const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&
 function renderEvent(ev){
   switch (ev.t) {
     case "phase": {
-      const names = {agent:"⛩  the agent is reading your wish", commit:"✒  committing the vibe",
-                     build:"⚒  rebuilding bitcoind", restart:"↻  restarting the node",
-                     node:"● node", revert:"⎌  reverting", done:"—  done", error:"✖  error",
-                     cancelled:"◼  cancelled"};
+      const names = {agent:"⛩  the agent is pretending to read the whitepaper",
+                     commit:"✒  notarizing your hubris",
+                     build:"⚒  compiling your opinions", restart:"↻  rebooting reality",
+                     node:"● node", revert:"⎌  rewriting the immutable ledger",
+                     done:"—  done. somehow.", error:"✖  error (probably a you thing)",
+                     cancelled:"◼  vibe suppressed"};
       feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
                ev.name === "error" ? "ev-err" : "ev-phase");
       if (ev.name === "done" || ev.name === "error" || ev.name === "cancelled") endJob();
@@ -239,9 +245,9 @@ function endJob(){ setBusy(false); refresh(); }
 
 $("go").onclick = async () => {
   const prompt = $("wish").value.trim();
-  if (!prompt) return toast("Type a wish first. Bitcoin cannot become nothing.");
+  if (!prompt) return toast("Type something first. Bitcoin can't become nothing — that's fiat's whole thing.");
   if ($("yolo").checked &&
-      !confirm("YOLO mode gives the agent unrestricted tool access on this machine. Full send?"))
+      !confirm("YOLO mode: the agent gets unrestricted access to this machine — an amount of trust that has never once backfired in this industry. Full send?"))
     return;
   $("feed").innerHTML = "";
   try {
@@ -287,7 +293,7 @@ async function refresh(){
     const b = document.createElement("button");
     b.className = "revert"; b.textContent = "revert";
     b.onclick = async () => {
-      if (!confirm("Take back this vibe?\n\n“" + v.subject + "”")) return;
+      if (!confirm("Reverse this permanent, immutable change?\n\n“" + v.subject + "”")) return;
       try { await api("/api/revert", {sha: v.sha, autobuild: $("autobuild").checked,
                                       autorestart: $("autorestart").checked});
             setBusy(true); $("feed").innerHTML = ""; openStream(); }
