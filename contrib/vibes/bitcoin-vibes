@@ -14,6 +14,8 @@ request, so random web pages can't inject vibes into your node.
 """
 
 import argparse
+import errno
+import hashlib
 import json
 import os
 import queue
@@ -26,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -130,6 +133,9 @@ class Console:
         for d in (self.data_dir, self.jobs_dir, self.logs_dir):
             d.mkdir(parents=True, exist_ok=True)
         self.key = secrets.token_urlsafe(18)
+        # Anonymous fingerprint of the repo path, so a second launcher can tell
+        # "that port is MY console for THIS repo" apart from a stranger's socket.
+        self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
         self.job = None
         self.job_lock = threading.Lock()
         self.node_proc = None
@@ -539,6 +545,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if path == "/api/ping":  # unauthenticated: only says "a console lives here"
+            self._send(200, {"app": "bitcoin-vibes", "repo": self.console.repo_id})
+            return
         if path == "/":
             if not self._authed():
                 self._send(403, "<h1>403</h1><p>Open the console with the ?key=… link "
@@ -673,9 +682,33 @@ def main():
     Handler.console = console
     Handler.html = html_path.read_bytes()
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", opts.port), Handler)
+    def probe_console(port):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1) as r:
+                return json.load(r)
+        except Exception:  # noqa: BLE001 - anything means "not a vibe console"
+            return None
+
+    httpd = None
+    port = opts.port
+    for _ in range(20):
+        try:
+            httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            break
+        except OSError as e:
+            if e.errno not in (errno.EADDRINUSE, errno.EACCES):
+                raise
+            other = probe_console(port)
+            if other and other.get("app") == "bitcoin-vibes" and other.get("repo") == console.repo_id:
+                sys.exit(
+                    f"\nA Vibe Console for this repo is already running at http://127.0.0.1:{port}/\n"
+                    f"Open the ?key=… link printed in the terminal where it started, or stop it:\n"
+                    f"  kill $(lsof -tiTCP:{port} -sTCP:LISTEN)\n")
+            port += 1
+    if httpd is None:
+        sys.exit(f"no free port found in {opts.port}-{opts.port + 19}")
     httpd.daemon_threads = True
-    url = f"http://127.0.0.1:{opts.port}/?key={console.key}"
+    url = f"http://127.0.0.1:{port}/?key={console.key}"
     print()
     print("  ₿  B I T C O I N   V I B E S")
     print("  ---------------------------")
@@ -683,6 +716,8 @@ def main():
     print(f"  chain  : {opts.chain}")
     print(f"  engine : {opts.engine}")
     print(f"  console: {url}")
+    if port != opts.port:
+        print(f"  note   : port {opts.port} was busy; using {port}")
     if opts.print_key:
         print(f"  key    : {console.key}")
     print()
