@@ -201,9 +201,11 @@ printf '\n'
 printf '  %sIt builds nothing further, wakes the node, and opens the console.%s\n' "$DIM" "$OFF"
 printf '\n'
 
-if [ "$DRY_RUN" != "1" ] && [ -t 0 ] && [ "$NEEDS_LOGIN" != "1" ]; then
-  printf '  Start it now? [Y/n] '
-  read -r reply || reply=n
+# Read from the terminal, not stdin: under `curl | sh` stdin is the script
+# itself, so a plain `read` would eat the rest of this file.
+if [ "$DRY_RUN" != "1" ] && [ "$NEEDS_LOGIN" != "1" ] && [ -r /dev/tty ]; then
+  printf '  %sStart it now?%s [Y/n] ' "$BOLD" "$OFF"
+  read -r reply < /dev/tty || reply=n
   case "$reply" in
     ''|y|Y|yes|YES) exec "$DEST/vibes" ;;
   esac
