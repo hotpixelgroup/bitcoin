@@ -1,7 +1,10 @@
 #!/bin/sh
 # Bitcoin Vibes installer.
 #
-#   curl -fsSL https://vibes.hotpixel.group/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
+#
+# Read before running (it prints everything it would do, changing nothing):
+#   VIBES_DRY_RUN=1 sh install.sh
 #
 # Installs build dependencies, fetches the source, builds the node, and opens
 # the Vibe Console. POSIX sh: works on macOS and mainstream Linux out of the box.

@@ -10,9 +10,42 @@ the node rewrites its own source code to match.** One commit per wish.
 Rebuild. Restart. Revert button, for when your convictions don't survive
 contact with the compiler.
 
+Install
+-------
+
 ```bash
-./contrib/vibes/bitcoin-vibes
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
 ```
+
+That is the whole thing. It installs what it needs, builds the node, and opens
+the console. macOS and Linux; on Windows, use WSL2.
+
+Afterwards, one command runs everything:
+
+```bash
+~/bitcoin-vibes/vibes
+```
+
+It builds anything missing, wakes the node, and opens the Vibe Console in your
+browser. Type what you want Bitcoin to be. Press Manifest.
+
+<details>
+<summary>Prefer Docker? Nothing touches your machine.</summary>
+
+```bash
+git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
+docker compose -f contrib/vibes/docker-compose.yml up --build
+```
+
+Open the `?key=…` link from the logs. On macOS your Claude Code login lives in
+the Keychain and cannot be shared with the container, so sign in once inside
+it: `docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login`.
+
+</details>
+
+You will also need [Claude Code](https://claude.com/claude-code) signed in —
+it is the engine that rewrites the node. The installer sets it up, and the
+console tells you plainly if it is ever missing or signed out.
 
 See [doc/vibes.md](doc/vibes.md) for the console, the guardrails, and the
 warnings (yes, vibing consensus rules hard-forks you onto a chain of one;

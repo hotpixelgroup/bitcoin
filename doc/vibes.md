@@ -24,26 +24,65 @@ now.
 
 ## Quickstart
 
-Build the node once (macOS: `brew install cmake boost capnp`, see
-[build-osx.md](build-osx.md); other platforms: `doc/build-*.md`):
+One line. It installs the build dependencies, fetches the source, builds the
+node, sets up the vibe engine, and opens the console:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
+```
+
+Afterwards, one command does everything:
+
+```bash
+~/bitcoin-vibes/vibes                # regtest, for cowards (recommended)
+~/bitcoin-vibes/vibes --chain=main   # for people whose convictions compile
+```
+
+It builds anything missing, wakes the node, prints a
+`http://127.0.0.1:21212/?key=…` link, opens your browser, and asks the only
+governance question that has ever mattered: *what do you want Bitcoin to be?*
+
+Yes: your node's rules are now downstream of an AI with a usage-based pricing
+page. We are all living in the timeline we deserve.
+
+### Reading the installer before you run it
+
+Piping a stranger's script into `sh` is how people lose laptops. Read it first
+— it is short, and it prints everything it would do without touching anything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh -o install.sh
+less install.sh
+VIBES_DRY_RUN=1 sh install.sh
+```
+
+It honors `VIBES_DIR` (where to install, default `~/bitcoin-vibes`),
+`VIBES_BRANCH`, and `VIBES_REPO`.
+
+### Docker, if you would rather it touched nothing
+
+```bash
+git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
+docker compose -f contrib/vibes/docker-compose.yml up --build
+```
+
+The console is published to `127.0.0.1:21212` only. Your chain data and
+decrees persist in a named volume. On macOS, Claude Code's login lives in the
+Keychain and cannot be handed to a container, so sign in inside it once:
+
+```bash
+docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
+```
+
+### Building it the long way
+
+Nothing above is mandatory. The old path still works:
 
 ```bash
 cmake -B build -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
 cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+./contrib/vibes/bitcoin-vibes --no-autostart
 ```
-
-Install [Claude Code](https://claude.com/claude-code) (the `claude` CLI).
-Yes: your node's rules are now downstream of an AI with a usage-based pricing
-page. We are all living in the timeline we deserve. Then:
-
-```bash
-./contrib/vibes/bitcoin-vibes            # regtest, for cowards (recommended)
-./contrib/vibes/bitcoin-vibes --chain=main   # for people whose convictions compile
-```
-
-It prints a `http://127.0.0.1:21212/?key=…` link, opens your browser, and asks
-the only governance question that has ever mattered: *what do you want Bitcoin
-to be?*
 
 ## How a vibe becomes law
 

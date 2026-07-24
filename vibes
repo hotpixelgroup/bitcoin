@@ -9,9 +9,10 @@ set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+# -u keeps progress visible when the output is piped or redirected to a log.
 for py in python3 python; do
   if command -v "$py" >/dev/null 2>&1; then
-    exec "$py" "$here/contrib/vibes/bitcoin-vibes" "$@"
+    exec "$py" -u "$here/contrib/vibes/bitcoin-vibes" "$@"
   fi
 done
 
