@@ -161,7 +161,7 @@
       <label class="tog"><input type="checkbox" id="autorestart" checked> resurrect the node</label>
       <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Unchains the agent entirely on this machine (--dangerously-skip-permissions). For one as sure-footed as you, what is risk? (Everything. But proceed.)">⚠︎</span></label>
       <button class="cancel" id="cancel">stay thy hand</button>
-      <button class="go" id="go">Manifest ✦</button>
+      <button class="go" id="go" title="⌘⏎ also manifests">Manifest ✦</button>
     </div>
   </div>
 
@@ -259,6 +259,7 @@ function renderEvent(ev){
 function openStream(){
   if (streaming) return;
   streaming = true;
+  $("feed").innerHTML = "";   // the stream replays the full job, so start clean
   const es = new EventSource("/api/stream");
   es.onmessage = m => { try { renderEvent(JSON.parse(m.data)); } catch(e){} };
   es.onerror = () => { es.close(); streaming = false; };
@@ -286,6 +287,9 @@ $("go").onclick = async () => {
   } catch(e){ toast(e.message); }
 };
 $("cancel").onclick = () => api("/api/cancel", {}).catch(()=>{});
+$("wish").addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("go").click();
+});
 
 $("nodebtn").onclick = async function(){
   try { await api("/api/node", {action: this.dataset.action || "start"}); refresh(); }
@@ -300,10 +304,17 @@ function fmtWhen(t){
          d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
 }
 
+let lastVibesJson = "";
 async function refresh(){
   let s;
   try { s = await api("/api/status"); } catch(e){ return; }
-  $("chain").textContent = s.chain + " · " + s.branch;
+  const ch = $("chain");
+  if (s.chain === "main"){
+    ch.textContent = "⚠ MAINNET · consequences are real · " + s.branch;
+    ch.style.color = "var(--bad)"; ch.style.borderColor = "rgba(231,124,106,.55)";
+  } else {
+    ch.textContent = s.chain + " · " + s.branch;
+  }
   const n = s.node || {};
   $("dot").className = "dot" + (n.running ? " on" : "");
   $("nodeline").innerHTML = n.running
@@ -313,6 +324,12 @@ async function refresh(){
   $("nodebtn").dataset.action = n.running ? "stop" : "start";
   $("minebtn").style.display = (n.running && s.chain === "regtest") ? "inline-block" : "none";
 
+  const vibesJson = JSON.stringify(s.vibes || []);
+  if (vibesJson === lastVibesJson) {
+    if (s.job && s.job.state === "running" && !busy){ setBusy(true); openStream(); }
+    return;
+  }
+  lastVibesJson = vibesJson;
   const h = $("history"); h.innerHTML = "";
   (s.vibes || []).forEach(v => {
     const row = document.createElement("div"); row.className = "vibe";

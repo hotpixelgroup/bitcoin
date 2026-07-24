@@ -16,6 +16,7 @@ request, so random web pages can't inject vibes into your node.
 import argparse
 import errno
 import hashlib
+import hmac
 import json
 import os
 import queue
@@ -67,7 +68,7 @@ SAFE_ALLOWED_TOOLS = ",".join([
     "Edit", "Write", "MultiEdit",
     "Bash(cmake --build:*)",
     "Bash(git diff:*)", "Bash(git log:*)", "Bash(git status:*)", "Bash(git show:*)",
-    "Bash(grep:*)", "Bash(rg:*)", "Bash(ls:*)", "Bash(cat:*)",
+    "Bash(grep:*)", "Bash(rg:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(test:*)",
 ])
 
 CONSENSUS_HINTS = (
@@ -138,7 +139,17 @@ class Console:
         self.logs_dir = self.state_dir / "logs"
         for d in (self.data_dir, self.jobs_dir, self.logs_dir):
             d.mkdir(parents=True, exist_ok=True)
-        self.key = secrets.token_urlsafe(18)
+        # Persist the session key so console restarts don't invalidate the
+        # operator's link and cookie. Lives in the gitignored .vibes/ dir.
+        key_file = self.state_dir / "key"
+        try:
+            self.key = key_file.read_text().strip()
+            if len(self.key) < 16:
+                raise ValueError("stored key too short")
+        except (OSError, ValueError):
+            self.key = secrets.token_urlsafe(18)
+            key_file.write_text(self.key)
+            key_file.chmod(0o600)
         # Anonymous fingerprint of the repo path, so a second launcher can tell
         # "that port is MY console for THIS repo" apart from a stranger's socket.
         self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
@@ -248,8 +259,9 @@ class Console:
                 job.state = "done"
                 job.emit(t="phase", name="done")
         except Exception as e:  # noqa: BLE001 - surface anything to the UI
-            job.state = "error"
-            job.emit(t="phase", name="error", detail=str(e))
+            if job.state != "cancelled":  # a cancel is not a failure
+                job.state = "error"
+                job.emit(t="phase", name="error", detail=str(e))
         finally:
             try:
                 with open(logfile, "w") as f:
@@ -435,6 +447,8 @@ class Console:
             if code != 0:
                 raise RuntimeError("cmake configure failed")
         code = self._stream(job, ["cmake", "--build", "build", "-j", jobs])
+        if job.state == "cancelled":
+            return False
         if code != 0:
             job.state = "error"
             job.emit(t="phase", name="error", detail="the compiler has failed you, Excellency "
@@ -467,6 +481,11 @@ class Console:
             if job:
                 job.emit(t="log", line="bitcoind not built yet — build first")
             return False
+        if self.node_log:
+            try:
+                self.node_log.close()
+            except OSError:
+                pass
         self.node_log = open(self.logs_dir / "bitcoind.log", "ab")
         self.node_proc = subprocess.Popen(
             [str(bitcoind), *self.chain_args(), "-server=1"],
@@ -550,13 +569,16 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _authed(self):
-        qs = parse_qs(urlparse(self.path).query)
-        if qs.get("key", [None])[0] == self.console.key:
-            return True
-        if self.headers.get("X-Vibe-Key") == self.console.key:
-            return True
-        cookies = self.headers.get("Cookie", "")
-        return f"vibekey={self.console.key}" in cookies
+        key = self.console.key
+        candidates = [
+            parse_qs(urlparse(self.path).query).get("key", [""])[0],
+            self.headers.get("X-Vibe-Key", ""),
+        ]
+        for part in (self.headers.get("Cookie", "") or "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == "vibekey":
+                candidates.append(value)
+        return any(c and hmac.compare_digest(c, key) for c in candidates)
 
     def _same_origin_ok(self):
         origin = self.headers.get("Origin")
@@ -610,7 +632,11 @@ class Handler(BaseHTTPRequestHandler):
                                 "in the terminal that started this console.</p>",
                            "text/html")
                 return
-            self._send(200, self.html, "text/html; charset=utf-8", extra={
+            try:  # fresh from disk, so UI edits never require a console restart
+                html = self.html_path.read_bytes()
+            except OSError:
+                html = self.html
+            self._send(200, html, "text/html; charset=utf-8", extra={
                 "Set-Cookie": f"vibekey={self.console.key}; HttpOnly; SameSite=Strict; Path=/",
                 "Cache-Control": "no-store",
             })
@@ -696,6 +722,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except BrokenPipeError:
                 pass
+            # Without this, keep-alive leaves the EventSource half-open forever
+            # and the client never opens a fresh stream for the next job.
+            self.close_connection = True
             return
         backlog, q = job.subscribe()
         try:
@@ -715,6 +744,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             job.unsubscribe(q)
+            self.close_connection = True
 
 
 def main():
@@ -740,7 +770,10 @@ def main():
 
     console = Console(opts)
     html_path = Path(__file__).resolve().parent / "index.html"
+    if not html_path.exists():
+        sys.exit(f"console UI missing: {html_path}")
     Handler.console = console
+    Handler.html_path = html_path
     Handler.html = html_path.read_bytes()
 
     def probe_console(port):
