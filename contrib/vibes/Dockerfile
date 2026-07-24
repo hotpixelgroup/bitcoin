@@ -23,7 +23,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build pkg-config git ca-certificates curl \
-        libboost-dev libcapnp-dev capnproto python3 \
+        libboost-dev libsqlite3-dev libcapnp-dev capnproto python3 \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://claude.ai/install.sh | bash \
     && ln -sf /root/.local/bin/claude /usr/local/bin/claude
@@ -42,4 +42,6 @@ RUN git config --global user.email "vibes@localhost" \
     && git -C /vibes commit -q -m "Bitcoin Vibes: the node as it was before you"
 
 EXPOSE 21212
-ENTRYPOINT ["python3", "contrib/vibes/bitcoin-vibes", "--no-open", "--host", "0.0.0.0"]
+# -u is load-bearing: without it Python buffers stdout and the ?key= link
+# never reaches `docker logs`, leaving no way into the console.
+ENTRYPOINT ["python3", "-u", "contrib/vibes/bitcoin-vibes", "--no-open", "--host", "0.0.0.0"]
