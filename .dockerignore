@@ -1,0 +1,17 @@
+# Keep the Docker build context small and the image reproducible.
+#
+# .git is excluded deliberately: the image initializes its own repository so
+# the console can still commit and revert decrees, without shipping 300MB of
+# upstream Bitcoin Core history that a fresh node has no use for.
+.git
+.github
+build
+build_*
+.vibes
+depends/work
+depends/built
+depends/sources
+guix-build-*
+ci/scratch
+*.log
+.DS_Store

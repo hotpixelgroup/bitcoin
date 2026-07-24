@@ -31,10 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /vibes
 COPY --from=build /vibes /vibes
 
-# Git demands an identity before it will record a decree.
+# Git demands an identity before it will record a decree. Upstream history is
+# not shipped (see .dockerignore), so the image starts its own ledger: decrees
+# still commit and revert, they simply begin from a clean slate.
 RUN git config --global user.email "vibes@localhost" \
     && git config --global user.name "Bitcoin Vibes" \
-    && git config --global --add safe.directory /vibes
+    && git config --global --add safe.directory /vibes \
+    && git init -q -b vibes /vibes \
+    && git -C /vibes add -A \
+    && git -C /vibes commit -q -m "Bitcoin Vibes: the node as it was before you"
 
 EXPOSE 21212
 ENTRYPOINT ["python3", "contrib/vibes/bitcoin-vibes", "--no-open", "--host", "0.0.0.0"]
