@@ -9,13 +9,14 @@
     --bg:#08060f;
     --panel:rgba(244,237,219,.032);
     --line:rgba(231,186,85,.22); --line2:rgba(231,186,85,.10);
-    --ink:#f2ead6; --dim:#b3a88e; --faint:#7a7160;
+    --ink:#f5efdf; --dim:#c8bea8; --faint:#998f7c;
     --gold:#e7ba55; --goldbright:#f6dfa4; --good:#8fd694; --bad:#e77c6a;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
+  html{-webkit-text-size-adjust:100%}
   body{
     background:
       radial-gradient(900px 420px at 50% -12%, rgba(231,186,85,.16), transparent 62%),
@@ -24,7 +25,7 @@
       radial-gradient(1000px 700px at 50% 118%, rgba(231,186,85,.06), transparent 60%),
       var(--bg);
     color:var(--ink);
-    font:16px/1.6 var(--serif);
+    font:16.5px/1.65 var(--serif);
     -webkit-font-smoothing:antialiased; min-height:100%;
   }
   .wrap{max-width:980px;margin:0 auto;padding:30px 22px 90px}
@@ -35,26 +36,27 @@
     -webkit-background-clip:text;background-clip:text;color:transparent;
     text-shadow:0 0 24px rgba(231,186,85,.35)}
   .mark .fl{color:var(--gold);opacity:.9}
-  .badge{font:600 10.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
-    border:1px solid var(--line);border-radius:2px;padding:6px 10px;color:var(--gold)}
+  .badge{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:2px;padding:7px 11px;color:var(--gold)}
   .spacer{flex:1}
   .node{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
     outline:1px solid var(--line2);outline-offset:3px;background:var(--panel);
-    border-radius:2px;padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--dim)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+    border-radius:2px;padding:9px 13px;font-family:var(--mono);font-size:13.5px;color:var(--dim)}
+  .nodestat{display:flex;align-items:center;gap:10px;min-width:0}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
   .dot.on{background:var(--gold);box-shadow:0 0 12px rgba(231,186,85,.9)}
   .node b{color:var(--ink);font-weight:600}
   .node .sub{color:var(--gold)}
   .nbtn{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
-    border-radius:2px;padding:4px 10px;font:600 11px var(--mono)}
+    border-radius:2px;padding:7px 12px;font:600 12.5px var(--mono);min-height:34px}
   .nbtn:hover{color:var(--gold);border-color:var(--gold)}
 
-  .kicker{text-align:center;font-variant:small-caps;letter-spacing:.34em;color:var(--gold);
-    font-size:13px;margin-bottom:14px}
+  .kicker{text-align:center;font-variant:small-caps;letter-spacing:.28em;color:var(--gold);
+    font-size:15px;margin-bottom:14px}
   h1{font-family:var(--serif);font-weight:500;font-size:clamp(34px,5.4vw,50px);
      letter-spacing:.01em;text-align:center;margin:0 0 14px;
      text-shadow:0 0 70px rgba(231,186,85,.38),0 0 22px rgba(231,186,85,.14)}
-  .tag{color:var(--dim);margin:0 auto 16px;max-width:760px;text-align:center;font-size:16.5px;font-style:italic}
+  .tag{color:var(--dim);margin:0 auto 16px;max-width:760px;text-align:center;font-size:17.5px}
   .tag em{color:var(--gold);font-style:normal}
   .orn{text-align:center;color:var(--gold);letter-spacing:1.2em;margin:0 0 26px;opacity:.85}
 
@@ -63,24 +65,24 @@
   textarea{
     width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.4);
     border:1px solid var(--line2);border-radius:2px;padding:16px;color:var(--ink);
-    font:17px/1.65 var(--serif);outline:none;transition:border-color .15s, box-shadow .15s;
+    font:18px/1.7 var(--serif);outline:none;transition:border-color .15s, box-shadow .15s;
   }
   textarea:focus{border-color:rgba(231,186,85,.6);box-shadow:0 0 0 4px rgba(231,186,85,.10),0 0 34px rgba(231,186,85,.12)}
   textarea::placeholder{color:var(--faint);font-style:italic}
 
   .chips{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0 4px;justify-content:center}
   .chip{cursor:pointer;border:1px solid var(--line2);border-radius:2px;background:transparent;
-    color:var(--dim);padding:7px 13px;font:13px var(--serif);transition:all .15s}
+    color:var(--dim);padding:9px 14px;font:14.5px var(--serif);transition:all .15s;min-height:38px}
   .chip:hover{color:var(--ink);border-color:var(--gold);background:rgba(231,186,85,.07);
     box-shadow:0 0 16px rgba(231,186,85,.12)}
 
   .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}
-  label.tog{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);cursor:pointer;user-select:none;font-variant:small-caps;letter-spacing:.06em}
-  label.tog input{accent-color:var(--gold)}
+  label.tog{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--dim);cursor:pointer;user-select:none;font-variant:small-caps;letter-spacing:.04em;min-height:38px}
+  label.tog input{accent-color:var(--gold);width:17px;height:17px}
   label.tog.yolo{color:var(--gold)}
   .go{
-    margin-left:auto;cursor:pointer;border:1px solid rgba(231,186,85,.5);border-radius:2px;padding:13px 30px;
-    font:700 15px var(--serif);letter-spacing:.14em;font-variant:small-caps;color:#241a05;
+    margin-left:auto;cursor:pointer;border:1px solid rgba(231,186,85,.5);border-radius:2px;padding:14px 32px;
+    font:700 17px var(--serif);letter-spacing:.12em;font-variant:small-caps;color:#241a05;
     background:linear-gradient(140deg,var(--gold),var(--goldbright) 55%,var(--gold));
     box-shadow:0 0 34px rgba(231,186,85,.35), inset 0 1px 0 rgba(255,255,255,.5);
     transition:transform .1s, box-shadow .15s;
@@ -88,47 +90,79 @@
   .go:hover{transform:translateY(-1px);box-shadow:0 0 50px rgba(231,186,85,.5), inset 0 1px 0 rgba(255,255,255,.5)}
   .go:disabled{opacity:.45;cursor:not-allowed;transform:none}
   .cancel{cursor:pointer;border:1px solid rgba(231,124,106,.5);background:transparent;
-    color:var(--bad);border-radius:2px;padding:12px 18px;font:600 12.5px var(--serif);
-    font-variant:small-caps;letter-spacing:.08em;display:none}
+    color:var(--bad);border-radius:2px;padding:13px 20px;font:600 14.5px var(--serif);
+    font-variant:small-caps;letter-spacing:.06em;display:none}
 
-  section h2{font:600 12px var(--mono);letter-spacing:.22em;text-transform:uppercase;
+  section h2{font:600 13px var(--mono);letter-spacing:.18em;text-transform:uppercase;
     color:var(--gold);margin:36px 0 12px;text-align:center}
-  section h2 .sub{color:var(--faint);text-transform:none;letter-spacing:.02em;font-family:var(--serif);font-style:italic;font-weight:400}
-  #feed{font-family:var(--mono);font-size:12.5px;line-height:1.8;max-height:420px;overflow:auto;
-    padding:16px 18px;white-space:pre-wrap;word-break:break-word}
-  #feed:empty::before{content:"The node kneels in silence, awaiting your word.";color:var(--faint);font-family:var(--serif);font-style:italic;font-size:14px}
+  section h2 .sub{color:var(--dim);text-transform:none;letter-spacing:.01em;font-family:var(--serif);font-weight:400;font-size:15px}
+  #feed{font-family:var(--mono);font-size:14px;line-height:1.85;max-height:440px;overflow:auto;
+    padding:18px 20px;white-space:pre-wrap;overflow-wrap:anywhere}
+  #feed:empty::before{content:"The node kneels in silence, awaiting your word.";color:var(--dim);font-family:var(--serif);font-size:15.5px}
   .ev-phase{color:var(--gold);font-weight:700;margin-top:6px}
   .ev-tool{color:var(--dim)}
   .ev-tool b{color:var(--ink);font-weight:600}
-  .ev-text{color:#e6d7ae}
+  .ev-text{color:#efe0b8}
   .ev-log{color:var(--faint)}
+  .ev-tool,.ev-log{font-size:13px}
   .ev-result{color:var(--good);font-weight:600}
   .ev-err{color:var(--bad);font-weight:700}
   .ev-warn{display:block;color:var(--goldbright);border:1px solid rgba(231,186,85,.55);
     background:radial-gradient(240px 60px at 50% 0%, rgba(231,186,85,.14), rgba(231,186,85,.05));
-    border-radius:2px;padding:12px 16px;margin:10px 0;font-family:var(--serif);font-size:14px;
-    box-shadow:0 0 30px rgba(231,186,85,.15)}
+    border-radius:2px;padding:14px 18px;margin:12px 0;font-family:var(--serif);font-size:16px;
+    line-height:1.7;box-shadow:0 0 30px rgba(231,186,85,.15)}
   .ev-warn::before{content:"✦ A HIGHER CALLING ✦";display:block;font-variant:small-caps;
-    letter-spacing:.3em;color:var(--gold);font-size:11px;margin-bottom:6px}
+    letter-spacing:.24em;color:var(--gold);font-size:13px;margin-bottom:8px}
 
   .vibe{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line2)}
   .vibe:last-child{border-bottom:0}
-  .vibe .when{font:11px var(--mono);color:var(--faint);min-width:86px}
-  .vibe .what{flex:1;font-size:15px}
-  .vibe .sha{font:11px var(--mono);color:var(--gold)}
+  .vibe .when{font:12.5px var(--mono);color:var(--dim);min-width:96px}
+  .vibe .what{flex:1;font-size:16.5px;min-width:200px}
+  .vibe .sha{font:12.5px var(--mono);color:var(--gold)}
   .revert{cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--dim);
-    border-radius:2px;padding:5px 11px;font:600 11px var(--mono);letter-spacing:.08em}
+    border-radius:2px;padding:8px 14px;font:600 12.5px var(--mono);letter-spacing:.06em;min-height:36px}
   .revert:hover{color:var(--bad);border-color:rgba(231,124,106,.5)}
-  #history:empty::before{content:"No decrees yet. Your node remains ordinary Bitcoin — a condition frankly beneath you.";color:var(--faint);font-style:italic;font-size:14px}
+  #history:empty::before{content:"No decrees yet. Your node remains ordinary Bitcoin — a condition frankly beneath you.";color:var(--dim);font-size:15.5px}
 
-  footer{margin-top:48px;color:var(--faint);font-size:13px;line-height:1.8;text-align:center;
+  footer{margin-top:48px;color:var(--dim);font-size:14.5px;line-height:1.85;text-align:center;
     max-width:820px;margin-left:auto;margin-right:auto}
-  footer b{color:var(--gold);font-weight:600;font-variant:small-caps;letter-spacing:.08em}
-  footer code{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  footer b{color:var(--gold);font-weight:600;font-variant:small-caps;letter-spacing:.06em}
+  footer code{font-family:var(--mono);font-size:13px;color:var(--ink)}
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
-    background:#141021;border:1px solid var(--line);border-radius:2px;padding:12px 20px;
-    font-size:13.5px;font-style:italic;transition:transform .25s;box-shadow:0 0 40px rgba(231,186,85,.2);z-index:9}
+    background:#141021;border:1px solid var(--line);border-radius:2px;padding:13px 22px;
+    font-size:15px;max-width:calc(100vw - 32px);transition:transform .25s;
+    box-shadow:0 0 40px rgba(231,186,85,.2);z-index:9}
   .toast.show{transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:720px){
+    .wrap{padding:20px 14px 64px}
+    header{gap:10px;margin-bottom:28px}
+    .mark{font-size:17px;letter-spacing:.16em;width:100%;text-align:center}
+    .badge{font-size:11px;padding:6px 9px}
+    .node{width:100%;flex-wrap:wrap;justify-content:center;font-size:13px}
+    .nodestat{flex:1 1 100%;align-items:flex-start}
+    .dot{margin-top:6px}
+    .nbtn{flex:1 1 42%;min-height:42px}
+    .kicker{font-size:13.5px;letter-spacing:.2em}
+    h1{font-size:31px;line-height:1.2}
+    .tag{font-size:16.5px;text-align:left}
+    .orn{letter-spacing:.7em;margin-bottom:20px}
+    .card{padding:15px}
+    textarea{font-size:17px;min-height:190px;padding:14px}
+    .chips{justify-content:stretch}
+    .chip{width:100%;text-align:left;min-height:44px}
+    .controls{gap:10px}
+    label.tog{flex:1 1 100%;min-height:44px}
+    .go,.cancel{width:100%;margin-left:0;min-height:52px}
+    #feed{font-size:13px;padding:14px;max-height:340px}
+    .ev-warn{font-size:15px}
+    .vibe{flex-wrap:wrap;gap:8px;padding:14px 2px}
+    .vibe .what{flex:1 1 100%;order:1}
+    .vibe .when{order:2;min-width:0}
+    .vibe .sha{order:3;flex:1}
+    .revert{order:4;min-height:40px;padding:8px 16px}
+    footer{font-size:14px;text-align:left}
+  }
 </style>
 </head>
 <body>
@@ -139,8 +173,10 @@
     <span class="badge" id="chain" style="color:var(--dim)">…</span>
     <div class="spacer"></div>
     <div class="node">
-      <span class="dot" id="dot"></span>
-      <span id="nodeline">your node: …</span>
+      <span class="nodestat">
+        <span class="dot" id="dot"></span>
+        <span id="nodeline">your node: …</span>
+      </span>
       <button class="nbtn" id="nodebtn">awaken</button>
       <button class="nbtn" id="minebtn" style="display:none">conjure block</button>
     </div>
