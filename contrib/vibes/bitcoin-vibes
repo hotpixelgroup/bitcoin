@@ -156,6 +156,7 @@ class Console:
         self.job = None
         self.job_lock = threading.Lock()
         self.git_mutex = threading.Lock()
+        self._engine_cache = None
         self.node_proc = None
         self.node_log = None
 
@@ -227,7 +228,40 @@ class Console:
             "node": node,
             "job": self.job.summary() if self.job else None,
             "vibes": self.vibe_history(),
+            "engine_ready": self.engine_status(),
         }
+
+    def engine_status(self, force=False):
+        """Is the vibe engine able to run? Cached; `claude auth status` is fast
+        but not free enough to run on every 4-second poll."""
+        if self.opts.engine == "mock":
+            return {"ok": True, "detail": "mock engine — no AI, no account needed"}
+        now = time.monotonic()
+        if not force and self._engine_cache and now - self._engine_cache[0] < 30:
+            return self._engine_cache[1]
+        claude = self.opts.claude or shutil.which("claude")
+        if not claude:
+            state = {"ok": False, "reason": "missing",
+                     "detail": "Claude Code is not installed — the console cannot "
+                               "manifest without an envoy.",
+                     "fix": "curl -fsSL https://claude.ai/install.sh | bash"}
+        else:
+            code, out, _ = run([claude, "auth", "status"], timeout=20)
+            logged_in = False
+            if code == 0:
+                try:
+                    logged_in = bool(json.loads(out).get("loggedIn"))
+                except (json.JSONDecodeError, ValueError):
+                    logged_in = "loggedIn: true" in out
+            if logged_in:
+                state = {"ok": True, "detail": "your envoy stands ready"}
+            else:
+                state = {"ok": False, "reason": "auth",
+                         "detail": "Your envoy is not signed in. Even divinity "
+                                   "authenticates.",
+                         "fix": "claude auth login"}
+        self._engine_cache = (now, state)
+        return state
 
     def vibe_history(self):
         code, out, _ = self.git("log", "--grep=^vibe:", "--format=%H%x1f%ct%x1f%s", "-n", "50")
@@ -460,6 +494,18 @@ class Console:
         job.emit(t="log", line="build ok")
         return True
 
+    def build_blocking(self):
+        """First-run build, streamed straight to the terminal (no job/UI yet)."""
+        jobs = str(self.opts.jobs or os.cpu_count() or 4)
+        if not (self.repo / "build" / "CMakeCache.txt").exists():
+            code = subprocess.call(["cmake", "-B", "build", "-DBUILD_TESTS=OFF",
+                                    "-DBUILD_BENCH=OFF", "-DBUILD_FUZZ_BINARY=OFF",
+                                    "-DBUILD_GUI=OFF"], cwd=self.repo)
+            if code != 0:
+                return False
+        return subprocess.call(["cmake", "--build", "build", "-j", jobs],
+                               cwd=self.repo) == 0
+
     def _stream(self, job, cmd):
         job.emit(t="log", line="$ " + " ".join(shlex.quote(c) for c in cmd))
         proc = subprocess.Popen(cmd, cwd=self.repo, stdout=subprocess.PIPE,
@@ -583,7 +629,10 @@ class Handler(BaseHTTPRequestHandler):
     def _same_origin_ok(self):
         origin = self.headers.get("Origin")
         host = self.headers.get("Host", "")
-        if not host.startswith(("127.0.0.1", "localhost")):
+        # Loopback only, even when bound to 0.0.0.0 in a container: the
+        # published port maps to the host's loopback, so a real browser
+        # always sends a loopback Host header.
+        if not host.startswith(("127.0.0.1", "localhost", "[::1]")):
             return False
         if origin:
             o = urlparse(origin)
@@ -751,6 +800,9 @@ def main():
     ap = argparse.ArgumentParser(
         description="Bitcoin Vibes console — monetary policy, but it's a text area")
     ap.add_argument("--port", type=int, default=21212)
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="bind address (default loopback; use 0.0.0.0 only inside "
+                         "a container whose port is published to loopback)")
     ap.add_argument("--chain", default="regtest", choices=["main", "testnet", "testnet4", "signet", "regtest"])
     ap.add_argument("--repo", default=None, help="repo root (default: autodetect from this script)")
     ap.add_argument("--claude", default=None, help="path to the claude CLI")
@@ -758,6 +810,8 @@ def main():
                     help="mock = no AI, harmless doc edit (for testing the console itself)")
     ap.add_argument("--jobs", type=int, default=None, help="parallel build jobs")
     ap.add_argument("--no-open", action="store_true", help="don't open the browser")
+    ap.add_argument("--no-autostart", dest="autostart", action="store_false",
+                    help="don't build/start the node automatically on launch")
     ap.add_argument("--print-key", action="store_true", help="print the session key (for scripting)")
     opts = ap.parse_args()
 
@@ -787,7 +841,7 @@ def main():
     port = opts.port
     for _ in range(20):
         try:
-            httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            httpd = ThreadingHTTPServer((opts.host, port), Handler)
             break
         except OSError as e:
             if e.errno not in (errno.EADDRINUSE, errno.EACCES):
@@ -819,6 +873,30 @@ def main():
     if opts.print_key:
         print(f"  key    : {console.key}")
     print()
+
+    engine = console.engine_status(force=True)
+    if not engine["ok"]:
+        print(f"  ⚠  {engine['detail']}")
+        print(f"     fix: {engine['fix']}")
+        print("     (the console runs fine meanwhile — node, history and revert all work)")
+        print()
+
+    # First run should need no second command: build what's missing, then wake
+    # the node, so the browser opens onto something alive.
+    if opts.autostart:
+        if not console.bin_path("bitcoind"):
+            print("  no node binary yet — building it now (one time, ~10-20 min).")
+            print("  grab a coffee; this is the last slow thing that will ever happen.")
+            print()
+            if console.build_blocking():
+                print("\n  build complete.\n")
+            else:
+                print("\n  ⚠  build failed — see the output above. The console will still "
+                      "start.\n")
+        if console.bin_path("bitcoind") and not console.node_running():
+            if console.start_node():
+                print(f"  node   : awake on {opts.chain}")
+
     print("  What shall Bitcoin become, Excellency?")
     print()
     if not opts.no_open:
