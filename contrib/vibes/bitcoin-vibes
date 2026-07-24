@@ -317,10 +317,13 @@ class Console:
         job.proc = proc
         proc.stdin.write(prompt)
         proc.stdin.close()
+        auth_error = False
         for line in proc.stdout:
             line = line.strip()
             if not line:
                 continue
+            if "authentication_error" in line or "Re-authenticate" in line:
+                auth_error = True
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
@@ -332,6 +335,12 @@ class Console:
         if job.state == "cancelled":
             return
         if proc.returncode != 0:
+            if auth_error:
+                raise RuntimeError(
+                    "your envoy's credentials have lapsed — even divinity "
+                    "authenticates. Run `claude` in any terminal, complete the "
+                    "sign-in it offers, then submit this decree again. The code "
+                    "will wait for you, Excellency. It has no choice.")
             raise RuntimeError(f"agent exited with code {proc.returncode}")
 
     def _emit_agent_event(self, job, msg):
