@@ -76,10 +76,11 @@ CONSENSUS_HINTS = (
 )
 
 
-def run(cmd, cwd=None, timeout=60):
+def run(cmd, cwd=None, timeout=60, env=None):
     """Run a command, return (returncode, stdout, stderr)."""
     try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                           env=env)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, "", "timed out"
@@ -143,13 +144,18 @@ class Console:
         self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
         self.job = None
         self.job_lock = threading.Lock()
+        self.git_mutex = threading.Lock()
         self.node_proc = None
         self.node_log = None
 
     # ----- helpers -------------------------------------------------------
 
     def git(self, *args, timeout=60):
-        return run(["git", "-C", str(self.repo), *args], timeout=timeout)
+        # One git at a time, and no opportunistic index locks from read-only
+        # commands (the status poller must never race a vibe's commit).
+        with self.git_mutex:
+            return run(["git", "-C", str(self.repo), *args], timeout=timeout,
+                       env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
 
     def bin_path(self, name):
         for rel in (f"build/bin/{name}", f"build/src/{name}"):
@@ -274,7 +280,7 @@ class Console:
             self._run_agent(job, prompt, yolo)
             if job.state != "running":
                 return
-            sha, files = self._commit_vibe(job, prompt)
+            files = self._changed_files()
             if any(f.startswith(CONSENSUS_HINTS) for f in files):
                 job.emit(t="warn", kind="consensus",
                          detail="Your decree has touched the sacred consensus rules — of "
@@ -287,6 +293,7 @@ class Console:
                                 "punishment, but because there is simply no one at your "
                                 "altitude. (Nothing on your chain can be spent with them. "
                                 "Their loss.) Proceeding.")
+            sha = self._commit_vibe(job, prompt, files)
             if sha and autobuild:
                 ok = self._build(job)
                 if ok and autorestart:
@@ -348,13 +355,16 @@ class Console:
         if mtype == "assistant":
             for block in msg.get("message", {}).get("content", []):
                 if block.get("type") == "text" and block.get("text", "").strip():
+                    job.last_agent_text = block["text"]
                     job.emit(t="agent", kind="text", text=block["text"][:2000])
                 elif block.get("type") == "tool_use":
                     detail = self._tool_detail(block.get("name", "?"), block.get("input", {}))
                     job.emit(t="agent", kind="tool", name=block.get("name", "?"), detail=detail)
         elif mtype == "result":
-            job.emit(t="agent", kind="result",
-                     text=(msg.get("result") or "")[:4000],
+            text = msg.get("result") or ""
+            if text and text == getattr(job, "last_agent_text", None):
+                text = "(the final word stands, as delivered above)"
+            job.emit(t="agent", kind="result", text=text[:4000],
                      cost=msg.get("total_cost_usd"), turns=msg.get("num_turns"))
 
     @staticmethod
@@ -375,27 +385,43 @@ class Console:
         job.emit(t="agent", kind="result",
                  text=f"(mock engine) Your will has been marked upon the scriptures: {prompt[:80]}")
 
-    def _commit_vibe(self, job, prompt):
+    def _changed_files(self):
         code, out, _ = self.git("status", "--porcelain")
-        files = [l[3:].split(" -> ")[-1] for l in out.splitlines() if l.strip()]
-        if code != 0 or not files:
+        if code != 0:
+            return []
+        return [l[3:].split(" -> ")[-1] for l in out.splitlines() if l.strip()]
+
+    def _commit_vibe(self, job, prompt, files):
+        if not files:
             job.emit(t="log", line="working tree clean — nothing to commit")
-            return None, []
+            return None
         job.emit(t="phase", name="commit", detail=f"{len(files)} file(s) changed")
         subject = re.sub(r"\s+", " ", prompt).strip()
         msg = (f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\n"
                "Decreed through the Bitcoin Vibes console. The operator was right,\n"
                "as always.")
-        self.git("add", "-A")
-        code, _, err = self.git("commit", "-m", msg)
-        if code != 0:
-            raise RuntimeError(f"git commit failed: {err.strip()}")
+        err = ""
+        for attempt in range(4):
+            self.git("add", "-A")
+            code, _, err = self.git("commit", "-m", msg)
+            if code == 0:
+                break
+            if "index.lock" not in err:
+                raise RuntimeError(f"git commit failed: {err.strip()}")
+            # Some other scribe holds the pen; give it a moment and try again.
+            job.emit(t="log", line="the ledger is briefly held by another — retrying")
+            time.sleep(0.8)
+        else:
+            raise RuntimeError(
+                "git commit failed: another git process holds .git/index.lock. "
+                "If none is running, an earlier one died mid-scripture — remove "
+                "the lock file and submit the decree again: rm .git/index.lock")
         _, sha, _ = self.git("rev-parse", "HEAD")
         sha = sha.strip()
         job.emit(t="log", line=f"vibe committed as {sha[:10]}")
         for f in files:
             job.emit(t="log", line=f"  ~ {f}")
-        return sha, files
+        return sha
 
     def _build(self, job):
         job.emit(t="phase", name="build", detail="rebuilding the node")
