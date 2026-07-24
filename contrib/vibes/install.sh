@@ -94,19 +94,22 @@ install_deps() {
         sudo_if_needed apt-get update -qq
         sudo_if_needed apt-get install -y --no-install-recommends \
           git build-essential cmake ninja-build pkg-config python3 \
-          libboost-dev libcapnp-dev capnproto ;;
+          libboost-dev libsqlite3-dev libcapnp-dev capnproto ;;
       dnf)
         sudo_if_needed dnf install -y \
-          git gcc-c++ cmake ninja-build python3 boost-devel capnproto-devel ;;
+          git gcc-c++ cmake ninja-build python3 boost-devel sqlite-devel \
+          capnproto-devel ;;
       pacman)
         sudo_if_needed pacman -Sy --needed --noconfirm \
-          git base-devel cmake ninja python boost capnproto ;;
+          git base-devel cmake ninja python boost sqlite capnproto ;;
       zypper)
         sudo_if_needed zypper install -y \
-          git gcc-c++ cmake ninja python3 libboost_headers-devel capnproto-devel ;;
+          git gcc-c++ cmake ninja python3 libboost_headers-devel \
+          sqlite3-devel capnproto-devel ;;
       *)
         die "Unrecognized Linux distribution. Install these, then re-run:
-   git, a C++20 compiler, cmake, ninja, python3, boost headers, capnproto" ;;
+   git, a C++20 compiler, cmake, ninja, python3, boost headers,
+   sqlite3 headers, capnproto" ;;
     esac
   fi
 }

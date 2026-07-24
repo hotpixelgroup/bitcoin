@@ -8,7 +8,7 @@ FROM debian:bookworm-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build pkg-config git ca-certificates \
-        libboost-dev libcapnp-dev capnproto \
+        libboost-dev libsqlite3-dev libcapnp-dev capnproto \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /vibes
