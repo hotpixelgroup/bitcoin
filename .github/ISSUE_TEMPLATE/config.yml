@@ -1,8 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Bitcoin Core Security Policy
-    url: https://github.com/bitcoin/bitcoin/blob/master/SECURITY.md
-    about: View security policy
-  - name: Bitcoin Core Developers
-    url: https://bitcoincore.org
-    about: Bitcoin Core homepage
+  - name: Security vulnerability
+    url: https://github.com/hotpixelgroup/bitcoin/security/advisories/new
+    about: Please report privately, not as a public issue.
+  - name: How do I run this?
+    url: https://hotpixelgroup.github.io/bitcoin/
+    about: Installing, running, and what the settings mean.
+  - name: A question about Bitcoin itself
+    url: https://bitcoin.stackexchange.com/
+    about: We are a node, not a help desk — but that lot are excellent.

@@ -1,0 +1,16 @@
+# Everything falls to the maintainers unless a line below says otherwise.
+*                       @hotpixelgroup
+
+# Consensus-critical code. A fresh install must always ship stock Bitcoin Core
+# rules, so changes here get looked at properly rather than merged on a Friday.
+/src/consensus/         @hotpixelgroup
+/src/validation.cpp     @hotpixelgroup
+/src/pow.cpp            @hotpixelgroup
+/src/chainparams.cpp    @hotpixelgroup
+/src/kernel/            @hotpixelgroup
+/src/script/interpreter.cpp @hotpixelgroup
+
+# The console, the installer and the front door.
+/contrib/vibes/         @hotpixelgroup
+/vibes                  @hotpixelgroup
+/.github/               @hotpixelgroup

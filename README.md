@@ -23,7 +23,7 @@ Install
 -------
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh
 ```
 
 That is the whole thing. It installs the build dependencies, fetches the
@@ -53,7 +53,7 @@ Everything after the first build takes seconds: wishes rebuild incrementally.
 it will show you exactly what it would do and change nothing:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh -o install.sh
 less install.sh
 VIBES_DRY_RUN=1 sh install.sh
 ```
@@ -64,7 +64,7 @@ It honors `VIBES_DIR` (default `~/bitcoin-vibes`), `VIBES_BRANCH`, and `VIBES_RE
 <summary><b>Prefer Docker?</b> Nothing but Docker touches your machine.</summary>
 
 ```bash
-git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
+git clone -b master https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build
 ```
 
@@ -84,7 +84,7 @@ docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
 <summary><b>Prefer to build it yourself?</b> The ordinary path still works.</summary>
 
 ```bash
-git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
+git clone -b master https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
 cmake -B build -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
 cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 ./vibes

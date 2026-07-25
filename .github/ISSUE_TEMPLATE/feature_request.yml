@@ -1,41 +1,27 @@
-name: Feature Request
-description: Suggest an idea for this project.
-labels: [Feature]
+name: Something is missing
+description: An idea for the node, the console, or the docs.
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        If you use AI tools when opening this issue, please read the [AI policy](https://github.com/bitcoin/bitcoin/blob/master/doc/AI_POLICY.md).
-
+        The project's goal is a real Bitcoin node that a non-technical person can
+        actually run. Ideas pointed at that goal go to the front of the queue.
   - type: textarea
-    id: feature
+    id: idea
     attributes:
-      label: Please describe the feature you'd like to see added.
-      description: Attach screenshots or logs if applicable.
-    validations:
-      required: true
+      label: What should it do?
+    validations: {required: true}
   - type: textarea
-    id: related-problem
+    id: why
     attributes:
-      label: Is your feature related to a problem, if so please describe it.
-      description: Attach screenshots or logs if applicable.
-    validations:
-      required: false
-  - type: textarea
-    id: solution
+      label: Who does this help, and when?
+      placeholder: "As someone who ..., I want ..., because right now I have to ..."
+    validations: {required: false}
+  - type: checkboxes
+    id: consensus
     attributes:
-      label: Describe the solution you'd like
-    validations:
-      required: false
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Describe any alternatives you've considered
-    validations:
-      required: false
-  - type: textarea
-    id: additional-context
-    attributes:
-      label: Please leave any additional context
-    validations:
-      required: false
+      label: Does this change Bitcoin's consensus rules?
+      options:
+        - label: "No — or if yes, I understand a fresh install must still ship stock Core rules"
+    validations: {required: true}

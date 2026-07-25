@@ -1,0 +1,156 @@
+# Bitcoin Vibes CI.
+#
+# Upstream's own workflow is disabled on this fork — it is an enormous matrix
+# aimed at a project with a hundred contributors and it starved everything else
+# in the queue. This is the small, fast replacement that checks the things this
+# project can actually break.
+name: Vibes
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vibes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  console:
+    name: Console, installer and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Console compiles
+        run: python3 -m py_compile contrib/vibes/bitcoin-vibes
+
+      - name: Shell scripts parse
+        run: |
+          sh -n contrib/vibes/install.sh
+          sh -n vibes
+
+      - name: Installer dry run touches nothing
+        run: |
+          VIBES_DRY_RUN=1 VIBES_DIR=/tmp/vibes-dry sh contrib/vibes/install.sh
+          test ! -e /tmp/vibes-dry || (echo "dry run created files"; exit 1)
+
+      - name: Console UI is well formed
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          html = open("contrib/vibes/index.html").read()
+          fails = []
+          for tag in ("html", "head", "body", "script", "style"):
+              # <head must not also match <header
+              if len(re.findall(rf"<{tag}[ >]", html)) != html.count(f"</{tag}>"):
+                  fails.append(f"unbalanced <{tag}>")
+          if "wish" not in html or 'id="feed"' not in html:
+              fails.append("console lost a core element")
+          # every input the form reads must still exist by id
+          if 'label class="wish-label" for="wish"' not in html:
+              fails.append("the decree box lost its label")
+          print("\n".join(fails) or "console UI ok")
+          sys.exit(1 if fails else 0)
+          PY
+
+      - name: Mock engine runs a full decree
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name CI
+          timeout 90 python3 - <<'PY'
+          import json, subprocess, sys, time, urllib.request
+          p = subprocess.Popen([sys.executable, "-u", "contrib/vibes/bitcoin-vibes",
+                                "--engine", "mock", "--no-open", "--no-autostart",
+                                "--print-key", "--port", "21999"],
+                               stdout=subprocess.PIPE, text=True)
+          key = None
+          for line in p.stdout:
+              if "key    :" in line:
+                  key = line.split(":", 1)[1].strip(); break
+          assert key, "console never printed a key"
+
+          def call(path, data=None):
+              req = urllib.request.Request(
+                  "http://127.0.0.1:21999" + path,
+                  data=json.dumps(data).encode() if data else None,
+                  headers={"X-Vibe-Key": key, "Content-Type": "application/json"})
+              return json.load(urllib.request.urlopen(req))
+
+          assert call("/api/status")["branch"], "no status"
+          assert len(call("/api/settings")["schema"]) > 20, "settings schema looks empty"
+          call("/api/vibe", {"prompt": "ci smoke test", "autobuild": False,
+                             "autorestart": False})
+          for _ in range(60):
+              job = call("/api/status")["job"]
+              if job and job["state"] != "running":
+                  break
+              time.sleep(1)
+          assert job["state"] == "done", f"decree ended {job['state']}"
+          assert any(v["subject"].startswith("ci smoke test")
+                     for v in call("/api/status")["vibes"]), "decree was not committed"
+          print("mock decree committed and recorded")
+          p.terminate()
+          PY
+
+  node:
+    name: Node builds and validates
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config python3 ccache \
+            libboost-dev libsqlite3-dev libcapnp-dev capnproto
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Build
+        run: |
+          cmake -B build -G Ninja \
+            -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build -j"$(nproc)"
+
+      # The rule this project is strict about: whatever a decree did to somebody
+      # else's node, the default everyone installs stays stock Bitcoin Core.
+      - name: A fresh install still ships Core's consensus
+        run: |
+          set -e
+          grep -q 'MAX_MONEY = 21000000 \* COIN' src/consensus/amount.h \
+            || { echo "::error::MAX_MONEY is not 21,000,000 — the shipped default must not fork"; exit 1; }
+          grep -q 'nSubsidy = 50 \* COIN' src/validation.cpp \
+            || { echo "::error::block subsidy is not 50 BTC — the shipped default must not fork"; exit 1; }
+          echo "consensus defaults intact"
+
+      - name: Node starts, validates and answers
+        run: |
+          set -e
+          DD=$(mktemp -d)
+          ./build/bin/bitcoind -datadir="$DD" -chain=regtest -server=1 -daemon
+          for i in $(seq 1 30); do
+            ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest createwallet ci >/dev/null
+          ADDR=$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest -rpcwallet=ci getnewaddress)
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest generatetoaddress 101 "$ADDR" >/dev/null
+          H=$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount)
+          SUB=$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockstats "$H" '["subsidy"]' | grep -o '[0-9]\+')
+          echo "height=$H subsidy=$SUB"
+          test "$H" = "101" || { echo "::error::node did not mine to 101"; exit 1; }
+          test "$SUB" = "5000000000" || { echo "::error::subsidy is $SUB, expected 5000000000 (50 BTC)"; exit 1; }
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
