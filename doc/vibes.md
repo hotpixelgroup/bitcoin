@@ -140,6 +140,31 @@ can't unsee.
 - **Cost:** each vibe is a Claude Code session and is billed like one.
   Governance has never been this affordable, which should worry you.
 
+## Keeping up with Bitcoin Core
+
+Vibes is a fork, and upstream keeps shipping — security fixes included. The
+`core-master` branch is a pristine mirror of `bitcoin/bitcoin`'s master: no
+console, no decrees, `MAX_MONEY` still a timid 21M. It exists so there is
+always one clean lineage to compare and merge against.
+
+Refresh it, then bring upstream's work into yours:
+
+```bash
+git fetch upstream
+git branch -f core-master upstream/master   # move the mirror forward
+git push origin core-master
+
+git switch vibes
+git merge core-master                       # your decrees ride on top
+```
+
+Expect conflicts wherever a decree touched the same code upstream did — that
+is the cost of having opinions, and resolving them is your job as the
+maintainer you became the moment you typed your first wish.
+
+`core-master` tracks `origin`, not `upstream`, so no ordinary push can ever
+travel back to Bitcoin Core. Nothing here is ever contributed upstream.
+
 ## Testing the console without an AI or a build
 
 ```bash
