@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="gold" x1="18%" y1="0%" x2="82%" y2="100%">
+      <stop offset="0%" stop-color="#f8e6b4"/>
+      <stop offset="50%" stop-color="#eec25e"/>
+      <stop offset="100%" stop-color="#d3a747"/>
+    </linearGradient>
+  </defs>
+  <!-- full bleed: rounded corners only waste pixels at 16px -->
+  <rect width="64" height="64" fill="#0b0910"/>
+  <!-- points reach the edge and the waist is tighter, so the sparkle
+       silhouette survives being resampled down to 16x16 -->
+  <path d="M32 1 Q34.2 29.8 63 32 Q34.2 34.2 32 63 Q29.8 34.2 1 32 Q29.8 29.8 32 1 Z"
+        fill="url(#gold)"/>
+</svg>
