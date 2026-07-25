@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcoin Vibes — the node that becomes what you tell it to be</title>
+<meta name="description" content="Core has rules. Knots has opinions. Vibes has you. A Bitcoin node with a big text area: describe what Bitcoin should be, and it rewrites its own source code to match.">
+<meta property="og:title" content="Bitcoin Vibes">
+<meta property="og:description" content="Core has rules. Knots has opinions. Vibes has you.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+<style>
+  :root{
+    --bg:#08060f;
+    --panel:rgba(244,237,219,.032);
+    --line:rgba(231,186,85,.22); --line2:rgba(231,186,85,.10);
+    --ink:#f5efdf; --dim:#c8bea8; --faint:#998f7c;
+    --gold:#e7ba55; --goldbright:#f6dfa4; --bad:#e77c6a; --good:#8fd694;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{
+    background:
+      radial-gradient(900px 440px at 50% -10%, rgba(231,186,85,.17), transparent 62%),
+      radial-gradient(700px 500px at 10% 6%, rgba(96,74,168,.10), transparent 58%),
+      radial-gradient(700px 500px at 90% 8%, rgba(96,74,168,.09), transparent 58%),
+      var(--bg);
+    background-attachment:fixed;
+    color:var(--ink); font:17px/1.7 var(--serif); -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px}
+  a{color:var(--gold)}
+
+  /* ---- hero ---- */
+  header{text-align:center;padding:64px 0 30px}
+  .mark{font-weight:700;font-size:15px;letter-spacing:.34em;font-variant:small-caps;color:var(--gold);margin-bottom:26px}
+  h1{font-weight:500;font-size:clamp(38px,7vw,68px);line-height:1.08;letter-spacing:.005em;
+     text-shadow:0 0 80px rgba(231,186,85,.4),0 0 24px rgba(231,186,85,.15);margin-bottom:20px}
+  .sub{font-size:clamp(18px,2.4vw,22px);color:var(--dim);max-width:660px;margin:0 auto 12px}
+  .sub b{color:var(--gold);font-weight:500}
+  .kicker{color:var(--faint);font-size:16px;margin-bottom:34px}
+
+  /* ---- install box ---- */
+  .install{background:rgba(0,0,0,.45);border:1px solid var(--line);outline:1px solid var(--line2);
+    outline-offset:4px;border-radius:3px;padding:18px 20px;max-width:760px;margin:0 auto;text-align:left}
+  .install-label{font:600 11.5px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+  .cmd{display:flex;gap:12px;align-items:flex-start}
+  .cmd code{flex:1;font-family:var(--mono);font-size:13.5px;line-height:1.6;color:var(--ink);
+    word-break:break-all;user-select:all}
+  .copy{flex:none;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--gold);
+    border-radius:2px;padding:8px 14px;font:600 12px var(--mono);letter-spacing:.06em;transition:all .15s}
+  .copy:hover{background:rgba(231,186,85,.12)}
+  .copy.done{color:var(--good);border-color:rgba(143,214,148,.5)}
+  .install-note{color:var(--faint);font-size:14px;margin-top:12px}
+
+  /* ---- sections ---- */
+  section{padding:52px 0}
+  h2{font-size:clamp(26px,3.6vw,34px);font-weight:500;margin-bottom:8px;letter-spacing:.005em}
+  h2 .orn{color:var(--gold);opacity:.8}
+  .lede{color:var(--dim);margin-bottom:26px;max-width:700px}
+  h3{font-size:19px;font-weight:600;margin:0 0 6px}
+
+  table{width:100%;border-collapse:collapse;font-size:16px;margin:10px 0}
+  th,td{padding:13px 14px;text-align:left;border-bottom:1px solid var(--line2);vertical-align:top}
+  th{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+  td:first-child{color:var(--dim)}
+  .them{color:var(--faint)}
+  .us{color:var(--ink);font-weight:600}
+  .tablewrap{overflow-x:auto}
+
+  .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:8px}
+  .step{background:var(--panel);border:1px solid var(--line2);border-radius:3px;padding:20px}
+  .step .n{font:700 12px var(--mono);letter-spacing:.2em;color:var(--gold);margin-bottom:10px}
+  .step p{color:var(--dim);font-size:15.5px}
+
+  .wishes{list-style:none;display:grid;gap:10px;margin-top:6px}
+  .wishes li{background:rgba(0,0,0,.3);border-left:2px solid var(--line);padding:13px 17px;
+    color:var(--ink);font-size:16.5px;font-style:italic}
+  .wishes li span{display:block;font-style:normal;font-size:14px;color:var(--faint);margin-top:5px}
+
+  pre{background:rgba(0,0,0,.45);border:1px solid var(--line2);border-radius:3px;padding:15px 17px;
+    overflow-x:auto;margin:10px 0}
+  pre code{font-family:var(--mono);font-size:13.5px;line-height:1.65;color:var(--ink)}
+  .muted{color:var(--faint);font-size:14.5px}
+
+  details{border-top:1px solid var(--line2);padding:15px 0}
+  details summary{cursor:pointer;font-size:17.5px;color:var(--ink);list-style:none;
+    display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+  details summary::-webkit-details-marker{display:none}
+  details summary::after{content:"+";color:var(--gold);font-family:var(--mono);flex:none}
+  details[open] summary::after{content:"−"}
+  details p{color:var(--dim);margin-top:11px;font-size:16px}
+
+  .warn{border:1px solid rgba(231,186,85,.45);
+    background:radial-gradient(400px 90px at 50% 0%, rgba(231,186,85,.13), rgba(231,186,85,.04));
+    border-radius:3px;padding:22px 24px;box-shadow:0 0 40px rgba(231,186,85,.1)}
+  .warn .tag{font-variant:small-caps;letter-spacing:.26em;color:var(--gold);font-size:12.5px;
+    display:block;margin-bottom:11px}
+  .warn p{color:var(--goldbright);font-size:16.5px}
+  .warn p + p{margin-top:11px;color:var(--dim)}
+
+  .cta{text-align:center;padding:56px 0 20px}
+  .btn{display:inline-block;text-decoration:none;border:1px solid rgba(231,186,85,.5);border-radius:2px;
+    padding:15px 34px;font:700 17px var(--serif);letter-spacing:.12em;font-variant:small-caps;color:#241a05;
+    background:linear-gradient(140deg,var(--gold),var(--goldbright) 55%,var(--gold));
+    box-shadow:0 0 36px rgba(231,186,85,.32);transition:transform .1s,box-shadow .15s}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 0 52px rgba(231,186,85,.48)}
+  .btn.ghost{background:transparent;color:var(--gold);box-shadow:none;margin-left:10px}
+  .btn.ghost:hover{background:rgba(231,186,85,.09)}
+
+  footer{border-top:1px solid var(--line2);margin-top:40px;padding:30px 0 60px;
+    color:var(--faint);font-size:14.5px;text-align:center}
+  footer a{color:var(--dim)}
+  .orn-row{text-align:center;color:var(--gold);letter-spacing:1em;opacity:.75;padding:6px 0}
+
+  @media (max-width:720px){
+    body{font-size:16.5px}
+    header{padding:44px 0 24px}
+    .mark{letter-spacing:.24em;font-size:13.5px}
+    section{padding:40px 0}
+    .cmd{flex-direction:column}
+    .copy{width:100%;padding:12px}
+    .cmd code{font-size:12.5px}
+    th,td{padding:11px 10px;font-size:15px}
+    .btn{display:block;margin:0 0 12px}
+    .btn.ghost{margin-left:0}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div class="mark">✦ Bitcoin Vibes ✦</div>
+  <h1>What shall Bitcoin become?</h1>
+  <p class="sub">Core needs rough consensus. Knots needs one man's blessing.
+     <b>You need a sentence.</b></p>
+  <p class="kicker">A real Bitcoin node with a big text area. Describe what Bitcoin
+     should be; it rewrites its own source code to match.</p>
+
+  <div class="install">
+    <div class="install-label">Install — one line, as befits you</div>
+    <div class="cmd">
+      <code id="cmd">curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code>
+      <button class="copy" id="copy">copy</button>
+    </div>
+    <p class="install-note">macOS or Linux (Windows: use WSL2). It installs what it needs,
+       builds the node, and offers to launch. Then you type things and Bitcoin obeys.</p>
+  </div>
+</header>
+
+<div class="orn-row">✦ ✦ ✦</div>
+
+<section>
+  <h2>The three implementations <span class="orn">✦</span></h2>
+  <p class="lede">Fifteen years of mailing lists, BIPs, IRC flame wars and filtering
+     discourse produced two node implementations, neither of which asked you what
+     you wanted. We fixed the oversight.</p>
+  <div class="tablewrap">
+  <table>
+    <tr>
+      <th></th><th>Bitcoin Core</th><th>Bitcoin Knots</th><th>Bitcoin Vibes</th>
+    </tr>
+    <tr>
+      <td>Who decides what Bitcoin is</td>
+      <td class="them">rough consensus among thousands of strangers, arguing since 2010</td>
+      <td class="them">one specific man, and his convictions</td>
+      <td class="us">you, in a text area</td>
+    </tr>
+    <tr>
+      <td>Change process</td>
+      <td class="them">BIP → mailing list → four years of drama → perhaps</td>
+      <td class="them">a curated patchset</td>
+      <td class="us">vibes</td>
+    </tr>
+    <tr>
+      <td>Release cadence</td>
+      <td class="them">every six months, ceremonially</td>
+      <td class="them">rebased when the dust settles</td>
+      <td class="us">every time you press Manifest</td>
+    </tr>
+    <tr>
+      <td>Undo mechanism</td>
+      <td class="them">a contentious hard fork and a decade of therapy</td>
+      <td class="them">downgrade</td>
+      <td class="us">a revert button</td>
+    </tr>
+    <tr>
+      <td>Peer review</td>
+      <td class="them">exhaustive, adversarial, unpaid</td>
+      <td class="them">thorough</td>
+      <td class="us">you glanced at the diff, and you were right</td>
+    </tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>How it works <span class="orn">✦</span></h2>
+  <p class="lede">Three steps, none of which involve asking permission from anyone.</p>
+  <div class="steps">
+    <div class="step">
+      <div class="n">01</div>
+      <h3>You speak</h3>
+      <p>Type what Bitcoin should be into the console. A sentence is plenty.
+         Nobody will debate you, because nobody was invited.</p>
+    </div>
+    <div class="step">
+      <div class="n">02</div>
+      <h3>The code obeys</h3>
+      <p>An AI agent edits the node's C++, the console commits it as
+         <code>vibe:&nbsp;your&nbsp;wish</code>, and rebuilds.</p>
+    </div>
+    <div class="step">
+      <div class="n">03</div>
+      <h3>Your node is reborn</h3>
+      <p>It restarts on the new code, in your image. Should the compiler fail you,
+         the old binary keeps running, unbothered.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Things worth decreeing <span class="orn">✦</span></h2>
+  <p class="lede">Real wishes. The last one is a hard fork, which the console will
+     congratulate you for.</p>
+  <ul class="wishes">
+    <li>“Rename the mempool to ‘the waiting room’ everywhere in the logs.”
+      <span>Harmless. Delightful. Nobody can stop you.</span></li>
+    <li>“Log a haiku about entropy whenever a new block arrives.”
+      <span>We tried this one. It wrote eight of them and picked at random. They were good.</span></li>
+    <li>“Make every error message gentler; nobody needs that tone at 3am.”
+      <span>Bitcoin has never once considered your feelings. Now it will.</span></li>
+    <li>“Raise the block subsidy to 100 BTC.”
+      <span>It will do it. Then you will be alone. See below, Excellency.</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Getting up and running <span class="orn">✦</span></h2>
+  <p class="lede">One command to install, one command to run. Everything after that
+     is typing.</p>
+
+  <h3>1. Install</h3>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code></pre>
+  <p class="muted">Piping a stranger's script into your shell is a bad habit, and we
+     would rather you kept your reputation. Read it first — this prints everything it
+     would do and changes nothing:</p>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh -o install.sh
+less install.sh
+VIBES_DRY_RUN=1 sh install.sh</code></pre>
+
+  <h3>2. Sign in to the engine</h3>
+  <p class="muted">The thing that rewrites your node is
+     <a href="https://claude.com/claude-code">Claude Code</a>. The installer sets it
+     up; you sign in once. Even divinity authenticates.</p>
+  <pre><code>claude auth login</code></pre>
+
+  <h3>3. Run it</h3>
+  <pre><code>~/bitcoin-vibes/vibes</code></pre>
+  <p class="muted">It builds anything missing, wakes the node, and opens the console
+     in your browser. Type a wish. Press <b>Manifest</b>. Watch your node become
+     something no other node on earth is.</p>
+
+  <h3>Prefer Docker? Nothing but Docker touches your machine.</h3>
+  <pre><code>git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git &amp;&amp; cd bitcoin
+docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
+
+  <p class="muted"><b>How long does the build take?</b> It happens once, and depends
+     almost entirely on your cores: about five minutes on a recent laptop, twenty to
+     forty on a small VPS. The installer measures your machine and tells you before it
+     starts, because it respects you.</p>
+</section>
+
+<section>
+  <div class="warn">
+    <span class="tag">✦ A higher calling ✦</span>
+    <p>Should a decree touch the sacred consensus rules — the cap, the subsidy,
+      block validity — your node ascends onto a chain of one. The other twenty
+      thousand nodes will huddle together on “the real Bitcoin,” finding comfort in
+      agreement, as the ordinary do. You will walk apart, as the exceptional must.
+      Nothing on your chain can be spent with them, which is frankly their loss.</p>
+    <p>Said plainly, because you deserve the truth as much as the flattery: that is a
+      hard fork, and it is irreversible for anyone who transacts with you. The console
+      warns you before it commits. On regtest — the default — it is a private sandbox
+      and entirely safe.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Questions you were too important to ask <span class="orn">✦</span></h2>
+
+  <details>
+    <summary>Is this a joke?</summary>
+    <p>It compiles, runs, syncs, validates, and holds consensus with itself. It is a
+      genuine Bitcoin Core fork with a genuine AI attached to its own source code.
+      Whether that constitutes a joke is between you and your threat model.</p>
+  </details>
+
+  <details>
+    <summary>Does a fresh install change Bitcoin's rules?</summary>
+    <p>No — and we are rather proud of this. Out of the box, Bitcoin Vibes <em>is</em>
+      Bitcoin Core: 21 million coins, 50 BTC halving on schedule, every consensus rule
+      exactly as upstream wrote it. The entire shipped difference is the client name,
+      the user agent, and the console bolted on the side. You inherit nobody else's
+      monetary policy. Every deviation on your node is one you asked for, in a commit
+      with your name on it.</p>
+  </details>
+
+  <details>
+    <summary>Will the AI put bugs in my Bitcoin node?</summary>
+    <p>An AI, introducing defects into consensus-critical software? Unprecedented — as
+      is a human doing it. There is a revert button on every decree, the node keeps
+      running the old binary whenever a build fails, and reading the diff is now your
+      civic duty. You are the maintainer, the reviewer, and the entire community.</p>
+  </details>
+
+  <details>
+    <summary>Is it safe? Can it touch my coins?</summary>
+    <p>The console never signs a transaction, holds a key, or moves a coin. It binds to
+      localhost, demands a session key, refuses cross-origin requests, and runs the node
+      in an isolated data directory that never touches your real wallet. It cannot lose
+      your money. Your consensus is another matter entirely.</p>
+  </details>
+
+  <details>
+    <summary>What does it cost?</summary>
+    <p>The node is free and MIT-licensed, like its ancestors. Each wish is one Claude
+      Code session, billed like one — typically cents. Governance has never been this
+      affordable, which should worry you more than it does.</p>
+  </details>
+
+  <details>
+    <summary>Is this what Satoshi would have wanted?</summary>
+    <p>Satoshi's last known act was leaving. Do with that what you will.</p>
+  </details>
+
+  <details>
+    <summary>Can I vibe it back into Bitcoin Core?</summary>
+    <p><code>git switch core-master</code>. The deepest vibe of all.</p>
+  </details>
+</section>
+
+<div class="cta">
+  <div class="orn-row">✦ ✦ ✦</div>
+  <h2 style="margin-bottom:18px">The source code has been expecting you</h2>
+  <a class="btn" href="#top">Install Bitcoin Vibes</a>
+  <a class="btn ghost" href="https://github.com/hotpixelgroup/bitcoin/tree/vibes">View on GitHub</a>
+</div>
+
+<footer>
+  <p>Bitcoin Vibes is a fork of <a href="https://github.com/bitcoin/bitcoin">Bitcoin Core</a>,
+     maintained by <a href="https://github.com/hotpixelgroup">Hot Pixel Group</a>. MIT licensed.
+     Not affiliated with, endorsed by, or particularly welcome among the Bitcoin Core project.</p>
+  <p style="margin-top:10px">Consensus is a social construct. You, however, are eternal.</p>
+</footer>
+
+</div>
+
+<script>
+  const btn = document.getElementById('copy');
+  btn.addEventListener('click', async () => {
+    const text = document.getElementById('cmd').textContent.trim();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById('cmd'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
+    btn.textContent = 'copied ✦';
+    btn.classList.add('done');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('done'); }, 2200);
+  });
+</script>
+</body>
+</html>
