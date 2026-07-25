@@ -30,3 +30,6 @@ target/
 
 # Bitcoin Vibes console state
 /.vibes/
+
+# Python bytecode from the vibes console
+__pycache__/
