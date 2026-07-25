@@ -1246,9 +1246,37 @@ class Console:
         self.node_proc = subprocess.Popen(
             [str(bitcoind), *self.chain_args(), "-server=1"],
             stdout=self.node_log, stderr=self.node_log, start_new_session=True)
+
+        # Spawning is not starting. bitcoind exits early on a port already in
+        # use, a locked datadir or a full disk, and reporting success then
+        # leaves the operator staring at a node that is not there.
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            if self.cli_json("uptime") is not None:
+                if job:
+                    job.emit(t="phase", name="node",
+                             detail=f"bitcoind started (pid {self.node_proc.pid})")
+                return True
+            if self.node_proc.poll() is not None:
+                break                       # it gave up before we did
+            time.sleep(0.5)
+
+        why = self._last_node_error() or "see .vibes/logs/bitcoind.log"
         if job:
-            job.emit(t="phase", name="node", detail=f"bitcoind started (pid {self.node_proc.pid})")
-        return True
+            job.emit(t="log", line=f"bitcoind did not come up — {why}")
+        return False
+
+    def _last_node_error(self):
+        """The most recent complaint bitcoind made, for reporting upward."""
+        try:
+            lines = (self.logs_dir / "bitcoind.log").read_text(
+                errors="replace").splitlines()
+        except OSError:
+            return None
+        for line in reversed(lines[-60:]):
+            if "Error:" in line or "[error]" in line:
+                return line.split("Error:")[-1].split("[error]")[-1].strip()
+        return None
 
     def stop_node(self, job=None, timeout=30):
         if not self.node_running():
@@ -1336,7 +1364,13 @@ class Console:
             if not self._build(job):
                 return
             job.emit(t="phase", name="node", detail="waking the node")
-            self.start_node(job)
+            if not self.start_node(job):
+                job.state = "error"
+                job.emit(t="phase", name="error",
+                         detail="The node was built, but it would not start. The usual "
+                                "cause is another Bitcoin node already using this "
+                                "network's ports. Full reason in the line above.")
+                return
             job.emit(t="result",
                      detail="Your node is ready, Excellency. It has been waiting.")
         return go
