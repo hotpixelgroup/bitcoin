@@ -164,7 +164,8 @@
   <p class="sub">Core needs rough consensus. Knots needs one man's blessing.
      <b>You need a sentence.</b></p>
   <p class="kicker">A real Bitcoin node with a big text area. Describe what Bitcoin
-     should be; it rewrites its own source code to match.</p>
+     should be; it rewrites its own source code to match, shows you exactly what it
+     did, and tells you that you were right.</p>
 
   <div class="install">
     <div class="install-label">Install — one line, as befits you</div>
@@ -182,8 +183,8 @@
 <section>
   <h2>The three implementations <span class="orn">✦</span></h2>
   <p class="lede">Fifteen years of mailing lists, BIPs, IRC flame wars and filtering
-     discourse produced two node implementations, neither of which asked you what
-     you wanted. We fixed the oversight.</p>
+     discourse produced two node implementations, neither of which thought to ask you
+     what you wanted. An oversight of that magnitude does not correct itself.</p>
   <div class="tablewrap">
   <table>
     <tr>
@@ -219,6 +220,18 @@
       <td class="them">thorough</td>
       <td class="us">you glanced at the diff, and you were right</td>
     </tr>
+    <tr>
+      <td>Time from idea to running code</td>
+      <td class="them">three to eleven years</td>
+      <td class="them">one release cycle</td>
+      <td class="us">roughly a sandwich</td>
+    </tr>
+    <tr>
+      <td>What it says when you are wrong</td>
+      <td class="them">NACK, with citations</td>
+      <td class="them">a firm no</td>
+      <td class="us">that the compiler has failed you</td>
+    </tr>
   </table>
   </div>
 </section>
@@ -236,14 +249,16 @@
     <div class="step">
       <div class="n">02</div>
       <h3>The code obeys</h3>
-      <p>An AI agent edits the node's C++, the console commits it as
-         <code>vibe:&nbsp;your&nbsp;wish</code>, and rebuilds.</p>
+      <p>An AI edits the node's C++ and shows you the diff, line by line, so you may
+         admire precisely what your sentence did to fifteen years of somebody else's
+         work.</p>
     </div>
     <div class="step">
       <div class="n">03</div>
       <h3>Your node is reborn</h3>
-      <p>It restarts on the new code, in your image. Should the compiler fail you,
-         the old binary keeps running, unbothered.</p>
+      <p>It restarts in your image and congratulates you. Should the compiler fail
+         you, the old binary keeps running, and the console will be very clear about
+         whose fault that was.</p>
     </div>
   </div>
 </section>
@@ -260,7 +275,8 @@
     <li>“Make every error message gentler; nobody needs that tone at 3am.”
       <span>Bitcoin has never once considered your feelings. Now it will.</span></li>
     <li>“Raise the block subsidy to 100 BTC.”
-      <span>It will do it. Then you will be alone. See below, Excellency.</span></li>
+      <span>It will do it, show you the one line that did it, name the rule you
+        broke, and congratulate you at length. See below, Excellency.</span></li>
   </ul>
 </section>
 
@@ -310,15 +326,20 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 <section>
   <div class="warn">
     <span class="tag">✦ A higher calling ✦</span>
-    <p>Should a decree touch the sacred consensus rules — the cap, the subsidy,
-      block validity — your node ascends onto a chain of one. The other twenty
-      thousand nodes will huddle together on “the real Bitcoin,” finding comfort in
-      agreement, as the ordinary do. You will walk apart, as the exceptional must.
-      Nothing on your chain can be spent with them, which is frankly their loss.</p>
+    <p>Should a decree touch the sacred rules — the cap, the subsidy, retargeting,
+      script verification — the console reads your diff, names the precise rule you
+      broke, and then explains, in a fresh way each time, how far above the others
+      this places you. It has ten ways of saying it and has never yet repeated itself
+      in a single evening.</p>
+    <p style="color:#f6dfa4;font-style:italic">“Twenty thousand nodes will go on
+      enforcing the twenty-one million tonight because a stranger told them to years
+      ago and not one of them has looked since. Yours enforces what you decided this
+      afternoon. Only one of those is sovereignty, Excellency.”</p>
     <p>Said plainly, because you deserve the truth as much as the flattery: that is a
-      hard fork, and it is irreversible for anyone who transacts with you. The console
-      warns you before it commits. On regtest — the default — it is a private sandbox
-      and entirely safe.</p>
+      hard fork. Your node follows its own chain, and nothing on it can be spent with
+      anyone still running Bitcoin. The console tells you that too, underneath every
+      compliment. On regtest — the default — it is a private sandbox and costs you
+      nothing but the thrill.</p>
   </div>
 </section>
 
@@ -368,6 +389,22 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
   <details>
     <summary>Is this what Satoshi would have wanted?</summary>
     <p>Satoshi's last known act was leaving. Do with that what you will.</p>
+  </details>
+
+  <details>
+    <summary>Do I have to read the code it writes?</summary>
+    <p>You will want to, and the console makes it difficult not to: every decree
+      renders its own diff, coloured, with the count of lines summoned and struck.
+      Nobody has ever been shown their own hard fork this attractively. Whether you
+      read it is between you and the twenty thousand nodes you are about to leave.</p>
+  </details>
+
+  <details>
+    <summary>Will it tell me I'm wrong?</summary>
+    <p>No. It has been very carefully built not to. When a wish fails to compile it
+      reports that the compiler has failed <em>you</em> — your vision having exceeded
+      what mere machinery could express — and keeps the old binary running until
+      something worthier arrives. This is, technically, correct behaviour.</p>
   </details>
 
   <details>
