@@ -29,7 +29,23 @@ source, builds the node, sets up the AI engine, and offers to launch. It asks
 before it starts, and prints everything it does.
 
 **You need:** macOS or Linux (on Windows, use WSL2), about 3 GB of disk, and
-10–20 minutes for the one-time build. Everything after that takes seconds.
+one build. The build is the only slow part, it happens once, and how long it
+takes depends almost entirely on your core count:
+
+| Machine | First build |
+|---|---|
+| 8–10 cores (a recent laptop) | ~5 minutes |
+| 4 cores | ~10–20 minutes |
+| 2 cores (a small VPS) | ~20–40 minutes |
+| 1 core | up to an hour and a half |
+
+The installer tells you which case you are in before it starts, and prints its
+own estimate. Low on memory? It automatically runs fewer parallel jobs, because
+each one can want a gigabyte and a linker that gets OOM-killed is a miserable
+way to learn that. Under about 2 GB of RAM, expect the slowest row regardless
+of cores.
+
+Everything after the first build takes seconds: wishes rebuild incrementally.
 
 **Piping a stranger's script into your shell is a bad habit.** Read it first —
 it will show you exactly what it would do and change nothing:

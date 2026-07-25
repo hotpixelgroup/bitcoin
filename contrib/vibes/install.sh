@@ -132,15 +132,39 @@ fetch_source() {
   fi
 }
 
+# Cores, and a job count that won't get the build OOM-killed: each parallel
+# C++ compile can peak near a gigabyte, so never run more jobs than GB of RAM.
+plan_build() {
+  cores=$( (command -v nproc >/dev/null 2>&1 && nproc) \
+         || sysctl -n hw.ncpu 2>/dev/null || echo 2 )
+  mem_gb=''
+  if [ -r /proc/meminfo ]; then
+    mem_gb=$(awk '/^MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo)
+  elif command -v sysctl >/dev/null 2>&1; then
+    mem_gb=$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%d", $1/1073741824}')
+  fi
+  [ -n "$mem_gb" ] && [ "$mem_gb" -ge 1 ] 2>/dev/null || mem_gb=$cores
+  jobs=$cores
+  [ "$mem_gb" -lt "$cores" ] && jobs=$mem_gb
+  [ "$jobs" -lt 1 ] && jobs=1
+  # Measured: ~32 core-minutes for this trimmed build. Rounded up for slower
+  # cores and for make-instead-of-ninja, then given as a range.
+  low=$(( 40 / jobs )); [ "$low" -lt 3 ] && low=3
+  high=$(( low * 2 ))
+}
+
 build_node() {
   step "Building the node"
-  jobs=$( (command -v nproc >/dev/null 2>&1 && nproc) \
-        || sysctl -n hw.ncpu 2>/dev/null || echo 4 )
+  plan_build
   if [ -f "$DEST/build/bin/bitcoind" ]; then
     note "already built — skipping (delete $DEST/build to force a rebuild)"
     return 0
   fi
-  note "this takes 10-20 minutes, once. Everything after it is seconds."
+  note "$cores core(s), ${mem_gb}GB RAM — using $jobs parallel job(s)"
+  note "expect roughly $low-$high minutes, once. Everything after it is seconds."
+  if [ "$jobs" -lt "$cores" ]; then
+    note "(fewer jobs than cores: keeps the linker from being OOM-killed)"
+  fi
   gen=''
   command -v ninja >/dev/null 2>&1 && gen='-G Ninja'
   # shellcheck disable=SC2086

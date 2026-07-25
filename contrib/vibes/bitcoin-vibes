@@ -472,7 +472,7 @@ class Console:
     def _build(self, job):
         job.emit(t="phase", name="build", detail="rebuilding the node")
         build_dir = self.repo / "build"
-        jobs = str(self.opts.jobs or os.cpu_count() or 4)
+        jobs = str(self.build_jobs())
         if not (build_dir / "CMakeCache.txt").exists():
             job.emit(t="log", line="no configured build/ — running cmake configure")
             code = self._stream(job, ["cmake", "-B", "build",
@@ -494,9 +494,26 @@ class Console:
         job.emit(t="log", line="build ok")
         return True
 
+    def build_jobs(self):
+        """Parallel job count. Each concurrent C++ compile can peak near a
+        gigabyte, so cap by RAM or a small machine gets its linker OOM-killed."""
+        if self.opts.jobs:
+            return self.opts.jobs
+        cores = os.cpu_count() or 2
+        try:
+            gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")) // (1 << 30)
+        except (ValueError, OSError, AttributeError):
+            gb = cores
+        return max(1, min(cores, gb or cores))
+
+    def build_estimate(self, jobs):
+        """Rough minutes, from a measured ~32 core-minutes for this build."""
+        low = max(3, 40 // max(1, jobs))
+        return low, low * 2
+
     def build_blocking(self):
         """First-run build, streamed straight to the terminal (no job/UI yet)."""
-        jobs = str(self.opts.jobs or os.cpu_count() or 4)
+        jobs = str(self.build_jobs())
         if not (self.repo / "build" / "CMakeCache.txt").exists():
             code = subprocess.call(["cmake", "-B", "build", "-DBUILD_TESTS=OFF",
                                     "-DBUILD_BENCH=OFF", "-DBUILD_FUZZ_BINARY=OFF",
@@ -885,8 +902,12 @@ def main():
     # the node, so the browser opens onto something alive.
     if opts.autostart:
         if not console.bin_path("bitcoind"):
-            print("  no node binary yet — building it now (one time, ~10-20 min).")
-            print("  grab a coffee; this is the last slow thing that will ever happen.")
+            bjobs = console.build_jobs()
+            low, high = console.build_estimate(bjobs)
+            print(f"  no node binary yet — building it now, once, with {bjobs} "
+                  f"parallel job(s).")
+            print(f"  on this machine expect roughly {low}-{high} minutes. "
+                  f"It is the last slow thing that will ever happen.")
             print()
             if console.build_blocking():
                 print("\n  build complete.\n")

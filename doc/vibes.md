@@ -93,8 +93,8 @@ cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
    is not allowed to touch git itself. Trustless? No. Trust-minimized? Also
    no. It's fine.
 3. `cmake --build build` runs incrementally — a small vibe rebuilds in
-   seconds-to-minutes, not the full fifteen. Even revolutions respect the
-   build cache.
+   seconds-to-minutes, never the whole tree again. Even revolutions respect
+   the build cache.
 4. If the build is green and you left "restart" on, your node reboots into the
    new timeline. If the build is red, the old binary keeps running,
    completely unbothered by your vision. Revert, or vibe harder.
