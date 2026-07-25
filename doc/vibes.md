@@ -24,6 +24,24 @@ now.
 
 ## Quickstart
 
+### The Mac app, if you would rather not see a terminal
+
+[Download it](https://github.com/hotpixelgroup/bitcoin/releases/latest), drag it
+to Applications, double-click. On first open it fetches the source, installs
+what the compiler needs, builds the node and opens the console — all of it
+reported in the browser on a progress bar, because an app with no terminal has
+no business printing into one.
+
+It is a launcher, not the node: the source lives in `~/Library/Application
+Support/Bitcoin Vibes`, and every launch fast-forwards it without touching
+decrees you made locally.
+
+Not notarised yet, so the first launch needs a right-click → **Open**. Build it
+yourself with `sh contrib/vibes/macos/build-app.sh` if you would rather not
+trust a download.
+
+### Everyone else
+
 One line. It installs the build dependencies, fetches the source, builds the
 node, sets up the vibe engine, and opens the console:
 

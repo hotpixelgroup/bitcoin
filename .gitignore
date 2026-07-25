@@ -33,3 +33,6 @@ target/
 
 # Python bytecode from the vibes console
 __pycache__/
+
+# macOS app build output
+/dist/
