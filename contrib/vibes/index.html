@@ -202,6 +202,19 @@
   .settings-intro code{font-family:var(--mono);font-size:13.5px;color:var(--ink);
     background:var(--marble-3);border:1px solid var(--gold-line-soft);
     border-radius:2px;padding:2px 7px;word-break:break-all}
+  .sfilter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;
+    padding-bottom:16px;border-bottom:1px solid var(--gold-line-soft)}
+  .sfilter label{font-family:var(--serif);font-size:14px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--gold-ink)}
+  .sfilter input{flex:1;min-width:200px;background:var(--marble);
+    border:1px solid var(--gold-line);border-radius:2px;padding:10px 13px;
+    color:var(--ink);font:15px var(--text);min-height:44px}
+  .sfilter input:focus{border-color:var(--gold-ink);outline:none;
+    box-shadow:0 0 0 3px rgba(122,93,18,.13)}
+  .scount{font-size:14px;color:var(--ink-2);font-family:var(--mono)}
+  .field.hidden,.sgroup.hidden{display:none}
+  .sgroup .badge-count{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+
   /* a group of settings, folded away until wanted */
   .sgroup{border:1px solid var(--gold-line-soft);border-radius:3px;margin-bottom:14px;
     background:var(--marble)}
@@ -384,6 +397,12 @@
          <code id="confpath">bitcoin.conf</code>. Nothing here rewrites any code and
          nothing here touches consensus — it is simply Bitcoin, configured.</p>
       <form id="settings-form" novalidate>
+        <div class="sfilter">
+          <label for="settings-search">Find a setting</label>
+          <input type="search" id="settings-search" placeholder="prune, datacarrier, proxy…"
+                 autocomplete="off" aria-describedby="settings-count">
+          <span class="scount" id="settings-count" role="status" aria-live="polite"></span>
+        </div>
         <div id="settings-groups"></div>
         <div class="settings-actions">
           <p class="settings-note" id="settings-msg" role="status" aria-live="polite"></p>
@@ -627,11 +646,13 @@ async function loadSettings(){
       `<summary><span class="stitle">${esc(g.title)}</span>` +
       `<span class="sblurb">${esc(g.blurb)}</span></summary>` +
       `<div class="sbody"><div class="grid">` +
-      fields.map(spec => `<div class="field${spec.type === "bool" ? " boolean" : ""}">` +
+      fields.map(spec => `<div class="field${spec.type === "bool" ? " boolean" : ""}" ` +
+                         `data-find="${esc((spec.key + " " + spec.label + " " + spec.help).toLowerCase())}">` +
                          fieldMarkup(spec, s.values[spec.key]) + `</div>`).join("") +
       `</div></div>`;
     host.appendChild(d);
   });
+  applyFilter();
 
   // tooltips: click toggles (touch and keyboard), Escape dismisses
   host.querySelectorAll(".tipbtn").forEach(btn => {
@@ -643,6 +664,25 @@ async function loadSettings(){
     });
   });
 }
+
+function applyFilter(){
+  const q = ($("settings-search").value || "").trim().toLowerCase();
+  let shown = 0, total = 0;
+  document.querySelectorAll("#settings-groups .sgroup").forEach(group => {
+    let visible = 0;
+    group.querySelectorAll(".field").forEach(f => {
+      total++;
+      const hit = !q || (f.dataset.find || "").includes(q);
+      f.classList.toggle("hidden", !hit);
+      if (hit) { visible++; shown++; }
+    });
+    group.classList.toggle("hidden", visible === 0);
+    if (q && visible) group.open = true;          // open what matched
+  });
+  $("settings-count").textContent = q
+    ? `${shown} of ${total} settings match` : `${total} settings`;
+}
+$("settings-search").addEventListener("input", applyFilter);
 
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
