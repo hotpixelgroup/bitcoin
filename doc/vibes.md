@@ -228,5 +228,15 @@ filtering wars started. Fast, this time, and personally.
 **Core or Knots — whose side is Vibes on?** Yes. You can vibe this node into
 either one of them, and then keep going. Neither of them can vibe back.
 
-**Can I vibe it back to Bitcoin Core?** `git switch master`. The deepest vibe
-of all.
+**Can I vibe it back to Bitcoin Core?** `git switch core-master`. The deepest
+vibe of all.
+
+## Credits
+
+Built by **Harry Beckwith** and **Jones Beckwith**.
+Maintained by [Hot Pixel Group](https://hotpixelgroup.com).
+
+Bitcoin Vibes is a fork of [Bitcoin Core](https://github.com/bitcoin/bitcoin).
+Every line that validates a block, relays a transaction, or keeps consensus was
+written by its contributors over fifteen years; we added a text area and took
+all the credit. MIT licensed.
