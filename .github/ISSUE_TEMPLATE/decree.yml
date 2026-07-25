@@ -1,0 +1,27 @@
+name: Show us your decree
+description: You vibed something good. Share it.
+labels: ["decree"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The best advertisement for this project is what people actually make it do.
+  - type: textarea
+    id: prompt
+    attributes:
+      label: What did you type?
+      render: text
+    validations: {required: true}
+  - type: textarea
+    id: result
+    attributes:
+      label: What did it do?
+      description: The diff, a log line, a screenshot — whatever is fun.
+    validations: {required: true}
+  - type: checkboxes
+    id: forked
+    attributes:
+      label: Did it fork you off the network?
+      options:
+        - label: "Yes, and I regret nothing"
+        - label: "No, it was purely cosmetic"

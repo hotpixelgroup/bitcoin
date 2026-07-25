@@ -28,7 +28,7 @@ One line. It installs the build dependencies, fetches the source, builds the
 node, sets up the vibe engine, and opens the console:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh
 ```
 
 Afterwards, one command does everything:
@@ -51,7 +51,7 @@ Piping a stranger's script into `sh` is how people lose laptops. Read it first
 — it is short, and it prints everything it would do without touching anything:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh -o install.sh
 less install.sh
 VIBES_DRY_RUN=1 sh install.sh
 ```
@@ -62,7 +62,7 @@ It honors `VIBES_DIR` (where to install, default `~/bitcoin-vibes`),
 ### Docker, if you would rather it touched nothing
 
 ```bash
-git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
+git clone -b master https://github.com/hotpixelgroup/bitcoin.git && cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build
 ```
 

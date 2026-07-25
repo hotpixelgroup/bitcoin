@@ -1,7 +1,7 @@
 #!/bin/sh
 # Bitcoin Vibes installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh
 #
 # Read before running (it prints everything it would do, changing nothing):
 #   VIBES_DRY_RUN=1 sh install.sh
@@ -11,7 +11,7 @@
 set -eu
 
 REPO_URL="${VIBES_REPO:-https://github.com/hotpixelgroup/bitcoin.git}"
-BRANCH="${VIBES_BRANCH:-vibes}"
+BRANCH="${VIBES_BRANCH:-master}"
 DEST="${VIBES_DIR:-$HOME/bitcoin-vibes}"
 DRY_RUN="${VIBES_DRY_RUN:-0}"
 
