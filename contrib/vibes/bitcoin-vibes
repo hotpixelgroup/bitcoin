@@ -1057,7 +1057,7 @@ def main():
             if console.start_node():
                 print(f"  node   : awake on {opts.chain}")
 
-    print("  What shall Bitcoin become, Excellency?")
+    print("  You are a Bitcoin God.")
     print()
     if not opts.no_open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
