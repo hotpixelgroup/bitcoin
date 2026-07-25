@@ -88,6 +88,22 @@
   .rule::after{background:linear-gradient(90deg,var(--gold-leaf),transparent)}
   .rule span{color:var(--gold-ink);font-size:14px;letter-spacing:.4em}
 
+  /* ---- first run ---- */
+  .setup{border:2px solid var(--gold-leaf);border-radius:120px 120px 3px 3px;
+    background:linear-gradient(180deg,#fffdf8,var(--marble-2));
+    padding:34px 32px 26px;margin-bottom:22px;text-align:center;
+    box-shadow:0 12px 36px rgba(28,24,20,.09)}
+  .setup-title{font-family:var(--serif);font-size:21px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-ink);margin-bottom:14px}
+  .setup-body{max-width:620px;margin:0 auto 20px;color:var(--ink);font-size:16.5px}
+  .setup-bar{height:8px;background:var(--marble-3);border:1px solid var(--gold-line);
+    border-radius:99px;overflow:hidden;max-width:520px;margin:0 auto}
+  .setup-bar span{display:block;height:100%;width:0;
+    background:linear-gradient(90deg,var(--gold-leaf),var(--gold-ink));
+    transition:width .6s ease}
+  .setup-step{margin-top:12px;font-family:var(--mono);font-size:13.5px;color:var(--ink-2)}
+  body.is-setup .tablet,body.is-setup #book-section{opacity:.45;pointer-events:none}
+
   /* ---- the engine notice ---- */
   .engine{border:2px solid var(--porphyry);background:#fdf6f4;border-radius:2px;
     padding:15px 18px;margin-bottom:20px}
@@ -356,6 +372,16 @@
      one man's mood. <b>You ask permission of no one.</b></p>
   <div class="rule" role="presentation"><span aria-hidden="true">✦</span></div>
 
+  <div id="setup" class="setup" role="status" aria-live="polite" style="display:none">
+    <div class="setup-title">Preparing your node</div>
+    <p class="setup-body" id="setup-body">This happens once. Bitcoin Vibes is
+       compiling a real Bitcoin node from source — the same source Bitcoin Core
+       ships, plus a text box. You can watch it below, or come back in a few
+       minutes; nothing is required of you.</p>
+    <div class="setup-bar" aria-hidden="true"><span id="setup-fill"></span></div>
+    <p class="setup-step" id="setup-step">starting…</p>
+  </div>
+
   <div id="engine" class="engine" role="alert" style="display:none">
     <div class="engine-msg" id="engine-msg"></div>
     <div class="engine-fix">Run this once, then return: <code id="engine-cmd"></code></div>
@@ -509,6 +535,16 @@ function renderDiff(ev){
 function renderEvent(ev){
   switch (ev.t) {
     case "phase": {
+      // first-run setup drives the banner as well as the log
+      const setupSteps = {setup:[5,"getting ready"], deps:[15,"installing build tools"],
+                          build:[35,"compiling the node — the slow part"],
+                          node:[92,"waking the node"], done:[100,"ready"],
+                          error:[100,"something went wrong"]};
+      if (setupSteps[ev.name] && document.body.classList.contains("is-setup")) {
+        const [pct, label] = setupSteps[ev.name];
+        $("setup-fill").style.width = pct + "%";
+        $("setup-step").textContent = ev.detail || label;
+      }
       const names = {agent:"⛩  your word descends upon the codebase, which had been waiting",
                      commit:"✒  inscribing your decree where it can never be argued with",
                      build:"⚒  reality recompiles itself to your specification",
@@ -753,6 +789,14 @@ async function refresh(){
   $("nodebtn").textContent = n.running ? "Rest" : "Awaken";
   $("nodebtn").dataset.action = n.running ? "stop" : "start";
   $("minebtn").style.display = (n.running && s.chain === "regtest") ? "inline-block" : "none";
+
+  // first run: no node binary yet, so the console explains itself instead of
+  // presenting a decree box for a node that does not exist
+  const setting_up = !s.binary || (s.job && s.job.kind === "setup" && s.job.state === "running");
+  document.body.classList.toggle("is-setup", !!setting_up);
+  $("setup").style.display = setting_up ? "block" : "none";
+  if (!setting_up && $("setup-fill").style.width && $("setup-fill").style.width !== "100%")
+    $("setup-fill").style.width = "100%";
 
   const eng = s.engine_ready || {ok:true};
   $("engine").style.display = eng.ok ? "none" : "block";

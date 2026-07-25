@@ -22,6 +22,14 @@ contact with the compiler.
 Install
 -------
 
+**On a Mac, and you would rather not see a terminal?**
+[Download Bitcoin Vibes.app](https://github.com/hotpixelgroup/bitcoin/releases/latest),
+drag it to Applications, open it. It does the rest and shows you what it is doing
+in your browser. (It is not notarised yet, so the first time you will need to
+right-click it and choose **Open** — macOS asks that of every small developer.)
+
+**Everyone else, one line:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh
 ```
