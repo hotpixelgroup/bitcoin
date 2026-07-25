@@ -1,19 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Bitcoin Vibes">
   <defs>
-    <radialGradient id="halo" cx="50%" cy="46%" r="52%">
-      <stop offset="0%" stop-color="#e7ba55" stop-opacity=".55"/>
-      <stop offset="60%" stop-color="#e7ba55" stop-opacity=".10"/>
-      <stop offset="100%" stop-color="#e7ba55" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="gold" x1="20%" y1="0%" x2="80%" y2="100%">
-      <stop offset="0%" stop-color="#f6dfa4"/>
-      <stop offset="52%" stop-color="#e7ba55"/>
-      <stop offset="100%" stop-color="#caa044"/>
+    <linearGradient id="gold" x1="18%" y1="0%" x2="82%" y2="100%">
+      <stop offset="0%" stop-color="#c9a227"/>
+      <stop offset="52%" stop-color="#a5811a"/>
+      <stop offset="100%" stop-color="#7a5d12"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="12" fill="#0b0910"/>
-  <circle cx="32" cy="30" r="30" fill="url(#halo)"/>
-  <!-- four-pointed sparkle, drawn as a path so it never depends on a font -->
-  <path d="M32 5 Q35.4 28.6 59 32 Q35.4 35.4 32 59 Q28.6 35.4 5 32 Q28.6 28.6 32 5 Z"
+  <rect width="64" height="64" rx="10" fill="#faf8f3"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="9" fill="none"
+        stroke="#7a5d12" stroke-opacity=".38" stroke-width="2"/>
+  <path d="M32 6 Q34.6 29.4 58 32 Q34.6 34.6 32 58 Q29.4 34.6 6 32 Q29.4 29.4 32 6 Z"
         fill="url(#gold)"/>
 </svg>

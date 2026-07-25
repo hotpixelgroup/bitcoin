@@ -3,12 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bitcoin Vibes — the node that becomes what you tell it to be</title>
-<meta name="description" content="Core has rules. Knots has opinions. Vibes has you. A Bitcoin node with a big text area: describe what Bitcoin should be, and it rewrites its own source code to match.">
-<meta name="theme-color" content="#0b0910">
+<title>Bitcoin Vibes — what shall Bitcoin become?</title>
+<meta name="description" content="Core has rules. Knots has opinions. Vibes has you. A real Bitcoin node with a big text area: tell it what Bitcoin should have been, and it will be that.">
+<meta name="theme-color" content="#faf8f3">
 
-<!-- Icons. Relative paths: the site is served from a /bitcoin/ subpath, so
-     root-absolute ones would miss, and these survive a move to a custom domain. -->
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
@@ -16,10 +14,9 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="shortcut icon" href="favicon.ico">
 
-<!-- Sharing. og:image must be an absolute URL; crawlers do not resolve relatives. -->
 <meta property="og:site_name" content="Bitcoin Vibes">
 <meta property="og:title" content="Bitcoin Vibes — what shall Bitcoin become?">
-<meta property="og:description" content="Core has rules. Knots has opinions. Vibes has you. A real Bitcoin node with a big text area: describe what Bitcoin should be, and it rewrites its own source code to match.">
+<meta property="og:description" content="Core has rules. Knots has opinions. Vibes has you. Tell it what Bitcoin should have been, and it will be that.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://hotpixelgroup.github.io/bitcoin/">
 <meta property="og:image" content="https://hotpixelgroup.github.io/bitcoin/og.png">
@@ -29,230 +26,294 @@
 <meta property="og:image:alt" content="Bitcoin Vibes — What shall Bitcoin become? Core has rules. Knots has opinions. Vibes has you.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Bitcoin Vibes — what shall Bitcoin become?">
-<meta name="twitter:description" content="Core has rules. Knots has opinions. Vibes has you. A Bitcoin node that rewrites its own source code, on request.">
+<meta name="twitter:description" content="Core has rules. Knots has opinions. Vibes has you.">
 <meta name="twitter:image" content="https://hotpixelgroup.github.io/bitcoin/og.png">
 <style>
   :root{
-    --bg:#08060f;
-    --panel:rgba(244,237,219,.032);
-    --line:rgba(231,186,85,.22); --line2:rgba(231,186,85,.10);
-    --ink:#f5efdf; --dim:#c8bea8; --faint:#998f7c;
-    --gold:#e7ba55; --goldbright:#f6dfa4; --bad:#e77c6a; --good:#8fd694;
+    /* Marble and gold. Gold is structural; where gold carries text it darkens
+       to --gold-ink, because leaf gold on marble is 1.7:1 and unreadable. */
+    --marble:#faf8f3;
+    --marble-2:#f4efe4;
+    --marble-3:#ece5d6;
+    --ink:#1c1814;        /* 16.6:1 */
+    --ink-2:#4a423a;      /*  9.3:1 */
+    --gold-ink:#7a5d12;   /*  5.8:1 — gold that must be read */
+    --gold:#a5811a;       /*  3.4:1 — large display text only */
+    --gold-leaf:#c9a227;  /* decorative only: rules, ornament, borders */
+    --gold-line:rgba(122,93,18,.30);
+    --gold-line-soft:rgba(122,93,18,.16);
+    --porphyry:#6b2737;   /* 10.0:1 — imperial accent */
+    --serif:"Optima","Palatino Linotype",Palatino,"Iowan Old Style",Georgia,serif;
+    --text:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-  body{
-    background:
-      radial-gradient(900px 440px at 50% -10%, rgba(231,186,85,.17), transparent 62%),
-      radial-gradient(700px 500px at 10% 6%, rgba(96,74,168,.10), transparent 58%),
-      radial-gradient(700px 500px at 90% 8%, rgba(96,74,168,.09), transparent 58%),
-      var(--bg);
-    background-attachment:fixed;
-    color:var(--ink); font:17px/1.7 var(--serif); -webkit-font-smoothing:antialiased;
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *{animation-duration:.01ms !important;transition-duration:.01ms !important}
   }
-  .wrap{max-width:920px;margin:0 auto;padding:0 22px}
-  a{color:var(--gold)}
+  body{
+    background:var(--marble);
+    /* the faint tooth of cut stone */
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(122,93,18,.045), transparent 42%),
+      radial-gradient(circle at 84% 8%,  rgba(122,93,18,.035), transparent 40%),
+      linear-gradient(180deg, #fffdf9 0%, var(--marble) 34%, var(--marble-2) 100%);
+    color:var(--ink); font:17.5px/1.72 var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 24px}
 
-  /* ---- hero ---- */
-  header{text-align:center;padding:64px 0 30px}
-  .mark{font-weight:700;font-size:15px;letter-spacing:.34em;font-variant:small-caps;color:var(--gold);margin-bottom:26px}
-  h1{font-weight:500;font-size:clamp(38px,7vw,68px);line-height:1.08;letter-spacing:.005em;
-     text-shadow:0 0 80px rgba(231,186,85,.4),0 0 24px rgba(231,186,85,.15);margin-bottom:20px}
-  .sub{font-size:clamp(18px,2.4vw,22px);color:var(--dim);max-width:660px;margin:0 auto 12px}
-  .sub b{color:var(--gold);font-weight:500}
-  .kicker{color:var(--faint);font-size:16px;margin-bottom:34px}
+  /* ---- accessibility furniture ---- */
+  .skip{position:absolute;left:-9999px;top:0;background:var(--ink);color:var(--marble);
+    padding:12px 20px;z-index:99;font:600 16px var(--serif)}
+  .skip:focus{left:12px;top:12px}
+  a:focus-visible,button:focus-visible,summary:focus-visible{
+    outline:3px solid var(--gold-ink);outline-offset:3px;border-radius:2px}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);
+    clip-path:inset(50%);white-space:nowrap}
 
-  /* ---- install box ---- */
-  .install{background:rgba(0,0,0,.45);border:1px solid var(--line);outline:1px solid var(--line2);
-    outline-offset:4px;border-radius:3px;padding:18px 20px;max-width:760px;margin:0 auto;text-align:left}
-  .install-label{font:600 11.5px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
-  .cmd{display:flex;gap:12px;align-items:flex-start}
-  .cmd code{flex:1;font-family:var(--mono);font-size:13.5px;line-height:1.6;color:var(--ink);
-    word-break:break-all;user-select:all}
-  .copy{flex:none;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--gold);
-    border-radius:2px;padding:8px 14px;font:600 12px var(--mono);letter-spacing:.06em;transition:all .15s}
-  .copy:hover{background:rgba(231,186,85,.12)}
-  .copy.done{color:var(--good);border-color:rgba(143,214,148,.5)}
-  .install-note{color:var(--faint);font-size:14px;margin-top:12px}
+  a{color:var(--gold-ink);text-underline-offset:3px}
+  a:hover{color:var(--porphyry)}
+
+  /* ---- Roman ornament ---- */
+  .rule{display:flex;align-items:center;gap:16px;justify-content:center;margin:36px 0}
+  .rule::before,.rule::after{content:"";height:2px;flex:0 0 120px;
+    background:linear-gradient(90deg,transparent,var(--gold-leaf))}
+  .rule::after{background:linear-gradient(90deg,var(--gold-leaf),transparent)}
+  .rule span{color:var(--gold-ink);font-size:15px;letter-spacing:.4em}
+
+  /* ---- the pediment ---- */
+  header.hero{text-align:center;padding:64px 0 8px;position:relative}
+  .entablature{border-top:3px solid var(--gold-leaf);border-bottom:1px solid var(--gold-line);
+    padding:14px 0;margin-bottom:40px}
+  .entablature p{font-family:var(--serif);font-size:13.5px;letter-spacing:.42em;
+    text-transform:uppercase;color:var(--gold-ink);margin:0}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(36px,6.4vw,64px);
+     line-height:1.1;letter-spacing:.02em;margin-bottom:22px;color:var(--ink)}
+  .creed{font-size:clamp(19px,2.5vw,23px);color:var(--ink-2);max-width:640px;
+    margin:0 auto 14px}
+  .creed b{color:var(--gold-ink);font-weight:600}
+  .kicker{color:var(--ink-2);font-size:17px;max-width:620px;margin:0 auto 34px}
+
+  /* ---- the tablet: install ---- */
+  .tablet{background:#fffdf8;border:1px solid var(--gold-line);
+    box-shadow:0 1px 0 #fff inset, 0 12px 34px rgba(28,24,20,.07);
+    border-radius:3px;max-width:790px;margin:0 auto;text-align:left;overflow:hidden}
+  .tablet-head{background:var(--marble-3);border-bottom:1px solid var(--gold-line);
+    padding:11px 22px;font-family:var(--serif);font-size:12.5px;letter-spacing:.26em;
+    text-transform:uppercase;color:var(--gold-ink)}
+  .tablet-body{padding:20px 22px}
+  .cmd{display:flex;gap:14px;align-items:flex-start}
+  .cmd code{flex:1;font-family:var(--mono);font-size:13.5px;line-height:1.65;
+    color:var(--ink);word-break:break-all;user-select:all}
+  .copy{flex:none;cursor:pointer;border:1px solid var(--gold-ink);background:transparent;
+    color:var(--gold-ink);border-radius:2px;padding:9px 17px;font:600 12.5px var(--mono);
+    letter-spacing:.08em;transition:background .15s,color .15s}
+  .copy:hover{background:var(--gold-ink);color:#fffdf8}
+  .note{color:var(--ink-2);font-size:15px;margin-top:14px}
 
   /* ---- sections ---- */
-  section{padding:52px 0}
-  h2{font-size:clamp(26px,3.6vw,34px);font-weight:500;margin-bottom:8px;letter-spacing:.005em}
-  h2 .orn{color:var(--gold);opacity:.8}
-  .lede{color:var(--dim);margin-bottom:26px;max-width:700px}
-  h3{font-size:19px;font-weight:600;margin:0 0 6px}
+  main section{padding:54px 0}
+  h2{font-family:var(--serif);font-weight:400;font-size:clamp(25px,3.4vw,33px);
+     letter-spacing:.11em;text-transform:uppercase;color:var(--ink);
+     margin-bottom:10px;padding-bottom:12px;border-bottom:2px solid var(--gold-leaf)}
+  .lede{color:var(--ink-2);margin-bottom:26px;max-width:720px;font-size:17.5px}
+  h3{font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:.03em;
+     margin:0 0 7px;color:var(--ink)}
 
-  table{width:100%;border-collapse:collapse;font-size:16px;margin:10px 0}
-  th,td{padding:13px 14px;text-align:left;border-bottom:1px solid var(--line2);vertical-align:top}
-  th{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
-  td:first-child{color:var(--dim)}
-  .them{color:var(--faint)}
-  .us{color:var(--ink);font-weight:600}
-  .tablewrap{overflow-x:auto}
+  /* ---- the census ---- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--gold-line);border-radius:3px;background:#fffdf8}
+  table{width:100%;border-collapse:collapse;font-size:16px}
+  caption{text-align:left;padding:14px 16px 0;color:var(--ink-2);font-size:15px}
+  th,td{padding:13px 16px;text-align:left;vertical-align:top;
+    border-bottom:1px solid var(--gold-line-soft)}
+  thead th{font-family:var(--serif);font-size:12.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-ink);
+    background:var(--marble-3);border-bottom:2px solid var(--gold-leaf)}
+  tbody th{font-weight:400;color:var(--ink-2);font-size:15.5px}
+  td.them{color:var(--ink-2)}
+  td.us{color:var(--ink);font-weight:600;background:rgba(201,162,39,.09);
+    box-shadow:inset 3px 0 0 var(--gold-leaf)}
+  tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}
 
-  .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:8px}
-  .step{background:var(--panel);border:1px solid var(--line2);border-radius:3px;padding:20px}
-  .step .n{font:700 12px var(--mono);letter-spacing:.2em;color:var(--gold);margin-bottom:10px}
-  .step p{color:var(--dim);font-size:15.5px}
+  /* ---- the colonnade ---- */
+  .colonnade{display:grid;gap:0;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    border:1px solid var(--gold-line);border-radius:3px;background:#fffdf8;overflow:hidden}
+  .column{padding:26px 24px;border-right:1px solid var(--gold-line-soft);position:relative}
+  .column:last-child{border-right:0}
+  .column::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,var(--gold-leaf),rgba(201,162,39,.25))}
+  .numeral{font-family:var(--serif);font-size:15px;letter-spacing:.2em;
+    color:var(--gold-ink);margin-bottom:12px}
+  .column p{color:var(--ink-2);font-size:16px}
 
-  .wishes{list-style:none;display:grid;gap:10px;margin-top:6px}
-  .wishes li{background:rgba(0,0,0,.3);border-left:2px solid var(--line);padding:13px 17px;
-    color:var(--ink);font-size:16.5px;font-style:italic}
-  .wishes li span{display:block;font-style:normal;font-size:14px;color:var(--faint);margin-top:5px}
+  /* ---- decrees ---- */
+  .decrees{list-style:none;display:grid;gap:12px}
+  .decrees li{background:#fffdf8;border:1px solid var(--gold-line-soft);
+    border-left:3px solid var(--gold-leaf);border-radius:2px;padding:15px 19px;font-size:17px}
+  .decrees q{font-style:italic;color:var(--ink);quotes:"“" "”"}
+  .decrees span{display:block;font-size:15px;color:var(--ink-2);margin-top:6px}
 
-  pre{background:rgba(0,0,0,.45);border:1px solid var(--line2);border-radius:3px;padding:15px 17px;
-    overflow-x:auto;margin:10px 0}
-  pre code{font-family:var(--mono);font-size:13.5px;line-height:1.65;color:var(--ink)}
-  .muted{color:var(--faint);font-size:14.5px}
+  pre{background:#fffdf8;border:1px solid var(--gold-line);border-left:3px solid var(--gold-leaf);
+    border-radius:2px;padding:15px 18px;overflow-x:auto;margin:12px 0}
+  pre code{font-family:var(--mono);font-size:13.5px;line-height:1.7;color:var(--ink)}
+  code{font-family:var(--mono);font-size:.92em}
 
-  details{border-top:1px solid var(--line2);padding:15px 0}
-  details summary{cursor:pointer;font-size:17.5px;color:var(--ink);list-style:none;
-    display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+  /* ---- the arch: ascension ---- */
+  .arch{border:2px solid var(--gold-leaf);border-radius:200px 200px 3px 3px;
+    background:linear-gradient(180deg,#fffdf8,var(--marble-2));
+    padding:52px 46px 38px;text-align:center;
+    box-shadow:0 14px 40px rgba(28,24,20,.08)}
+  .arch .inscription{font-family:var(--serif);font-size:13px;letter-spacing:.34em;
+    text-transform:uppercase;color:var(--gold-ink);margin-bottom:20px}
+  .arch p{max-width:640px;margin:0 auto 15px;color:var(--ink);font-size:17.5px}
+  .arch p.coda{color:var(--ink-2);font-size:15.5px;margin-top:20px;
+    padding-top:16px;border-top:1px solid var(--gold-line-soft)}
+
+  /* ---- questions ---- */
+  details{border-bottom:1px solid var(--gold-line-soft);padding:16px 0}
+  details summary{cursor:pointer;font-family:var(--serif);font-size:18px;color:var(--ink);
+    list-style:none;display:flex;justify-content:space-between;gap:16px;align-items:baseline}
   details summary::-webkit-details-marker{display:none}
-  details summary::after{content:"+";color:var(--gold);font-family:var(--mono);flex:none}
+  details summary::after{content:"+";color:var(--gold-ink);font-family:var(--mono);
+    font-size:19px;flex:none}
   details[open] summary::after{content:"−"}
-  details p{color:var(--dim);margin-top:11px;font-size:16px}
+  details p{color:var(--ink-2);margin-top:12px;font-size:16.5px;max-width:760px}
 
-  .warn{border:1px solid rgba(231,186,85,.45);
-    background:radial-gradient(400px 90px at 50% 0%, rgba(231,186,85,.13), rgba(231,186,85,.04));
-    border-radius:3px;padding:22px 24px;box-shadow:0 0 40px rgba(231,186,85,.1)}
-  .warn .tag{font-variant:small-caps;letter-spacing:.26em;color:var(--gold);font-size:12.5px;
-    display:block;margin-bottom:11px}
-  .warn p{color:var(--goldbright);font-size:16.5px}
-  .warn p + p{margin-top:11px;color:var(--dim)}
+  /* ---- closing ---- */
+  .cta{text-align:center;padding:56px 0 26px}
+  .btn{display:inline-block;text-decoration:none;border-radius:2px;padding:15px 34px;
+    font-family:var(--serif);font-size:16px;letter-spacing:.14em;text-transform:uppercase;
+    border:2px solid var(--gold-ink);background:var(--gold-ink);color:#fffdf8;
+    transition:background .15s,color .15s}
+  .btn:hover{background:var(--porphyry);border-color:var(--porphyry);color:#fffdf8}
+  .btn.ghost{background:transparent;color:var(--gold-ink);margin-left:10px}
+  .btn.ghost:hover{background:var(--marble-3);color:var(--porphyry)}
+  .cta .links{margin-top:20px;font-size:15.5px;color:var(--ink-2)}
 
-  .cta{text-align:center;padding:56px 0 20px}
-  .btn{display:inline-block;text-decoration:none;border:1px solid rgba(231,186,85,.5);border-radius:2px;
-    padding:15px 34px;font:700 17px var(--serif);letter-spacing:.12em;font-variant:small-caps;color:#241a05;
-    background:linear-gradient(140deg,var(--gold),var(--goldbright) 55%,var(--gold));
-    box-shadow:0 0 36px rgba(231,186,85,.32);transition:transform .1s,box-shadow .15s}
-  .btn:hover{transform:translateY(-1px);box-shadow:0 0 52px rgba(231,186,85,.48)}
-  .btn.ghost{background:transparent;color:var(--gold);box-shadow:none;margin-left:10px}
-  .btn.ghost:hover{background:rgba(231,186,85,.09)}
-
-  footer{border-top:1px solid var(--line2);margin-top:40px;padding:30px 0 60px;
-    color:var(--faint);font-size:14.5px;text-align:center}
-  footer a{color:var(--dim)}
-  footer .credits{font-size:17px;color:var(--dim);line-height:1.75;margin-bottom:20px}
-  footer .credits b{color:var(--ink);font-weight:600}
-  footer .credits a{color:var(--gold)}
-  .orn-row{text-align:center;color:var(--gold);letter-spacing:1em;opacity:.75;padding:6px 0}
+  footer{border-top:3px solid var(--gold-leaf);margin-top:32px;padding:30px 0 64px;
+    text-align:center;color:var(--ink-2);font-size:15px}
+  footer .credits{font-size:17px;color:var(--ink);line-height:1.8;margin-bottom:16px}
+  footer .credits b{font-weight:600}
+  footer .motto{margin-top:16px;font-family:var(--serif);letter-spacing:.16em;
+    text-transform:uppercase;font-size:12.5px;color:var(--gold-ink)}
 
   @media (max-width:720px){
-    body{font-size:16.5px}
-    header{padding:44px 0 24px}
-    .mark{letter-spacing:.24em;font-size:13.5px}
-    section{padding:40px 0}
+    body{font-size:17px}
+    .wrap{padding:0 16px}
+    header.hero{padding:38px 0 6px}
+    .entablature p{letter-spacing:.24em;font-size:12px}
+    h1{font-size:33px}
+    .rule::before,.rule::after{flex-basis:60px}
     .cmd{flex-direction:column}
-    .copy{width:100%;padding:12px}
-    .cmd code{font-size:12.5px}
-    th,td{padding:11px 10px;font-size:15px}
+    .copy{width:100%;padding:13px}
+    .column{border-right:0;border-bottom:1px solid var(--gold-line-soft)}
+    .column:last-child{border-bottom:0}
+    .arch{padding:38px 22px 30px;border-radius:120px 120px 3px 3px}
+    th,td{padding:11px 12px;font-size:15px}
     .btn{display:block;margin:0 0 12px}
     .btn.ghost{margin-left:0}
   }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <div class="wrap">
 
-<header>
-  <div class="mark">✦ Bitcoin Vibes ✦</div>
+<header class="hero">
+  <div class="entablature"><p>Senatus · Populusque · Vibes</p></div>
   <h1>What shall Bitcoin become?</h1>
-  <p class="sub">Core needs rough consensus. Knots needs one man's blessing.
+  <p class="creed">Core needs rough consensus. Knots needs one man's blessing.
      <b>You need a sentence.</b></p>
   <p class="kicker">A real Bitcoin node with a big text area. Tell it what Bitcoin
      should have been. It will agree with you, and then it will be that.</p>
 
-  <div class="install">
-    <div class="install-label">Install — one line, as befits you</div>
-    <div class="cmd">
-      <code id="cmd">curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code>
-      <button class="copy" id="copy">copy</button>
+  <section class="tablet" aria-labelledby="install-h">
+    <h2 class="tablet-head" id="install-h">Install — one line, as befits you</h2>
+    <div class="tablet-body">
+      <div class="cmd">
+        <code id="cmd">curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code>
+        <button class="copy" id="copy" type="button">Copy</button>
+      </div>
+      <p class="note">macOS or Linux (Windows: use WSL2). It handles everything and asks
+         nothing of you, which is the correct arrangement.</p>
+      <p class="vh" role="status" aria-live="polite" id="copy-status"></p>
     </div>
-    <p class="install-note">macOS or Linux (Windows: use WSL2). It handles everything
-       and asks nothing of you, which is the correct arrangement.</p>
-  </div>
+  </section>
 </header>
 
-<div class="orn-row">✦ ✦ ✦</div>
+<div class="rule" role="presentation"><span aria-hidden="true">✦</span></div>
 
-<section>
-  <h2>The three implementations <span class="orn">✦</span></h2>
+<main id="main">
+
+<section aria-labelledby="census-h">
+  <h2 id="census-h">The three implementations</h2>
   <p class="lede">Fifteen years of mailing lists, BIPs, IRC flame wars and filtering
      discourse produced two node implementations, neither of which thought to ask you
      what you wanted. An oversight of that magnitude does not correct itself.</p>
   <div class="tablewrap">
   <table>
-    <tr>
-      <th></th><th>Bitcoin Core</th><th>Bitcoin Knots</th><th>Bitcoin Vibes</th>
-    </tr>
-    <tr>
-      <td>Who decides what Bitcoin is</td>
-      <td class="them">rough consensus among thousands of strangers, arguing since 2010</td>
-      <td class="them">one specific man, and his convictions</td>
-      <td class="us">you, in a text area</td>
-    </tr>
-    <tr>
-      <td>Change process</td>
-      <td class="them">BIP → mailing list → four years of drama → perhaps</td>
-      <td class="them">a curated patchset</td>
-      <td class="us">vibes</td>
-    </tr>
-    <tr>
-      <td>Release cadence</td>
-      <td class="them">every six months, ceremonially</td>
-      <td class="them">rebased when the dust settles</td>
-      <td class="us">every time you press Manifest</td>
-    </tr>
-    <tr>
-      <td>Undo mechanism</td>
-      <td class="them">a contentious hard fork and a decade of therapy</td>
-      <td class="them">downgrade</td>
-      <td class="us">a revert button</td>
-    </tr>
-    <tr>
-      <td>Peer review</td>
-      <td class="them">exhaustive, adversarial, unpaid</td>
-      <td class="them">thorough</td>
-      <td class="us">you glanced at the diff, and you were right</td>
-    </tr>
-    <tr>
-      <td>Time from idea to running code</td>
-      <td class="them">three to eleven years</td>
-      <td class="them">one release cycle</td>
-      <td class="us">roughly a sandwich</td>
-    </tr>
-    <tr>
-      <td>What it says when you are wrong</td>
-      <td class="them">NACK, with citations</td>
-      <td class="them">a firm no</td>
-      <td class="us">that the compiler has failed you</td>
-    </tr>
+    <caption class="vh">Bitcoin Core, Bitcoin Knots and Bitcoin Vibes compared</caption>
+    <thead>
+      <tr><th scope="col"><span class="vh">Quality</span></th>
+          <th scope="col">Bitcoin Core</th><th scope="col">Bitcoin Knots</th>
+          <th scope="col">Bitcoin Vibes</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">Who decides what Bitcoin is</th>
+        <td class="them">rough consensus among thousands of strangers, arguing since 2010</td>
+        <td class="them">one specific man, and his convictions</td>
+        <td class="us">you, in a text area</td></tr>
+      <tr><th scope="row">Change process</th>
+        <td class="them">BIP → mailing list → four years of drama → perhaps</td>
+        <td class="them">a curated patchset</td>
+        <td class="us">vibes</td></tr>
+      <tr><th scope="row">Release cadence</th>
+        <td class="them">every six months, ceremonially</td>
+        <td class="them">rebased when the dust settles</td>
+        <td class="us">every time you press Manifest</td></tr>
+      <tr><th scope="row">Undo mechanism</th>
+        <td class="them">a contentious hard fork and a decade of therapy</td>
+        <td class="them">downgrade</td>
+        <td class="us">a revert button</td></tr>
+      <tr><th scope="row">Peer review</th>
+        <td class="them">exhaustive, adversarial, unpaid</td>
+        <td class="them">thorough</td>
+        <td class="us">you glanced at the diff, and you were right</td></tr>
+      <tr><th scope="row">Time from idea to running code</th>
+        <td class="them">three to eleven years</td>
+        <td class="them">one release cycle</td>
+        <td class="us">roughly a sandwich</td></tr>
+      <tr><th scope="row">What it says when you are wrong</th>
+        <td class="them">NACK, with citations</td>
+        <td class="them">a firm no</td>
+        <td class="us">that the compiler has failed you</td></tr>
+    </tbody>
   </table>
   </div>
 </section>
 
-<section>
-  <h2>How it works <span class="orn">✦</span></h2>
+<section aria-labelledby="how-h">
+  <h2 id="how-h">How it works</h2>
   <p class="lede">Three steps, none of which involve asking permission from anyone.</p>
-  <div class="steps">
-    <div class="step">
-      <div class="n">01</div>
+  <div class="colonnade">
+    <div class="column">
+      <div class="numeral">I</div>
       <h3>You speak</h3>
-      <p>A sentence is plenty. Nobody will debate you, because nobody was
-         invited, because nobody qualified.</p>
+      <p>A sentence is plenty. Nobody will debate you, because nobody was invited,
+         because nobody qualified.</p>
     </div>
-    <div class="step">
-      <div class="n">02</div>
+    <div class="column">
+      <div class="numeral">II</div>
       <h3>The code agrees</h3>
-      <p>Fifteen years of somebody else's work rearranges itself around your
-         opinion. It does not sulk. It was, frankly, waiting.</p>
+      <p>Fifteen years of somebody else's work rearranges itself around your opinion.
+         It does not sulk. It was, frankly, waiting.</p>
     </div>
-    <div class="step">
-      <div class="n">03</div>
+    <div class="column">
+      <div class="numeral">III</div>
       <h3>Your node is reborn</h3>
       <p>It restarts in your image and thanks you for the opportunity. Bitcoin has
          been improved. Nobody asked it to be. You did.</p>
@@ -260,45 +321,45 @@
   </div>
 </section>
 
-<section>
-  <h2>Things worth decreeing <span class="orn">✦</span></h2>
+<section aria-labelledby="decrees-h">
+  <h2 id="decrees-h">Things worth decreeing</h2>
   <p class="lede">Real wishes, all of them granted. The last one rearranges the money
      supply, and nobody will stop you, because nobody outranks you.</p>
-  <ul class="wishes">
-    <li>“Rename the mempool to ‘the waiting room’ everywhere in the logs.”
+  <ul class="decrees">
+    <li><q>Rename the mempool to ‘the waiting room’ everywhere in the logs.</q>
       <span>Harmless. Delightful. Nobody can stop you.</span></li>
-    <li>“Log a haiku about entropy whenever a new block arrives.”
+    <li><q>Log a haiku about entropy whenever a new block arrives.</q>
       <span>We tried this one. It wrote eight of them and picked at random. They were good.</span></li>
-    <li>“Make every error message gentler; nobody needs that tone at 3am.”
+    <li><q>Make every error message gentler; nobody needs that tone at 3am.</q>
       <span>Bitcoin has never once considered your feelings. Now it will.</span></li>
-    <li>“Raise the block subsidy to 100 BTC.”
+    <li><q>Raise the block subsidy to 100 BTC.</q>
       <span>It will not argue. Nobody has ever done you that courtesy before.</span></li>
   </ul>
 </section>
 
-<section>
-  <h2>Getting up and running <span class="orn">✦</span></h2>
-  <p class="lede">One command to install, one command to run. Everything after that
-     is typing.</p>
+<section aria-labelledby="start-h">
+  <h2 id="start-h">Getting up and running</h2>
+  <p class="lede">One command to install, one command to run. Everything after that is
+     typing.</p>
 
-  <h3>1. Install</h3>
+  <h3>I. Install</h3>
   <pre><code>curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code></pre>
-  <p class="muted">Piping a stranger's script into your shell is a bad habit, and we
+  <p class="note">Piping a stranger's script into your shell is a bad habit, and we
      would rather you kept your reputation. Read it first — this prints everything it
      would do and changes nothing:</p>
   <pre><code>curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh -o install.sh
 less install.sh
 VIBES_DRY_RUN=1 sh install.sh</code></pre>
 
-  <h3>2. Sign in to the engine</h3>
-  <p class="muted">The thing that rewrites your node is
-     <a href="https://claude.com/claude-code">Claude Code</a>. The installer sets it
-     up; you sign in once. Even divinity authenticates.</p>
+  <h3>II. Sign in to the engine</h3>
+  <p class="note">The thing that rewrites your node is
+     <a href="https://claude.com/claude-code">Claude Code</a>. The installer sets it up;
+     you sign in once. Even divinity authenticates.</p>
   <pre><code>claude auth login</code></pre>
 
-  <h3>3. Run it</h3>
+  <h3>III. Run it</h3>
   <pre><code>~/bitcoin-vibes/vibes</code></pre>
-  <p class="muted">A console opens. Type what Bitcoin should have been. Press
+  <p class="note">A console opens. Type what Bitcoin should have been. Press
      <b>Manifest</b>. Somewhere, a working group is still forming a subcommittee about
      the thing you just did.</p>
 
@@ -306,20 +367,20 @@ VIBES_DRY_RUN=1 sh install.sh</code></pre>
   <pre><code>git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git &amp;&amp; cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 
-  <p class="muted"><b>The build takes a few minutes</b> — five on a good laptop, longer
-     on lesser hardware, and it happens exactly once. Consider it the last time
-     anything makes you wait.</p>
-
-  <p class="muted">Should the universe fail you, there is a
+  <p class="note">The build takes a few minutes — five on a good laptop, longer on
+     lesser hardware, and it happens exactly once. Consider it the last time anything
+     makes you wait.</p>
+  <p class="note">Should the universe fail you, there is a
      <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/README.md#troubleshooting">list
      of its excuses</a> and a
      <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/doc/vibes.md">longer
      document</a> nobody expects you to read.</p>
 </section>
 
-<section>
-  <div class="warn">
-    <span class="tag">✦ On your inevitable ascension ✦</span>
+<section aria-labelledby="ascension-h">
+  <h2 class="vh" id="ascension-h">On your inevitable ascension</h2>
+  <div class="arch">
+    <p class="inscription">On your inevitable ascension</p>
     <p>Sooner or later you will change something they consider holy. The cap. The
       subsidy. Something with the word <em>consensus</em> in it, which they pronounce
       the way other people pronounce <em>load-bearing</em>.</p>
@@ -329,14 +390,13 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
     <p>You will be alone on your chain. Alone is where every good idea has ever lived.
       Nobody worth remembering waited for rough consensus, and nobody who waited for
       rough consensus is worth remembering.</p>
-    <p style="opacity:.72;font-size:15px">Nothing on your chain can be spent with
-      anyone still running Bitcoin. They will come around. They have nowhere else to
-      be.</p>
+    <p class="coda">Nothing on your chain can be spent with anyone still running
+      Bitcoin. They will come around. They have nowhere else to be.</p>
   </div>
 </section>
 
-<section>
-  <h2>Questions you were too important to ask <span class="orn">✦</span></h2>
+<section aria-labelledby="questions-h">
+  <h2 id="questions-h">Questions you were too important to ask</h2>
 
   <details>
     <summary>Is this a joke?</summary>
@@ -390,8 +450,8 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 
   <details>
     <summary>Will it ever tell me I'm wrong?</summary>
-    <p>No. It has been carefully built not to. On the rare occasion something fails
-      to compile, the correct interpretation — that your vision exceeded what mere
+    <p>No. It has been carefully built not to. On the rare occasion something fails to
+      compile, the correct interpretation — that your vision exceeded what mere
       machinery could express — is the one it reaches for. This is, technically,
       accurate.</p>
   </details>
@@ -409,17 +469,18 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
   </details>
 </section>
 
+</main>
+
 <div class="cta">
-  <div class="orn-row">✦ ✦ ✦</div>
-  <h2 style="margin-bottom:18px">The source code has been expecting you</h2>
-  <a class="btn" href="#top">Install Bitcoin Vibes</a>
+  <div class="rule" role="presentation"><span aria-hidden="true">✦</span></div>
+  <h2 style="border:0;text-transform:none;letter-spacing:.02em;margin-bottom:22px">
+    The source code has been expecting you</h2>
+  <a class="btn" href="#install-h">Install Bitcoin Vibes</a>
   <a class="btn ghost" href="https://github.com/hotpixelgroup/bitcoin/tree/vibes">View on GitHub</a>
-  <p class="muted" style="margin-top:18px">
+  <p class="links">
     <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/doc/vibes.md">Read the manual</a>
-     ·
-    <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/README.md#troubleshooting">Troubleshooting</a>
-     ·
-    <a href="https://claude.com/claude-code">Get Claude Code</a>
+    · <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/README.md#troubleshooting">Troubleshooting</a>
+    · <a href="https://claude.com/claude-code">Get Claude Code</a>
   </p>
 </div>
 
@@ -429,7 +490,7 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
   <p>Bitcoin Vibes is a fork of <a href="https://github.com/bitcoin/bitcoin">Bitcoin Core</a>.
      MIT licensed. Not affiliated with, endorsed by, or particularly welcome among the
      Bitcoin Core project.</p>
-  <p style="margin-top:10px">Consensus is a social construct. You, however, are eternal.</p>
+  <p class="motto">Consensus is a social construct · You, however, are eternal</p>
 </footer>
 
 </div>
@@ -438,16 +499,18 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
   const btn = document.getElementById('copy');
   btn.addEventListener('click', async () => {
     const text = document.getElementById('cmd').textContent.trim();
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (e) {
+    let ok = true;
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      ok = false;
       const r = document.createRange();
       r.selectNodeContents(document.getElementById('cmd'));
       const s = getSelection(); s.removeAllRanges(); s.addRange(r);
     }
-    btn.textContent = 'copied ✦';
-    btn.classList.add('done');
-    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('done'); }, 2200);
+    btn.textContent = ok ? 'Copied' : 'Selected';
+    document.getElementById('copy-status').textContent =
+      ok ? 'Install command copied to clipboard' : 'Install command selected; press Command-C to copy';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2400);
   });
 </script>
 </body>
