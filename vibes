@@ -1,0 +1,21 @@
+#!/bin/sh
+# Bitcoin Vibes — one command to rule the node.
+#
+#   ./vibes                 regtest, your own private Bitcoin (recommended)
+#   ./vibes --chain=main    the real network, with real consequences
+#
+# Builds the node if it isn't built, wakes it, and opens the Vibe Console.
+set -eu
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# -u keeps progress visible when the output is piped or redirected to a log.
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1; then
+    exec "$py" -u "$here/contrib/vibes/bitcoin-vibes" "$@"
+  fi
+done
+
+echo "Bitcoin Vibes needs Python 3 (it ships with macOS and every Linux)." >&2
+echo "Install it, then run this again." >&2
+exit 1

@@ -1,0 +1,24 @@
+# Bitcoin Vibes, zero host dependencies.
+#
+#   docker compose -f contrib/vibes/docker-compose.yml up --build
+#
+# Then open the http://127.0.0.1:21212/?key=… link printed in the logs.
+services:
+  vibes:
+    build:
+      context: ../..
+      dockerfile: contrib/vibes/Dockerfile
+    # Loopback-only: the console governs a node and must never face the network.
+    ports:
+      - "127.0.0.1:21212:21212"
+    volumes:
+      # Your chain data and your decrees, kept across container rebuilds.
+      - vibes-data:/vibes/.vibes
+      # Your Claude Code login, so you sign in once on the host and the
+      # container inherits it. Create it first: mkdir -p ~/.claude
+      - ${HOME}/.claude:/root/.claude
+    stdin_open: true
+    tty: true
+
+volumes:
+  vibes-data:

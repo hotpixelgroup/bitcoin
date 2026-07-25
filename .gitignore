@@ -27,3 +27,6 @@ target/
 /guix-build-*
 
 /ci/scratch/
+
+# Bitcoin Vibes console state
+/.vibes/

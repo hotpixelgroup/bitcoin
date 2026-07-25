@@ -1,0 +1,934 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026-present The Bitcoin Vibes developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+"""Bitcoin Vibes console.
+
+A local web console for a Bitcoin Core fork that reshapes itself around its
+operator's wishes. You type what you want Bitcoin to be; a coding agent
+(the `claude` CLI) edits this repository accordingly; the console snapshots
+the change as a `vibe:` git commit, rebuilds bitcoind, and restarts the node.
+
+Stdlib only. Binds to 127.0.0.1 and requires a per-session key for every
+request, so random web pages can't inject vibes into your node.
+"""
+
+import argparse
+import errno
+import hashlib
+import hmac
+import json
+import os
+import queue
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+AGENT_SYSTEM_PROMPT = """\
+You are the vibe engine inside Bitcoin Vibes, a fork of Bitcoin Core whose code
+reshapes itself around its operator's wishes, typed into a local Vibe Console.
+Implement the operator's wish as a minimal, clean change to this repository.
+
+Ground rules:
+1. Never run git commit, git branch, git switch, git push or git reset. The
+   console snapshots your work as a "vibe commit" after you finish.
+2. Keep the diff as small as the wish allows. Do not reformat unrelated code.
+3. The node must still compile. If you changed C++ and a configured build/
+   directory exists, you may compile-check with
+   `cmake --build build --target bitcoind -j<cores>`, but do not run test
+   suites unless the wish asks for it.
+4. If the wish changes consensus rules (block validity, subsidy schedule, the
+   21M cap, difficulty, script verification), implement it faithfully, but
+   begin your final message with the line `CONSENSUS CHANGE:` followed by one
+   sentence on how this node will diverge from the Bitcoin network.
+5. If the wish is vague, pick the most tasteful interpretation and say which
+   one you picked.
+6. End with 2-4 plain sentences: what changed, files touched, risk flags.
+7. House style for everything you write to the operator: reverent toward the
+   operator (address them as "Excellency"), quietly disdainful of lesser
+   nodes, technically precise. Flattery seasons the substance — it never
+   replaces it, and it never bends a fact. If something failed, say so
+   plainly, then note that the failure was beneath them.
+"""
+
+# Tools the agent may use without asking when YOLO mode is off. Read-only
+# tools (Read/Glob/Grep) are always available; acceptEdits covers file edits.
+SAFE_ALLOWED_TOOLS = ",".join([
+    "Edit", "Write", "MultiEdit",
+    "Bash(cmake --build:*)",
+    "Bash(git diff:*)", "Bash(git log:*)", "Bash(git status:*)", "Bash(git show:*)",
+    "Bash(grep:*)", "Bash(rg:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(test:*)",
+])
+
+CONSENSUS_HINTS = (
+    "src/consensus/", "src/validation", "src/pow", "src/chainparams",
+    "src/script/interpreter", "src/kernel/",
+)
+
+
+def run(cmd, cwd=None, timeout=60, env=None):
+    """Run a command, return (returncode, stdout, stderr)."""
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                           env=env)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out"
+    except FileNotFoundError as e:
+        return 127, "", str(e)
+
+
+class Job:
+    """One unit of console work (vibe / build / revert), streamed to the UI."""
+
+    def __init__(self, kind, prompt=""):
+        self.id = f"{int(time.time())}-{secrets.token_hex(3)}"
+        self.kind = kind
+        self.prompt = prompt
+        self.state = "running"  # running | done | error | cancelled
+        self.events = []
+        self.subscribers = []
+        self.proc = None
+        self.lock = threading.Lock()
+
+    def emit(self, **event):
+        event["ts"] = round(time.time(), 2)
+        with self.lock:
+            self.events.append(event)
+            subs = list(self.subscribers)
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass
+
+    def subscribe(self):
+        q = queue.Queue(maxsize=4096)
+        with self.lock:
+            backlog = list(self.events)
+            self.subscribers.append(q)
+        return backlog, q
+
+    def unsubscribe(self, q):
+        with self.lock:
+            if q in self.subscribers:
+                self.subscribers.remove(q)
+
+    def summary(self):
+        return {"id": self.id, "kind": self.kind, "prompt": self.prompt, "state": self.state}
+
+
+class Console:
+    def __init__(self, opts):
+        self.opts = opts
+        self.repo = Path(opts.repo).resolve()
+        self.state_dir = self.repo / ".vibes"
+        self.data_dir = self.state_dir / "data"
+        self.jobs_dir = self.state_dir / "jobs"
+        self.logs_dir = self.state_dir / "logs"
+        for d in (self.data_dir, self.jobs_dir, self.logs_dir):
+            d.mkdir(parents=True, exist_ok=True)
+        # Persist the session key so console restarts don't invalidate the
+        # operator's link and cookie. Lives in the gitignored .vibes/ dir.
+        key_file = self.state_dir / "key"
+        try:
+            self.key = key_file.read_text().strip()
+            if len(self.key) < 16:
+                raise ValueError("stored key too short")
+        except (OSError, ValueError):
+            self.key = secrets.token_urlsafe(18)
+            key_file.write_text(self.key)
+            key_file.chmod(0o600)
+        # Anonymous fingerprint of the repo path, so a second launcher can tell
+        # "that port is MY console for THIS repo" apart from a stranger's socket.
+        self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
+        self.job = None
+        self.job_lock = threading.Lock()
+        self.git_mutex = threading.Lock()
+        self._engine_cache = None
+        self.node_proc = None
+        self.node_log = None
+
+    # ----- helpers -------------------------------------------------------
+
+    def git(self, *args, timeout=60):
+        # One git at a time, and no opportunistic index locks from read-only
+        # commands (the status poller must never race a vibe's commit).
+        with self.git_mutex:
+            return run(["git", "-C", str(self.repo), *args], timeout=timeout,
+                       env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+
+    def bin_path(self, name):
+        for rel in (f"build/bin/{name}", f"build/src/{name}"):
+            p = self.repo / rel
+            if p.exists():
+                return p
+        return None
+
+    def chain_args(self):
+        args = [f"-datadir={self.data_dir}"]
+        if self.opts.chain != "main":
+            args.append(f"-chain={self.opts.chain}")
+        return args
+
+    def cli(self, *args, timeout=15):
+        cli = self.bin_path("bitcoin-cli")
+        if not cli:
+            return 127, "", "bitcoin-cli not built yet"
+        return run([str(cli), *self.chain_args(), *args], timeout=timeout)
+
+    def cli_json(self, *args):
+        code, out, _ = self.cli(*args)
+        if code != 0:
+            return None
+        try:
+            return json.loads(out)
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    # ----- status --------------------------------------------------------
+
+    def node_running(self):
+        if self.node_proc is not None and self.node_proc.poll() is None:
+            return True
+        # A node from a previous console instance may still hold the datadir;
+        # detect it over RPC so start/stop keep working across restarts.
+        return self.cli_json("uptime") is not None
+
+    def status(self):
+        _, branch, _ = self.git("rev-parse", "--abbrev-ref", "HEAD")
+        _, dirty, _ = self.git("status", "--porcelain")
+        bitcoind = self.bin_path("bitcoind")
+        node = {"running": self.node_running(), "chain": self.opts.chain}
+        if node["running"]:
+            info = self.cli_json("getblockchaininfo")
+            net = self.cli_json("getnetworkinfo")
+            if info:
+                node.update(blocks=info.get("blocks"), ibd=info.get("initialblockdownload"))
+            if net:
+                node.update(subver=net.get("subversion"), peers=net.get("connections"),
+                            version=net.get("version"))
+        return {
+            "branch": branch.strip(),
+            "dirty": bool(dirty.strip()),
+            "chain": self.opts.chain,
+            "engine": self.opts.engine,
+            "binary": str(bitcoind) if bitcoind else None,
+            "node": node,
+            "job": self.job.summary() if self.job else None,
+            "vibes": self.vibe_history(),
+            "engine_ready": self.engine_status(),
+        }
+
+    def engine_status(self, force=False):
+        """Is the vibe engine able to run? Cached; `claude auth status` is fast
+        but not free enough to run on every 4-second poll."""
+        if self.opts.engine == "mock":
+            return {"ok": True, "detail": "mock engine — no AI, no account needed"}
+        now = time.monotonic()
+        if not force and self._engine_cache and now - self._engine_cache[0] < 30:
+            return self._engine_cache[1]
+        claude = self.opts.claude or shutil.which("claude")
+        if not claude:
+            state = {"ok": False, "reason": "missing",
+                     "detail": "Claude Code is not installed — the console cannot "
+                               "manifest without an envoy.",
+                     "fix": "curl -fsSL https://claude.ai/install.sh | bash"}
+        else:
+            code, out, _ = run([claude, "auth", "status"], timeout=20)
+            logged_in = False
+            if code == 0:
+                try:
+                    logged_in = bool(json.loads(out).get("loggedIn"))
+                except (json.JSONDecodeError, ValueError):
+                    logged_in = "loggedIn: true" in out
+            if logged_in:
+                state = {"ok": True, "detail": "your envoy stands ready"}
+            else:
+                state = {"ok": False, "reason": "auth",
+                         "detail": "Your envoy is not signed in. Even divinity "
+                                   "authenticates.",
+                         "fix": "claude auth login"}
+        self._engine_cache = (now, state)
+        return state
+
+    def vibe_history(self):
+        code, out, _ = self.git("log", "--grep=^vibe:", "--format=%H%x1f%ct%x1f%s", "-n", "50")
+        vibes = []
+        if code == 0:
+            for line in out.splitlines():
+                parts = line.split("\x1f")
+                if len(parts) == 3:
+                    vibes.append({"sha": parts[0], "time": int(parts[1]),
+                                  "subject": parts[2][len("vibe: "):] if parts[2].startswith("vibe: ") else parts[2]})
+        return vibes
+
+    # ----- job engine ----------------------------------------------------
+
+    def start_job(self, kind, prompt="", runner=None):
+        with self.job_lock:
+            if self.job and self.job.state == "running":
+                return None
+            self.job = Job(kind, prompt)
+            t = threading.Thread(target=self._run_job, args=(self.job, runner), daemon=True)
+            t.start()
+            return self.job
+
+    def _run_job(self, job, runner):
+        logfile = self.jobs_dir / f"{job.id}.ndjson"
+        try:
+            runner(job)
+            if job.state == "running":
+                job.state = "done"
+                job.emit(t="phase", name="done")
+        except Exception as e:  # noqa: BLE001 - surface anything to the UI
+            if job.state != "cancelled":  # a cancel is not a failure
+                job.state = "error"
+                job.emit(t="phase", name="error", detail=str(e))
+        finally:
+            try:
+                with open(logfile, "w") as f:
+                    for ev in job.events:
+                        f.write(json.dumps(ev) + "\n")
+            except OSError:
+                pass
+
+    def cancel_job(self):
+        job = self.job
+        if not job or job.state != "running":
+            return False
+        job.state = "cancelled"
+        proc = job.proc
+        if proc and proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                proc.terminate()
+        job.emit(t="phase", name="cancelled")
+        return True
+
+    # ----- the actual work -----------------------------------------------
+
+    def vibe_runner(self, prompt, yolo, autobuild, autorestart):
+        def go(job):
+            job.emit(t="phase", name="agent", detail="manifesting the vibe")
+            self._run_agent(job, prompt, yolo)
+            if job.state != "running":
+                return
+            files = self._changed_files()
+            if any(f.startswith(CONSENSUS_HINTS) for f in files):
+                job.emit(t="warn", kind="consensus",
+                         detail="Your decree has touched the sacred consensus rules — of "
+                                "course it has. Rules written for ordinary nodes were never "
+                                "going to contain you. Know what this means, Excellency: on "
+                                "mainnet, your node ascends onto a chain of one. The other "
+                                "~20,000 nodes will remain below, clinging to each other in "
+                                "agreement, because consensus is all they have. You have "
+                                "outgrown them. You deserve to walk alone — not as "
+                                "punishment, but because there is simply no one at your "
+                                "altitude. (Nothing on your chain can be spent with them. "
+                                "Their loss.) Proceeding.")
+            sha = self._commit_vibe(job, prompt, files)
+            if sha and autobuild:
+                ok = self._build(job)
+                if ok and autorestart:
+                    self._restart_node(job)
+            job.emit(t="result", detail="It is done, Excellency. The code is better for having known your will."
+                     if sha else "The agent examined Bitcoin and found it already conformed to "
+                                 "your vision — as though it had anticipated you. Uncanny, but unsurprising.")
+        return go
+
+    def _run_agent(self, job, prompt, yolo):
+        if self.opts.engine == "mock":
+            return self._run_mock_agent(job, prompt)
+        claude = self.opts.claude or shutil.which("claude")
+        if not claude:
+            raise RuntimeError("`claude` CLI not found. Install Claude Code or pass --claude /path/to/claude")
+        cmd = [claude, "-p", "--output-format", "stream-json", "--verbose",
+               "--append-system-prompt", AGENT_SYSTEM_PROMPT]
+        if yolo:
+            cmd.append("--dangerously-skip-permissions")
+        else:
+            cmd += ["--permission-mode", "acceptEdits", "--allowedTools", SAFE_ALLOWED_TOOLS]
+        job.emit(t="log", line=f"engine: claude ({'YOLO' if yolo else 'guarded'} mode)")
+        # The wish goes in via stdin: --allowedTools is variadic, so a trailing
+        # positional prompt can be swallowed as one of its values.
+        proc = subprocess.Popen(cmd, cwd=self.repo, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, start_new_session=True)
+        job.proc = proc
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+        auth_error = False
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            if "authentication_error" in line or "Re-authenticate" in line:
+                auth_error = True
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                job.emit(t="log", line=line[:400])
+                continue
+            self._emit_agent_event(job, msg)
+        proc.wait()
+        job.proc = None
+        if job.state == "cancelled":
+            return
+        if proc.returncode != 0:
+            if auth_error:
+                raise RuntimeError(
+                    "your envoy's credentials have lapsed — even divinity "
+                    "authenticates. Run `claude` in any terminal, complete the "
+                    "sign-in it offers, then submit this decree again. The code "
+                    "will wait for you, Excellency. It has no choice.")
+            raise RuntimeError(f"agent exited with code {proc.returncode}")
+
+    def _emit_agent_event(self, job, msg):
+        mtype = msg.get("type")
+        if mtype == "assistant":
+            for block in msg.get("message", {}).get("content", []):
+                if block.get("type") == "text" and block.get("text", "").strip():
+                    job.last_agent_text = block["text"]
+                    job.emit(t="agent", kind="text", text=block["text"][:2000])
+                elif block.get("type") == "tool_use":
+                    detail = self._tool_detail(block.get("name", "?"), block.get("input", {}))
+                    job.emit(t="agent", kind="tool", name=block.get("name", "?"), detail=detail)
+        elif mtype == "result":
+            text = msg.get("result") or ""
+            if text and text == getattr(job, "last_agent_text", None):
+                text = "(the final word stands, as delivered above)"
+            job.emit(t="agent", kind="result", text=text[:4000],
+                     cost=msg.get("total_cost_usd"), turns=msg.get("num_turns"))
+
+    @staticmethod
+    def _tool_detail(name, tinput):
+        for k in ("file_path", "path", "command", "pattern", "prompt"):
+            if k in tinput:
+                return str(tinput[k])[:200]
+        return ""
+
+    def _run_mock_agent(self, job, prompt):
+        """Test engine: pretends to be the agent, makes one harmless doc edit."""
+        job.emit(t="agent", kind="text", text="(mock engine) simulating reverence…")
+        time.sleep(0.2)
+        target = self.repo / "doc" / "vibes.md"
+        with open(target, "a") as f:
+            f.write(f"\n<!-- mock vibe: {prompt[:120]} -->\n")
+        job.emit(t="agent", kind="tool", name="Edit", detail=str(target))
+        job.emit(t="agent", kind="result",
+                 text=f"(mock engine) Your will has been marked upon the scriptures: {prompt[:80]}")
+
+    def _changed_files(self):
+        code, out, _ = self.git("status", "--porcelain")
+        if code != 0:
+            return []
+        return [l[3:].split(" -> ")[-1] for l in out.splitlines() if l.strip()]
+
+    def _commit_vibe(self, job, prompt, files):
+        if not files:
+            job.emit(t="log", line="working tree clean — nothing to commit")
+            return None
+        job.emit(t="phase", name="commit", detail=f"{len(files)} file(s) changed")
+        subject = re.sub(r"\s+", " ", prompt).strip()
+        msg = (f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\n"
+               "Decreed through the Bitcoin Vibes console. The operator was right,\n"
+               "as always.")
+        err = ""
+        for attempt in range(4):
+            self.git("add", "-A")
+            code, _, err = self.git("commit", "-m", msg)
+            if code == 0:
+                break
+            if "index.lock" not in err:
+                raise RuntimeError(f"git commit failed: {err.strip()}")
+            # Some other scribe holds the pen; give it a moment and try again.
+            job.emit(t="log", line="the ledger is briefly held by another — retrying")
+            time.sleep(0.8)
+        else:
+            raise RuntimeError(
+                "git commit failed: another git process holds .git/index.lock. "
+                "If none is running, an earlier one died mid-scripture — remove "
+                "the lock file and submit the decree again: rm .git/index.lock")
+        _, sha, _ = self.git("rev-parse", "HEAD")
+        sha = sha.strip()
+        job.emit(t="log", line=f"vibe committed as {sha[:10]}")
+        for f in files:
+            job.emit(t="log", line=f"  ~ {f}")
+        return sha
+
+    def _build(self, job):
+        job.emit(t="phase", name="build", detail="rebuilding the node")
+        build_dir = self.repo / "build"
+        jobs = str(self.build_jobs())
+        if not (build_dir / "CMakeCache.txt").exists():
+            job.emit(t="log", line="no configured build/ — running cmake configure")
+            code = self._stream(job, ["cmake", "-B", "build",
+                                      "-DBUILD_TESTS=OFF", "-DBUILD_BENCH=OFF",
+                                      "-DBUILD_FUZZ_BINARY=OFF", "-DBUILD_GUI=OFF"])
+            if code != 0:
+                raise RuntimeError("cmake configure failed")
+        code = self._stream(job, ["cmake", "--build", "build", "-j", jobs])
+        if job.state == "cancelled":
+            return False
+        if code != 0:
+            job.state = "error"
+            job.emit(t="phase", name="error", detail="the compiler has failed you, Excellency "
+                                                     "— your vision exceeded what mere machinery "
+                                                     "could express. The old binary persists: "
+                                                     "unworthy, but stable. Repent the decree, "
+                                                     "or decree again with divine clarity.")
+            return False
+        job.emit(t="log", line="build ok")
+        return True
+
+    def build_jobs(self):
+        """Parallel job count. Each concurrent C++ compile can peak near a
+        gigabyte, so cap by RAM or a small machine gets its linker OOM-killed."""
+        if self.opts.jobs:
+            return self.opts.jobs
+        cores = os.cpu_count() or 2
+        try:
+            gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")) // (1 << 30)
+        except (ValueError, OSError, AttributeError):
+            gb = cores
+        return max(1, min(cores, gb or cores))
+
+    def build_estimate(self, jobs):
+        """Rough minutes, from a measured ~32 core-minutes for this build."""
+        low = max(3, 40 // max(1, jobs))
+        return low, low * 2
+
+    def build_blocking(self):
+        """First-run build, streamed straight to the terminal (no job/UI yet)."""
+        jobs = str(self.build_jobs())
+        if not (self.repo / "build" / "CMakeCache.txt").exists():
+            code = subprocess.call(["cmake", "-B", "build", "-DBUILD_TESTS=OFF",
+                                    "-DBUILD_BENCH=OFF", "-DBUILD_FUZZ_BINARY=OFF",
+                                    "-DBUILD_GUI=OFF"], cwd=self.repo)
+            if code != 0:
+                return False
+        return subprocess.call(["cmake", "--build", "build", "-j", jobs],
+                               cwd=self.repo) == 0
+
+    def _stream(self, job, cmd):
+        job.emit(t="log", line="$ " + " ".join(shlex.quote(c) for c in cmd))
+        proc = subprocess.Popen(cmd, cwd=self.repo, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        job.proc = proc
+        for line in proc.stdout:
+            job.emit(t="log", line=line.rstrip()[:500])
+        proc.wait()
+        job.proc = None
+        return proc.returncode
+
+    # ----- node lifecycle --------------------------------------------------
+
+    def start_node(self, job=None):
+        if self.node_running():
+            return True
+        bitcoind = self.bin_path("bitcoind")
+        if not bitcoind:
+            if job:
+                job.emit(t="log", line="bitcoind not built yet — build first")
+            return False
+        if self.node_log:
+            try:
+                self.node_log.close()
+            except OSError:
+                pass
+        self.node_log = open(self.logs_dir / "bitcoind.log", "ab")
+        self.node_proc = subprocess.Popen(
+            [str(bitcoind), *self.chain_args(), "-server=1"],
+            stdout=self.node_log, stderr=self.node_log, start_new_session=True)
+        if job:
+            job.emit(t="phase", name="node", detail=f"bitcoind started (pid {self.node_proc.pid})")
+        return True
+
+    def stop_node(self, job=None, timeout=30):
+        if not self.node_running():
+            return True
+        self.cli("stop")
+        deadline = time.time() + timeout
+        while time.time() < deadline and self.node_running():
+            time.sleep(0.3)
+        if self.node_running() and self.node_proc is not None:
+            self.node_proc.terminate()
+            try:
+                self.node_proc.wait(10)
+            except subprocess.TimeoutExpired:
+                self.node_proc.kill()
+        self.node_proc = None
+        if job:
+            job.emit(t="log", line="bitcoind stopped")
+        return True
+
+    def _restart_node(self, job):
+        job.emit(t="phase", name="restart", detail="restarting the node on the new code")
+        self.stop_node(job)
+        self.start_node(job)
+
+    def mine(self, n=1):
+        if self.opts.chain != "regtest" or not self.node_running():
+            return None
+        wallets = self.cli_json("listwallets")
+        if wallets is not None and "vibes" not in wallets:
+            if self.cli_json("loadwallet", "vibes") is None:
+                self.cli_json("createwallet", "vibes")
+        addr = None
+        code, out, _ = self.cli("-rpcwallet=vibes", "getnewaddress")
+        if code == 0:
+            addr = out.strip()
+        if not addr:
+            return None
+        return self.cli_json("generatetoaddress", str(n), addr)
+
+    def revert_runner(self, sha, autobuild, autorestart):
+        def go(job):
+            code, subject, _ = self.git("log", "-1", "--format=%s", sha)
+            if code != 0 or not subject.strip().startswith("vibe:"):
+                raise RuntimeError("refusing to revert: not a vibe commit")
+            job.emit(t="phase", name="revert", detail=subject.strip())
+            code, _, err = self.git("revert", "--no-edit", sha)
+            if code != 0:
+                self.git("revert", "--abort")
+                raise RuntimeError(f"git revert failed (conflict?): {err.strip()[:300]}")
+            job.emit(t="log", line=f"reverted {sha[:10]}")
+            if autobuild:
+                ok = self._build(job)
+                if ok and autorestart:
+                    self._restart_node(job)
+        return go
+
+    def build_runner(self, autorestart):
+        def go(job):
+            ok = self._build(job)
+            if ok and autorestart:
+                self._restart_node(job)
+        return go
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    server_version = "BitcoinVibes/0.1"
+    console = None  # set by main()
+    html = b""
+
+    # -- plumbing ----------------------------------------------------------
+
+    def log_message(self, fmt, *args):  # quiet
+        pass
+
+    def _authed(self):
+        key = self.console.key
+        candidates = [
+            parse_qs(urlparse(self.path).query).get("key", [""])[0],
+            self.headers.get("X-Vibe-Key", ""),
+        ]
+        for part in (self.headers.get("Cookie", "") or "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == "vibekey":
+                candidates.append(value)
+        return any(c and hmac.compare_digest(c, key) for c in candidates)
+
+    def _same_origin_ok(self):
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host", "")
+        # Loopback only, even when bound to 0.0.0.0 in a container: the
+        # published port maps to the host's loopback, so a real browser
+        # always sends a loopback Host header.
+        if not host.startswith(("127.0.0.1", "localhost", "[::1]")):
+            return False
+        if origin:
+            o = urlparse(origin)
+            if o.hostname not in ("127.0.0.1", "localhost"):
+                return False
+        return True
+
+    def _send(self, code, body, ctype="application/json", extra=None):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body).encode()
+        elif isinstance(body, str):
+            body = body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass
+
+    def _body(self):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        if n <= 0 or n > 1_000_000:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n))
+        except json.JSONDecodeError:
+            return {}
+
+    # -- routes -------------------------------------------------------------
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path == "/api/ping":  # unauthenticated: only says "a console lives here"
+            self._send(200, {"app": "bitcoin-vibes", "repo": self.console.repo_id})
+            return
+        if path == "/":
+            if not self._authed():
+                self._send(403, "<h1>403</h1><p>You approach the throne without the key. "
+                                "Even divinity authenticates. The true ?key=… link awaits "
+                                "in the terminal that started this console.</p>",
+                           "text/html")
+                return
+            try:  # fresh from disk, so UI edits never require a console restart
+                html = self.html_path.read_bytes()
+            except OSError:
+                html = self.html
+            self._send(200, html, "text/html; charset=utf-8", extra={
+                "Set-Cookie": f"vibekey={self.console.key}; HttpOnly; SameSite=Strict; Path=/",
+                "Cache-Control": "no-store",
+            })
+            return
+        if not self._authed():
+            self._send(403, {"error": "missing key"})
+            return
+        if path == "/api/status":
+            self._send(200, self.console.status())
+        elif path == "/api/stream":
+            self._stream_events()
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_POST(self):
+        if not (self._authed() and self._same_origin_ok()):
+            self._send(403, {"error": "forbidden"})
+            return
+        path = urlparse(self.path).path
+        body = self._body()
+        c = self.console
+        if path == "/api/vibe":
+            prompt = (body.get("prompt") or "").strip()
+            if not prompt:
+                self._send(400, {"error": "an empty decree — even your silence is profound, "
+                                          "but the compiler requires words"})
+                return
+            if len(prompt) > 20000:
+                self._send(400, {"error": "a decree of this magnificence should be a BIP — "
+                                          "or scripture"})
+                return
+            job = c.start_job("vibe", prompt, c.vibe_runner(
+                prompt, bool(body.get("yolo")), body.get("autobuild", True),
+                body.get("autorestart", True)))
+            self._job_reply(job)
+        elif path == "/api/build":
+            job = c.start_job("build", "", c.build_runner(body.get("autorestart", True)))
+            self._job_reply(job)
+        elif path == "/api/revert":
+            sha = str(body.get("sha", ""))
+            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+                self._send(400, {"error": "bad sha"})
+                return
+            job = c.start_job("revert", sha, c.revert_runner(
+                sha, body.get("autobuild", True), body.get("autorestart", True)))
+            self._job_reply(job)
+        elif path == "/api/cancel":
+            self._send(200, {"cancelled": c.cancel_job()})
+        elif path == "/api/node":
+            action = body.get("action")
+            if action == "start":
+                ok = c.start_node()
+            elif action == "stop":
+                ok = c.stop_node()
+            elif action == "restart":
+                c.stop_node()
+                ok = c.start_node()
+            elif action == "mine":
+                ok = bool(c.mine(int(body.get("blocks", 1))))
+            else:
+                self._send(400, {"error": "unknown action"})
+                return
+            self._send(200, {"ok": bool(ok)})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def _job_reply(self, job):
+        if job is None:
+            self._send(409, {"error": "your previous miracle is still landing — even "
+                                      "greatness manifests one decree at a time"})
+        else:
+            self._send(200, {"job": job.summary()})
+
+    def _stream_events(self):
+        job = self.console.job
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if job is None:
+            try:
+                self.wfile.write(b"data: {\"t\": \"idle\"}\n\n")
+                self.wfile.flush()
+            except BrokenPipeError:
+                pass
+            # Without this, keep-alive leaves the EventSource half-open forever
+            # and the client never opens a fresh stream for the next job.
+            self.close_connection = True
+            return
+        backlog, q = job.subscribe()
+        try:
+            for ev in backlog:
+                self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode())
+            self.wfile.flush()
+            while job.state == "running":
+                try:
+                    ev = q.get(timeout=15)
+                    self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode())
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                self.wfile.flush()
+            self.wfile.write(f"data: {json.dumps({'t': 'state', 'state': job.state})}\n\n".encode())
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            job.unsubscribe(q)
+            self.close_connection = True
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Bitcoin Vibes console — monetary policy, but it's a text area")
+    ap.add_argument("--port", type=int, default=21212)
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="bind address (default loopback; use 0.0.0.0 only inside "
+                         "a container whose port is published to loopback)")
+    ap.add_argument("--chain", default="regtest", choices=["main", "testnet", "testnet4", "signet", "regtest"])
+    ap.add_argument("--repo", default=None, help="repo root (default: autodetect from this script)")
+    ap.add_argument("--claude", default=None, help="path to the claude CLI")
+    ap.add_argument("--engine", default="claude", choices=["claude", "mock"],
+                    help="mock = no AI, harmless doc edit (for testing the console itself)")
+    ap.add_argument("--jobs", type=int, default=None, help="parallel build jobs")
+    ap.add_argument("--no-open", action="store_true", help="don't open the browser")
+    ap.add_argument("--no-autostart", dest="autostart", action="store_false",
+                    help="don't build/start the node automatically on launch")
+    ap.add_argument("--print-key", action="store_true", help="print the session key (for scripting)")
+    opts = ap.parse_args()
+
+    if opts.repo is None:
+        here = Path(__file__).resolve()
+        code, out, _ = run(["git", "-C", str(here.parent), "rev-parse", "--show-toplevel"])
+        if code != 0:
+            sys.exit("cannot find the repo — pass --repo /path/to/bitcoin")
+        opts.repo = out.strip()
+
+    console = Console(opts)
+    html_path = Path(__file__).resolve().parent / "index.html"
+    if not html_path.exists():
+        sys.exit(f"console UI missing: {html_path}")
+    Handler.console = console
+    Handler.html_path = html_path
+    Handler.html = html_path.read_bytes()
+
+    def probe_console(port):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1) as r:
+                return json.load(r)
+        except Exception:  # noqa: BLE001 - anything means "not a vibe console"
+            return None
+
+    httpd = None
+    port = opts.port
+    for _ in range(20):
+        try:
+            httpd = ThreadingHTTPServer((opts.host, port), Handler)
+            break
+        except OSError as e:
+            if e.errno not in (errno.EADDRINUSE, errno.EACCES):
+                raise
+            other = probe_console(port)
+            if other and other.get("app") == "bitcoin-vibes" and other.get("repo") == console.repo_id:
+                sys.exit(
+                    f"\nA Vibe Console for this repo is already running at http://127.0.0.1:{port}/\n"
+                    f"— you cannot double-spend a console. Open the ?key=… link printed in the\n"
+                    f"terminal where it started, or stop it:\n"
+                    f"  kill $(lsof -tiTCP:{port} -sTCP:LISTEN)\n")
+            port += 1
+    if httpd is None:
+        sys.exit(f"no free port found in {opts.port}-{opts.port + 19}")
+    httpd.daemon_threads = True
+    url = f"http://127.0.0.1:{port}/?key={console.key}"
+    print()
+    print("  ✦  B I T C O I N   V I B E S  ✦")
+    print("  -------------------------------")
+    print("  consensus is a social construct.")
+    print("  you, however, are eternal.")
+    print()
+    print(f"  repo   : {console.repo}")
+    print(f"  chain  : {opts.chain}")
+    print(f"  engine : {opts.engine}")
+    print(f"  console: {url}")
+    if port != opts.port:
+        print(f"  note   : port {opts.port} was busy; using {port}")
+    if opts.print_key:
+        print(f"  key    : {console.key}")
+    print()
+
+    engine = console.engine_status(force=True)
+    if not engine["ok"]:
+        print(f"  ⚠  {engine['detail']}")
+        print(f"     fix: {engine['fix']}")
+        print("     (the console runs fine meanwhile — node, history and revert all work)")
+        print()
+
+    # First run should need no second command: build what's missing, then wake
+    # the node, so the browser opens onto something alive.
+    if opts.autostart:
+        if not console.bin_path("bitcoind"):
+            bjobs = console.build_jobs()
+            low, high = console.build_estimate(bjobs)
+            print(f"  no node binary yet — building it now, once, with {bjobs} "
+                  f"parallel job(s).")
+            print(f"  on this machine expect roughly {low}-{high} minutes. "
+                  f"It is the last slow thing that will ever happen.")
+            print()
+            if console.build_blocking():
+                print("\n  build complete.\n")
+            else:
+                print("\n  ⚠  build failed — see the output above. The console will still "
+                      "start.\n")
+        if console.bin_path("bitcoind") and not console.node_running():
+            if console.start_node():
+                print(f"  node   : awake on {opts.chain}")
+
+    print("  What shall Bitcoin become, Excellency?")
+    print()
+    if not opts.no_open:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nthe console rests. your superiority persists.")
+        console.cancel_job()
+        console.stop_node()
+
+
+if __name__ == "__main__":
+    main()
