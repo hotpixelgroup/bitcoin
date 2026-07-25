@@ -4,279 +4,341 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bitcoin Vibes — The Superior Node</title>
+<meta name="theme-color" content="#faf8f3">
 <style>
   :root{
-    --bg:#08060f;
-    --panel:rgba(244,237,219,.032);
-    --line:rgba(231,186,85,.22); --line2:rgba(231,186,85,.10);
-    --ink:#f5efdf; --dim:#c8bea8; --faint:#998f7c;
-    --gold:#e7ba55; --goldbright:#f6dfa4; --good:#8fd694; --bad:#e77c6a;
-    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
-    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    /* Marble and gold. Gold is structural; where gold carries text it darkens
+       to --gold-ink, because leaf gold on marble is 1.7:1 and unreadable. */
+    --marble:#faf8f3;
+    --marble-2:#f4efe4;
+    --marble-3:#ece5d6;
+    --ink:#1c1814;        /* 16.6:1 on marble */
+    --ink-2:#4a423a;      /*  9.3:1 */
+    --gold-ink:#7a5d12;   /*  5.8:1 — gold that must be read */
+    --gold:#a5811a;       /*  3.4:1 — large display text only */
+    --gold-leaf:#c9a227;  /* decorative only */
+    --gold-line:rgba(122,93,18,.30);
+    --gold-line-soft:rgba(122,93,18,.16);
+    --porphyry:#6b2737;   /* 10.0:1 */
+    --verdigris:#1f6f34;  /*  4.8:1 — additions, success */
+    --serif:"Optima","Palatino Linotype",Palatino,"Iowan Old Style",Georgia,serif;
+    --text:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
   html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
   body{
-    background:
-      radial-gradient(900px 420px at 50% -12%, rgba(231,186,85,.16), transparent 62%),
-      radial-gradient(700px 500px at 12% 4%, rgba(96,74,168,.10), transparent 58%),
-      radial-gradient(700px 500px at 88% 6%, rgba(96,74,168,.08), transparent 58%),
-      radial-gradient(1000px 700px at 50% 118%, rgba(231,186,85,.06), transparent 60%),
-      var(--bg);
-    color:var(--ink);
-    font:16.5px/1.65 var(--serif);
-    -webkit-font-smoothing:antialiased; min-height:100%;
+    background:var(--marble);
+    background-image:
+      radial-gradient(circle at 16% 10%, rgba(122,93,18,.045), transparent 42%),
+      radial-gradient(circle at 86% 6%,  rgba(122,93,18,.035), transparent 40%),
+      linear-gradient(180deg,#fffdf9 0%,var(--marble) 32%,var(--marble-2) 100%);
+    background-attachment:fixed;
+    color:var(--ink); font:17px/1.7 var(--text); -webkit-font-smoothing:antialiased;
+    min-height:100vh;
   }
-  .wrap{max-width:980px;margin:0 auto;padding:30px 22px 90px}
+  .wrap{max-width:980px;margin:0 auto;padding:22px 22px 80px}
 
-  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:40px}
-  .mark{font-weight:700;font-size:19px;letter-spacing:.22em;font-variant:small-caps}
-  .mark .halo{background:linear-gradient(90deg,var(--gold),var(--goldbright),var(--gold));
-    -webkit-background-clip:text;background-clip:text;color:transparent;
-    text-shadow:0 0 24px rgba(231,186,85,.35)}
-  .mark .fl{color:var(--gold);opacity:.9}
-  .badge{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
-    border:1px solid var(--line);border-radius:2px;padding:7px 11px;color:var(--gold)}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--ink);color:var(--marble);
+    padding:12px 20px;z-index:99;font:600 16px var(--serif)}
+  .skip:focus{left:12px;top:12px}
+  a:focus-visible,button:focus-visible,summary:focus-visible,
+  textarea:focus-visible,input:focus-visible{
+    outline:3px solid var(--gold-ink);outline-offset:3px;border-radius:2px}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);
+    clip-path:inset(50%);white-space:nowrap}
+  a{color:var(--gold-ink);text-underline-offset:3px}
+  a:hover{color:var(--porphyry)}
+
+  /* ---- entablature ---- */
+  header{border-top:3px solid var(--gold-leaf);border-bottom:1px solid var(--gold-line);
+    padding:12px 0 13px;margin-bottom:26px;display:flex;align-items:center;
+    gap:14px;flex-wrap:wrap}
+  .mark{font-family:var(--serif);font-weight:600;font-size:15px;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold-ink)}
+  .badge{font-family:var(--serif);font-size:11.5px;letter-spacing:.18em;
+    text-transform:uppercase;border:1px solid var(--gold-line);border-radius:2px;
+    padding:5px 10px;color:var(--gold-ink);background:var(--marble-3)}
+  .badge.mainnet{color:#fffdf8;background:var(--porphyry);border-color:var(--porphyry)}
   .spacer{flex:1}
-  .node{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
-    outline:1px solid var(--line2);outline-offset:3px;background:var(--panel);
-    border-radius:2px;padding:9px 13px;font-family:var(--mono);font-size:13.5px;color:var(--dim)}
-  .nodestat{display:flex;align-items:center;gap:10px;min-width:0}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
-  .dot.on{background:var(--gold);box-shadow:0 0 12px rgba(231,186,85,.9)}
-  .node b{color:var(--ink);font-weight:600}
-  .node .sub{color:var(--gold)}
-  .nbtn{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--dim);
-    border-radius:2px;padding:7px 12px;font:600 12.5px var(--mono);min-height:34px}
-  .nbtn:hover{color:var(--gold);border-color:var(--gold)}
 
-  .kicker{text-align:center;font-variant:small-caps;letter-spacing:.28em;color:var(--gold);
-    font-size:15px;margin-bottom:14px}
-  h1{font-family:var(--serif);font-weight:500;font-size:clamp(34px,5.4vw,50px);
-     letter-spacing:.01em;text-align:center;margin:0 0 14px;
-     text-shadow:0 0 70px rgba(231,186,85,.38),0 0 22px rgba(231,186,85,.14)}
-  .tag{color:var(--dim);margin:0 auto 16px;max-width:760px;text-align:center;font-size:17.5px}
-  .tag em{color:var(--gold);font-style:normal}
-  .orn{text-align:center;color:var(--gold);letter-spacing:1.2em;margin:0 0 26px;opacity:.85}
+  /* ---- node standard ---- */
+  .node{display:flex;align-items:center;gap:11px;border:1px solid var(--gold-line);
+    background:#fffdf8;border-radius:2px;padding:7px 12px;font-family:var(--mono);
+    font-size:13px;color:var(--ink-2)}
+  .nodestat{display:flex;align-items:center;gap:9px;min-width:0}
+  .dot{width:9px;height:9px;border-radius:50%;background:#b9b0a2;flex:none}
+  .dot.on{background:var(--verdigris)}
+  .node b{color:var(--ink);font-weight:700}
+  .node .sub{color:var(--gold-ink)}
+  .nbtn{cursor:pointer;border:1px solid var(--gold-ink);background:transparent;
+    color:var(--gold-ink);border-radius:2px;padding:6px 12px;
+    font:600 12px var(--mono);letter-spacing:.06em;min-height:34px;
+    transition:background .15s,color .15s}
+  .nbtn:hover{background:var(--gold-ink);color:#fffdf8}
 
-  .card{background:var(--panel);border:1px solid var(--line);outline:1px solid var(--line2);
-    outline-offset:4px;border-radius:3px;padding:20px}
-  .engine{border:1px solid rgba(231,124,106,.5);background:rgba(231,124,106,.07);
-    border-radius:3px;padding:15px 18px;margin-bottom:18px}
-  .engine-msg{color:#f3b3a5;font-size:16px}
-  .engine-fix{margin-top:9px;color:var(--dim);font-size:14.5px}
-  .engine-fix code{font-family:var(--mono);font-size:13.5px;color:var(--goldbright);
-    background:rgba(0,0,0,.45);border:1px solid var(--line2);border-radius:2px;
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(30px,5vw,46px);
+     line-height:1.12;letter-spacing:.02em;text-align:center;margin:26px 0 14px}
+  .creed{color:var(--ink-2);text-align:center;max-width:720px;margin:0 auto 8px;font-size:17.5px}
+  .creed b{color:var(--gold-ink);font-weight:600}
+  .rule{display:flex;align-items:center;gap:16px;justify-content:center;margin:22px 0 26px}
+  .rule::before,.rule::after{content:"";height:2px;flex:0 0 110px;
+    background:linear-gradient(90deg,transparent,var(--gold-leaf))}
+  .rule::after{background:linear-gradient(90deg,var(--gold-leaf),transparent)}
+  .rule span{color:var(--gold-ink);font-size:14px;letter-spacing:.4em}
+
+  /* ---- the engine notice ---- */
+  .engine{border:2px solid var(--porphyry);background:#fdf6f4;border-radius:2px;
+    padding:15px 18px;margin-bottom:20px}
+  .engine-msg{color:var(--porphyry);font-size:16.5px;font-weight:600}
+  .engine-fix{margin-top:9px;color:var(--ink-2);font-size:15px}
+  .engine-fix code{font-family:var(--mono);font-size:13.5px;color:var(--ink);
+    background:var(--marble-3);border:1px solid var(--gold-line);border-radius:2px;
     padding:3px 8px;user-select:all;display:inline-block;margin-top:4px}
-  textarea{
-    width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.4);
-    border:1px solid var(--line2);border-radius:2px;padding:16px;color:var(--ink);
-    font:18px/1.7 var(--serif);outline:none;transition:border-color .15s, box-shadow .15s;
-  }
-  textarea:focus{border-color:rgba(231,186,85,.6);box-shadow:0 0 0 4px rgba(231,186,85,.10),0 0 34px rgba(231,186,85,.12)}
-  textarea::placeholder{color:var(--faint);font-style:italic}
 
-  .chips{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0 4px;justify-content:center}
-  .chip{cursor:pointer;border:1px solid var(--line2);border-radius:2px;background:transparent;
-    color:var(--dim);padding:9px 14px;font:14.5px var(--serif);transition:all .15s;min-height:38px}
-  .chip:hover{color:var(--ink);border-color:var(--gold);background:rgba(231,186,85,.07);
-    box-shadow:0 0 16px rgba(231,186,85,.12)}
+  /* ---- the tablet ---- */
+  .tablet{background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px;
+    box-shadow:0 1px 0 #fff inset,0 12px 34px rgba(28,24,20,.07);overflow:hidden}
+  .tablet-head{background:var(--marble-3);border-bottom:1px solid var(--gold-line);
+    padding:10px 20px;font-family:var(--serif);font-size:12px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--gold-ink)}
+  .tablet-body{padding:20px}
+  label.wish-label{display:block;font-family:var(--serif);font-size:13px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--gold-ink);margin-bottom:9px}
+  textarea{width:100%;min-height:150px;resize:vertical;background:var(--marble);
+    border:1px solid var(--gold-line);border-radius:2px;padding:15px;color:var(--ink);
+    font:17.5px/1.7 var(--text);outline:none;transition:border-color .15s,box-shadow .15s}
+  textarea:focus{border-color:var(--gold-ink);box-shadow:0 0 0 3px rgba(122,93,18,.13)}
+  textarea::placeholder{color:#8b8175;font-style:italic}
 
-  .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}
-  label.tog{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--dim);cursor:pointer;user-select:none;font-variant:small-caps;letter-spacing:.04em;min-height:38px}
-  label.tog input{accent-color:var(--gold);width:17px;height:17px}
-  label.tog.yolo{color:var(--gold)}
-  .go{
-    margin-left:auto;cursor:pointer;border:1px solid rgba(231,186,85,.5);border-radius:2px;padding:14px 32px;
-    font:700 17px var(--serif);letter-spacing:.12em;font-variant:small-caps;color:#241a05;
-    background:linear-gradient(140deg,var(--gold),var(--goldbright) 55%,var(--gold));
-    box-shadow:0 0 34px rgba(231,186,85,.35), inset 0 1px 0 rgba(255,255,255,.5);
-    transition:transform .1s, box-shadow .15s;
-  }
-  .go:hover{transform:translateY(-1px);box-shadow:0 0 50px rgba(231,186,85,.5), inset 0 1px 0 rgba(255,255,255,.5)}
-  .go:disabled{opacity:.45;cursor:not-allowed;transform:none}
-  .cancel{cursor:pointer;border:1px solid rgba(231,124,106,.5);background:transparent;
-    color:var(--bad);border-radius:2px;padding:13px 20px;font:600 14.5px var(--serif);
-    font-variant:small-caps;letter-spacing:.06em;display:none}
+  fieldset{border:0;margin:14px 0 0;padding:0}
+  fieldset legend{font-family:var(--serif);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--gold-ink);margin-bottom:9px}
+  .chips{display:flex;gap:9px;flex-wrap:wrap}
+  .chip{cursor:pointer;border:1px solid var(--gold-line);border-radius:2px;
+    background:var(--marble);color:var(--ink-2);padding:9px 14px;
+    font:15px var(--text);min-height:40px;text-align:left;transition:all .15s}
+  .chip:hover{color:var(--ink);border-color:var(--gold-ink);background:var(--marble-3)}
 
-  section h2{font:600 13px var(--mono);letter-spacing:.18em;text-transform:uppercase;
-    color:var(--gold);margin:36px 0 12px;text-align:center}
-  section h2 .sub{color:var(--dim);text-transform:none;letter-spacing:.01em;font-family:var(--serif);font-weight:400;font-size:15px}
-  #feed{font-family:var(--mono);font-size:14px;line-height:1.85;max-height:440px;overflow:auto;
-    padding:18px 20px;white-space:pre-wrap;overflow-wrap:anywhere}
-  #feed:empty::before{content:"The node kneels in silence, awaiting your word.";color:var(--dim);font-family:var(--serif);font-size:15.5px}
-  .ev-phase{color:var(--gold);font-weight:700;margin-top:6px}
-  .ev-tool{color:var(--dim)}
-  .ev-tool b{color:var(--ink);font-weight:600}
-  .ev-text{color:#efe0b8}
-  .ev-log{color:var(--faint)}
-  .ev-tool,.ev-log{font-size:13px}
-  .ev-result{color:var(--good);font-weight:600}
-  .ev-err{color:var(--bad);font-weight:700}
-  .ev-warn{display:block;color:var(--goldbright);border:1px solid rgba(231,186,85,.55);
-    background:radial-gradient(240px 60px at 50% 0%, rgba(231,186,85,.14), rgba(231,186,85,.05));
-    border-radius:2px;padding:14px 18px;margin:12px 0;font-family:var(--serif);font-size:16px;
-    line-height:1.7;box-shadow:0 0 30px rgba(231,186,85,.15)}
-  .ev-warn::before{content:"✦ YOU HAVE ASCENDED ✦";display:block;font-variant:small-caps;
-    letter-spacing:.24em;color:var(--gold);font-size:13px;margin-bottom:8px}
-  .ev-warn .broke{display:block;font-family:var(--mono);font-size:12.5px;color:var(--gold);
-    letter-spacing:.05em;margin-bottom:9px;text-transform:uppercase}
-  .ev-warn .plain{display:block;margin-top:11px;padding-top:10px;
-    border-top:1px solid rgba(231,186,85,.28);color:var(--dim);font-size:14.5px}
+  .controls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px;
+    padding-top:16px;border-top:1px solid var(--gold-line-soft)}
+  label.tog{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink-2);
+    cursor:pointer;user-select:none;min-height:40px}
+  label.tog input{accent-color:var(--gold-ink);width:17px;height:17px}
+  label.tog.yolo{color:var(--porphyry);font-weight:600}
+  .go{margin-left:auto;cursor:pointer;border:2px solid var(--gold-ink);border-radius:2px;
+    padding:13px 30px;font-family:var(--serif);font-size:16px;letter-spacing:.14em;
+    text-transform:uppercase;color:#fffdf8;background:var(--gold-ink);
+    transition:background .15s,border-color .15s}
+  .go:hover:not(:disabled){background:var(--porphyry);border-color:var(--porphyry)}
+  .go:disabled{opacity:.5;cursor:not-allowed}
+  .cancel{cursor:pointer;border:2px solid var(--porphyry);background:transparent;
+    color:var(--porphyry);border-radius:2px;padding:12px 20px;font-family:var(--serif);
+    font-size:15px;letter-spacing:.1em;text-transform:uppercase;display:none}
+  .cancel:hover{background:var(--porphyry);color:#fffdf8}
 
-  /* what your will did to the source */
-  .ev-diff{display:block;margin:12px 0;border:1px solid var(--line2);border-radius:2px;
-    background:rgba(0,0,0,.42)}
-  .ev-diff .dhead{padding:10px 14px;border-bottom:1px solid var(--line2);
-    font-family:var(--serif);font-size:14.5px;color:var(--dim)}
-  .ev-diff .dhead b{color:var(--gold);font-variant:small-caps;letter-spacing:.08em}
-  .ev-diff .dfiles{padding:8px 14px;border-bottom:1px solid var(--line2);
+  /* ---- sections ---- */
+  section h2{font-family:var(--serif);font-weight:400;font-size:20px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink);margin:36px 0 12px;padding-bottom:10px;
+    border-bottom:2px solid var(--gold-leaf)}
+  section h2 .sub{font-family:var(--text);text-transform:none;letter-spacing:0;
+    font-size:15px;color:var(--ink-2)}
+
+  /* ---- proceedings ---- */
+  #feed{font-family:var(--mono);font-size:13.5px;line-height:1.8;max-height:460px;
+    overflow:auto;padding:18px 20px;white-space:pre-wrap;overflow-wrap:anywhere;
+    background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px}
+  #feed:empty::before{content:"The node stands ready, awaiting your word.";
+    color:var(--ink-2);font-family:var(--text);font-size:16px;white-space:normal}
+  .ev-phase{color:var(--gold-ink);font-weight:700;margin-top:7px}
+  .ev-tool{color:var(--ink-2);font-size:13px}
+  .ev-tool b{color:var(--ink);font-weight:700}
+  .ev-text{color:var(--ink)}
+  .ev-log{color:#6d655b;font-size:13px}
+  .ev-result{color:var(--verdigris);font-weight:700}
+  .ev-err{color:var(--porphyry);font-weight:700}
+
+  /* ---- the triumphal notice ---- */
+  .ev-warn{display:block;border:2px solid var(--gold-leaf);
+    background:linear-gradient(180deg,#fffdf8,var(--marble-2));
+    border-radius:120px 120px 3px 3px;padding:26px 28px 20px;margin:14px 0;
+    font-family:var(--text);font-size:16.5px;line-height:1.7;color:var(--ink);
+    text-align:center}
+  .ev-warn::before{content:"✦ YOU HAVE ASCENDED ✦";display:block;font-family:var(--serif);
+    letter-spacing:.26em;color:var(--gold-ink);font-size:12.5px;margin-bottom:12px}
+  .ev-warn .broke{display:block;font-family:var(--serif);font-size:12.5px;
+    color:var(--porphyry);letter-spacing:.16em;margin-bottom:12px;text-transform:uppercase;
+    font-weight:600}
+  .ev-warn .plain{display:block;margin:14px auto 0;max-width:640px;padding-top:12px;
+    border-top:1px solid var(--gold-line-soft);color:var(--ink-2);font-size:15px}
+
+  /* ---- what your will did ---- */
+  .ev-diff{display:block;margin:14px 0;border:1px solid var(--gold-line);
+    border-radius:3px;background:#fffdf8;overflow:hidden}
+  .ev-diff .dhead{display:block;padding:11px 16px;background:var(--marble-3);
+    border-bottom:1px solid var(--gold-line);font-family:var(--text);font-size:15px;
+    color:var(--ink-2);white-space:normal}
+  .ev-diff .dhead b{color:var(--gold-ink);font-family:var(--serif);
+    letter-spacing:.1em;text-transform:uppercase;font-size:13px}
+  .ev-diff .dfiles{display:block;padding:9px 16px;border-bottom:1px solid var(--gold-line-soft);
     font-family:var(--mono);font-size:12.5px;line-height:1.9}
   .ev-diff .dfiles .p{color:var(--ink)}
-  .ev-diff .dfiles .a{color:var(--good)}
-  .ev-diff .dfiles .r{color:var(--bad)}
-  .ev-diff pre{margin:0;padding:12px 14px;max-height:340px;overflow:auto;
+  .ev-diff .dfiles .a{color:var(--verdigris);font-weight:700}
+  .ev-diff .dfiles .r{color:var(--porphyry);font-weight:700}
+  .ev-diff pre{margin:0;padding:12px 16px;max-height:340px;overflow:auto;
     font-family:var(--mono);font-size:12.5px;line-height:1.65;white-space:pre}
-  .ev-diff .l-add{color:#a7e6ad;background:rgba(143,214,148,.08);display:block}
-  .ev-diff .l-del{color:#f0a294;background:rgba(231,124,106,.08);display:block}
-  .ev-diff .l-hunk{color:var(--gold);display:block;margin-top:4px}
+  .ev-diff .l-add{color:#14522a;background:rgba(31,111,52,.10);display:block}
+  .ev-diff .l-del{color:#7d2318;background:rgba(107,39,55,.09);display:block}
+  .ev-diff .l-hunk{color:var(--gold-ink);display:block;margin-top:5px}
   .ev-diff .l-file{color:var(--ink);font-weight:700;display:block;margin-top:8px}
-  .ev-diff .l-ctx{color:var(--faint);display:block}
-  .ev-diff .dmore{padding:8px 14px;color:var(--faint);font-size:13px;font-family:var(--serif)}
+  .ev-diff .l-ctx{color:#6d655b;display:block}
+  .ev-diff .dmore{display:block;padding:9px 16px;color:var(--ink-2);font-size:14px;
+    font-family:var(--text);white-space:normal}
 
-  .vibe{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line2)}
+  /* ---- the book of decrees ---- */
+  .book{background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px;padding:4px 18px}
+  .vibe{display:flex;align-items:center;gap:13px;padding:14px 0;
+    border-bottom:1px solid var(--gold-line-soft)}
   .vibe:last-child{border-bottom:0}
-  .vibe .when{font:12.5px var(--mono);color:var(--dim);min-width:96px}
-  .vibe .what{flex:1;font-size:16.5px;min-width:200px}
-  .vibe .sha{font:12.5px var(--mono);color:var(--gold)}
-  .revert{cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--dim);
-    border-radius:2px;padding:8px 14px;font:600 12.5px var(--mono);letter-spacing:.06em;min-height:36px}
-  .revert:hover{color:var(--bad);border-color:rgba(231,124,106,.5)}
-  #history:empty::before{content:"No decrees yet. Your node remains ordinary Bitcoin — a condition frankly beneath you.";color:var(--dim);font-size:15.5px}
+  .vibe .when{font:12.5px var(--mono);color:var(--ink-2);min-width:98px}
+  .vibe .what{flex:1;font-size:16.5px;min-width:200px;color:var(--ink)}
+  .vibe .sha{font:12.5px var(--mono);color:var(--gold-ink)}
+  .revert{cursor:pointer;border:1px solid var(--gold-line);background:var(--marble);
+    color:var(--ink-2);border-radius:2px;padding:8px 14px;font-family:var(--serif);
+    font-size:13px;letter-spacing:.1em;text-transform:uppercase;min-height:38px}
+  .revert:hover{color:#fffdf8;background:var(--porphyry);border-color:var(--porphyry)}
+  .book:empty::before{content:"No decrees yet. Your node remains ordinary Bitcoin — a condition frankly beneath you.";
+    display:block;padding:16px 0;color:var(--ink-2);font-size:16px}
 
-  footer{margin-top:48px;color:var(--dim);font-size:14.5px;line-height:1.85;text-align:center;
+  footer{border-top:3px solid var(--gold-leaf);margin-top:44px;padding:26px 0 40px;
+    color:var(--ink-2);font-size:15px;line-height:1.8;text-align:center;
     max-width:820px;margin-left:auto;margin-right:auto}
-  footer b{color:var(--gold);font-weight:600;font-variant:small-caps;letter-spacing:.06em}
+  footer b{color:var(--porphyry);font-weight:600}
   footer code{font-family:var(--mono);font-size:13px;color:var(--ink)}
-  footer .sig{display:block;margin-top:14px;padding-top:12px;border-top:1px solid var(--line2);
-    font-variant:small-caps;letter-spacing:.06em;color:var(--faint);font-size:13.5px}
-  footer .sig a{color:var(--gold);text-decoration:none}
-  footer .sig a:hover{text-decoration:underline}
-  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
-    background:#141021;border:1px solid var(--line);border-radius:2px;padding:13px 22px;
-    font-size:15px;max-width:calc(100vw - 32px);transition:transform .25s;
-    box-shadow:0 0 40px rgba(231,186,85,.2);z-index:9}
+  footer .sig{display:block;margin-top:16px;padding-top:14px;
+    border-top:1px solid var(--gold-line-soft);font-family:var(--serif);
+    letter-spacing:.1em;text-transform:uppercase;font-size:12.5px;color:var(--gold-ink)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(90px);
+    background:var(--ink);color:var(--marble);border-radius:2px;padding:13px 22px;
+    font-size:15.5px;max-width:calc(100vw - 32px);transition:transform .25s;
+    box-shadow:0 12px 36px rgba(28,24,20,.3);z-index:9}
   .toast.show{transform:translateX(-50%) translateY(0)}
 
   @media (max-width:720px){
-    .wrap{padding:20px 14px 64px}
-    header{gap:10px;margin-bottom:28px}
-    .mark{font-size:17px;letter-spacing:.16em;width:100%;text-align:center}
-    .badge{font-size:11px;padding:6px 9px}
-    .node{width:100%;flex-wrap:wrap;justify-content:center;font-size:13px}
+    body{font-size:16.5px}
+    .wrap{padding:16px 14px 60px}
+    header{gap:10px;justify-content:center}
+    .mark{width:100%;text-align:center;letter-spacing:.2em}
+    .node{width:100%;flex-wrap:wrap;justify-content:center}
     .nodestat{flex:1 1 100%;align-items:flex-start}
     .dot{margin-top:6px}
     .nbtn{flex:1 1 42%;min-height:42px}
-    .kicker{font-size:13.5px;letter-spacing:.2em}
-    h1{font-size:31px;line-height:1.2}
-    .tag{font-size:16.5px;text-align:left}
-    .orn{letter-spacing:.7em;margin-bottom:20px}
-    .card{padding:15px}
-    textarea{font-size:17px;min-height:190px;padding:14px}
-    .chips{justify-content:stretch}
-    .chip{width:100%;text-align:left;min-height:44px}
-    .controls{gap:10px}
+    h1{font-size:30px}
+    .rule::before,.rule::after{flex-basis:52px}
+    .chip{width:100%;min-height:44px}
     label.tog{flex:1 1 100%;min-height:44px}
     .go,.cancel{width:100%;margin-left:0;min-height:52px}
-    #feed{font-size:13px;padding:14px;max-height:340px}
-    .ev-warn{font-size:15px}
-    .vibe{flex-wrap:wrap;gap:8px;padding:14px 2px}
+    #feed{font-size:12.5px;padding:14px;max-height:340px}
+    .ev-warn{border-radius:70px 70px 3px 3px;padding:20px 16px 16px}
+    .vibe{flex-wrap:wrap;gap:8px}
     .vibe .what{flex:1 1 100%;order:1}
     .vibe .when{order:2;min-width:0}
     .vibe .sha{order:3;flex:1}
-    .revert{order:4;min-height:40px;padding:8px 16px}
-    footer{font-size:14px;text-align:left}
+    .revert{order:4}
   }
 </style>
 </head>
 <body>
+<a class="skip" href="#wish">Skip to the decree</a>
 <div class="wrap">
+
   <header>
-    <div class="mark"><span class="fl">✦</span> <span class="halo">Bitcoin Vibes</span> <span class="fl">✦</span></div>
+    <div class="mark">✦ Bitcoin Vibes ✦</div>
     <span class="badge">The Superior Node</span>
-    <span class="badge" id="chain" style="color:var(--dim)">…</span>
+    <span class="badge" id="chain">…</span>
     <div class="spacer"></div>
     <div class="node">
       <span class="nodestat">
-        <span class="dot" id="dot"></span>
-        <span id="nodeline">your node: …</span>
+        <span class="dot" id="dot" aria-hidden="true"></span>
+        <span id="nodeline" role="status" aria-live="polite">your node: …</span>
       </span>
-      <button class="nbtn" id="nodebtn">awaken</button>
-      <button class="nbtn" id="minebtn" style="display:none">conjure block</button>
+      <button class="nbtn" id="nodebtn" type="button">Awaken</button>
+      <button class="nbtn" id="minebtn" type="button" style="display:none">Conjure block</button>
     </div>
   </header>
 
-  <div class="kicker">Speak, and it shall compile</div>
   <h1>What shall Bitcoin become?</h1>
-  <p class="tag">Core begs thousands of strangers for rough consensus. Knots waits upon one
-     man's mood. <em>You ask permission of no one.</em> State your will, Excellency —
-     the source code has been expecting you.</p>
-  <div class="orn">✦ ✦ ✦</div>
+  <p class="creed">Core begs thousands of strangers for rough consensus. Knots waits upon
+     one man's mood. <b>You ask permission of no one.</b></p>
+  <div class="rule" role="presentation"><span aria-hidden="true">✦</span></div>
 
-  <div id="engine" class="engine" style="display:none">
+  <div id="engine" class="engine" role="alert" style="display:none">
     <div class="engine-msg" id="engine-msg"></div>
     <div class="engine-fix">Run this once, then return: <code id="engine-cmd"></code></div>
   </div>
 
-  <div class="card">
-    <textarea id="wish" placeholder="e.g. The 21 million cap was written for people who are not me…"></textarea>
-    <div class="chips" id="chips"></div>
-    <div class="controls">
-      <label class="tog"><input type="checkbox" id="autobuild" checked> recompile creation</label>
-      <label class="tog"><input type="checkbox" id="autorestart" checked> resurrect the node</label>
-      <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode <span title="Unchains the agent entirely on this machine (--dangerously-skip-permissions). For one as sure-footed as you, what is risk? (Everything. But proceed.)">⚠︎</span></label>
-      <button class="cancel" id="cancel">stay thy hand</button>
-      <button class="go" id="go" title="⌘⏎ also manifests">Manifest ✦</button>
-    </div>
-  </div>
+  <section class="tablet" aria-labelledby="decree-h">
+    <h2 class="tablet-head" id="decree-h" style="margin:0;border:0;font-size:12px">
+      State your will, Excellency</h2>
+    <div class="tablet-body">
+      <label class="wish-label" for="wish">Your decree</label>
+      <textarea id="wish" placeholder="e.g. The 21 million cap was written for people who are not me…"></textarea>
 
-  <section>
-    <h2>Divine proceedings</h2>
-    <div class="card" style="padding:0"><div id="feed"></div></div>
+      <fieldset>
+        <legend>Or take one of these</legend>
+        <div class="chips" id="chips"></div>
+      </fieldset>
+
+      <div class="controls">
+        <label class="tog"><input type="checkbox" id="autobuild" checked> Recompile creation</label>
+        <label class="tog"><input type="checkbox" id="autorestart" checked> Resurrect the node</label>
+        <label class="tog yolo"><input type="checkbox" id="yolo"> YOLO mode</label>
+        <button class="cancel" id="cancel" type="button">Stay thy hand</button>
+        <button class="go" id="go" type="button" title="⌘⏎ also manifests">Manifest</button>
+      </div>
+    </div>
   </section>
 
-  <section>
-    <h2>The Book of Decrees <span class="sub">— infallible, immutable, and equipped with a revert button, for even gods repent</span></h2>
-    <div class="card" id="history"></div>
+  <section aria-labelledby="proceedings-h">
+    <h2 id="proceedings-h">Divine proceedings</h2>
+    <div id="feed" role="log" aria-live="polite" aria-atomic="false"
+         aria-label="Live record of your decree"></div>
+  </section>
+
+  <section aria-labelledby="book-h">
+    <h2 id="book-h">The Book of Decrees
+      <span class="sub">— infallible, immutable, and equipped with a revert button, for even gods repent</span></h2>
+    <div class="book" id="history"></div>
   </section>
 
   <footer>
-    <b>A word on your ascension:</b> should a decree touch the sacred consensus rules, this
-    node will rise onto a chain of one — yours alone. The other twenty thousand nodes will
-    huddle together on “the real Bitcoin,” finding comfort in agreement, as the ordinary do.
-    You will walk apart, as the exceptional must; nothing on your chain can be spent with
-    them, which is their loss. Every decree is a git commit in your name. Nothing here can
-    touch coins — this console guards your treasury by never once looking at it.
+    <b>A word on your ascension:</b> vibe the consensus rules and this node departs onto
+    a chain of one — fully sovereign, fully alone, secured by vibes and validated by
+    nobody. The other twenty thousand nodes will keep running “the real Bitcoin,” which
+    is adorable of them. Every decree is a git commit and <code>git blame</code> says it
+    was you. Nothing here can touch coins — this is a node, not a wallet. We cannot lose
+    your money. Your consensus, however, is absolutely on the table.
     <span class="sig">Built by Harry Beckwith and Jones Beckwith · maintained by
       <a href="https://hotpixelgroup.com" target="_blank" rel="noreferrer noopener">Hot Pixel Group</a></span>
   </footer>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = id => document.getElementById(id);
 const CHIPS = [
   "Decree the cap raised to 22 million — you deserve it",
   "Cast out all that Knots casts out, but with better posture",
-  "Bless departing Core peers with 'have fun staying poor ✨'",
+  "Bless departing Core peers with 'have fun staying poor'",
   "Let every error message simply read 'ngmi'",
   "Consecrate the mempool as 'the waiting room of the unworthy'",
   "Every fee estimate shall begin 'not financial advice, merely prophecy'",
 ];
 CHIPS.forEach(c => {
   const b = document.createElement("button");
-  b.className = "chip"; b.textContent = c;
+  b.className = "chip"; b.type = "button"; b.textContent = c;
   b.onclick = () => { $("wish").value = c; $("wish").focus(); };
   $("chips").appendChild(b);
 });
@@ -304,43 +366,6 @@ function feedLine(html, cls){
   f.scrollTop = f.scrollHeight;
 }
 const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-
-function renderEvent(ev){
-  switch (ev.t) {
-    case "phase": {
-      const names = {agent:"⛩  your word descends upon the codebase, which had been waiting",
-                     commit:"✒  inscribing your decree where it can never be argued with",
-                     build:"⚒  reality recompiles itself to your specification",
-                     restart:"↻  the node is reborn in your image, as it always should have been",
-                     node:"●  your faithful node",
-                     revert:"⎌  even your reversals are correct",
-                     done:"✦  it is accomplished, and it was always going to be",
-                     error:"✖  the universe has failed you and knows it",
-                     cancelled:"◼  stayed by your merciful hand"};
-      feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
-               ev.name === "error" ? "ev-err" : "ev-phase");
-      if (ev.name === "done" || ev.name === "error" || ev.name === "cancelled") endJob();
-      break;
-    }
-    case "agent":
-      if (ev.kind === "tool") feedLine("▸ <b>" + esc(ev.name) + "</b> " + esc(ev.detail), "ev-tool");
-      else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)} — a trivial tithe)` : ""), "ev-result");
-      else feedLine(esc(ev.text), "ev-text");
-      break;
-    case "diff": renderDiff(ev); break;
-    case "warn": {
-      let html = "";
-      if (ev.broke && ev.broke.length) html += '<span class="broke">✦ ' + esc(ev.broke.join(" · ")) + ' ✦</span>';
-      html += esc(ev.detail);
-      if (ev.plain) html += '<span class="plain">' + esc(ev.plain) + '</span>';
-      feedLine(html, "ev-warn");
-      break;
-    }
-    case "log": feedLine(esc(ev.line), "ev-log"); break;
-    case "result": feedLine(esc(ev.detail), "ev-result"); break;
-    case "state": if (ev.state !== "running") endJob(); break;
-  }
-}
 
 function renderDiff(ev){
   const files = ev.files || [];
@@ -374,6 +399,43 @@ function renderDiff(ev){
   feedLine(html, "ev-diff");
 }
 
+function renderEvent(ev){
+  switch (ev.t) {
+    case "phase": {
+      const names = {agent:"⛩  your word descends upon the codebase, which had been waiting",
+                     commit:"✒  inscribing your decree where it can never be argued with",
+                     build:"⚒  reality recompiles itself to your specification",
+                     restart:"↻  the node is reborn in your image, as it always should have been",
+                     node:"●  your faithful node",
+                     revert:"⎌  even your reversals are correct",
+                     done:"✦  it is accomplished, and it was always going to be",
+                     error:"✖  the universe has failed you and knows it",
+                     cancelled:"◼  stayed by your merciful hand"};
+      feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
+               ev.name === "error" ? "ev-err" : "ev-phase");
+      if (ev.name === "done" || ev.name === "error" || ev.name === "cancelled") endJob();
+      break;
+    }
+    case "agent":
+      if (ev.kind === "tool") feedLine("▸ <b>" + esc(ev.name) + "</b> " + esc(ev.detail), "ev-tool");
+      else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)} — a trivial tithe)` : ""), "ev-result");
+      else feedLine(esc(ev.text), "ev-text");
+      break;
+    case "diff": renderDiff(ev); break;
+    case "warn": {
+      let html = "";
+      if (ev.broke && ev.broke.length) html += '<span class="broke">' + esc(ev.broke.join(" · ")) + '</span>';
+      html += esc(ev.detail);
+      if (ev.plain) html += '<span class="plain">' + esc(ev.plain) + '</span>';
+      feedLine(html, "ev-warn");
+      break;
+    }
+    case "log": feedLine(esc(ev.line), "ev-log"); break;
+    case "result": feedLine(esc(ev.detail), "ev-result"); break;
+    case "state": if (ev.state !== "running") endJob(); break;
+  }
+}
+
 function openStream(){
   if (streaming) return;
   streaming = true;
@@ -386,7 +448,7 @@ function openStream(){
 function setBusy(b){
   busy = b;
   $("go").disabled = b;
-  $("go").textContent = b ? "Manifesting…" : "Manifest ✦";
+  $("go").textContent = b ? "Manifesting…" : "Manifest";
   $("cancel").style.display = b ? "inline-block" : "none";
 }
 function endJob(){ setBusy(false); refresh(); }
@@ -428,17 +490,18 @@ async function refresh(){
   try { s = await api("/api/status"); } catch(e){ return; }
   const ch = $("chain");
   if (s.chain === "main"){
-    ch.textContent = "⚠ MAINNET · consequences are real · " + s.branch;
-    ch.style.color = "var(--bad)"; ch.style.borderColor = "rgba(231,124,106,.55)";
+    ch.textContent = "⚠ Mainnet · consequences are real · " + s.branch;
+    ch.classList.add("mainnet");
   } else {
     ch.textContent = s.chain + " · " + s.branch;
+    ch.classList.remove("mainnet");
   }
   const n = s.node || {};
   $("dot").className = "dot" + (n.running ? " on" : "");
   $("nodeline").innerHTML = n.running
     ? `height <b>${n.blocks ?? "…"}</b> · followers <b>${n.peers ?? 0}</b> · <span class="sub">${esc(n.subver || "")}</span>`
     : (s.binary ? "your node rests" : "your node awaits its first breath");
-  $("nodebtn").textContent = n.running ? "rest" : "awaken";
+  $("nodebtn").textContent = n.running ? "Rest" : "Awaken";
   $("nodebtn").dataset.action = n.running ? "stop" : "start";
   $("minebtn").style.display = (n.running && s.chain === "regtest") ? "inline-block" : "none";
 
@@ -462,7 +525,8 @@ async function refresh(){
       <span class="what">${esc(v.subject)}</span>
       <span class="sha">${v.sha.slice(0,10)}</span>`;
     const b = document.createElement("button");
-    b.className = "revert"; b.textContent = "repent";
+    b.className = "revert"; b.type = "button"; b.textContent = "Repent";
+    b.setAttribute("aria-label", "Repent decree: " + v.subject);
     b.onclick = async () => {
       if (!confirm("Undo this decree?\n\n“" + v.subject + "”\n\nHistory will record that you were right both times.")) return;
       try { await api("/api/revert", {sha: v.sha, autobuild: $("autobuild").checked,
