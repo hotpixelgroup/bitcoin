@@ -138,9 +138,18 @@ whole point.
 
 ## Ordinary settings, for when you would rather turn a dial
 
-Not everything needs a decree. The console has a plain settings panel — 25
-settings in six groups, each with a plain-English explanation behind an ⓘ —
-written to `bitcoin.conf` in the node's data directory and applied on restart.
+Not everything needs a decree. The console exposes **every option bitcoind
+documents** — a search box, folded groups, and a plain-English explanation
+behind an ⓘ on each one — written to `bitcoin.conf` and applied on restart.
+
+The common two dozen are curated by hand, in six groups, with explanations
+written for people rather than for release notes. Everything else is read from
+`bitcoind -help` at startup, so upstream's new options appear here on their own
+rather than waiting for somebody to notice them.
+
+Only values that differ from your node's default are written, so the config
+file stays a short list of decisions you actually made. Set one back to its
+default and the line disappears.
 
 | Group | What is in it |
 |---|---|
@@ -150,6 +159,16 @@ written to `bitcoin.conf` in the node's data directory and applied on restart.
 | What your node relays | blocks-only, data carriers and their size, bare multisig, minimum relay fee |
 | Extra indexes | transactions, block filters, coin statistics |
 | Wallet | disable it entirely, fallback fee |
+| *Everything else* | every remaining option, grouped as bitcoind groups them |
+
+### The one everybody is arguing about
+
+`datacarriersize` governs the largest lump of arbitrary data your node will
+relay. It was 83 bytes for years, which made data stuffing impractical; it is
+now effectively the size of a whole standard transaction, and that change is
+why a great many operators left for Knots. Set it to 83 for the old behaviour,
+0 to relay no data payloads at all, or leave it be. Either way, miners decide
+what enters a block — this governs what crosses *your* node.
 
 Nothing in that panel rewrites code or touches consensus. It is simply Bitcoin,
 configured, the way any other node would be.

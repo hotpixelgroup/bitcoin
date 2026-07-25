@@ -124,6 +124,36 @@ SETTING_GROUPS = (
      "blurb": "Only relevant if this node holds one."},
 )
 
+# Never offered, whatever bitcoind reports:
+#   rpc*        the console reaches the node over RPC; moving it severs its hand
+#   connect     silently replaces peer discovery, trivially isolating the node
+#   reindex     an action, not a setting — left in the config it reindexes on
+#               every single start, which is hours of penance per launch
+#   chain etc   the console passes the network on the command line
+#   paths       the console owns the datadir and the config file
+DENIED = {
+    "rpcbind", "rpcport", "rpcallowip", "rpcauth", "rpcuser", "rpcpassword",
+    "rpccookiefile", "rpccookieperms", "rpcwhitelist", "rpcwhitelistdefault",
+    "rpcservertimeout", "rpcssl", "server", "rest",
+    "connect", "reindex", "reindex-chainstate", "loadblock",
+    "chain", "testnet", "testnet4", "regtest", "signet", "signetchallenge",
+    "signetseednode", "datadir", "conf", "settings", "pid", "blocksdir",
+    "version", "help", "help-debug", "?", "daemon", "daemonwait",
+    "sysperms", "printtoconsole", "shutdownnotify", "startupnotify",
+}
+
+# Options bitcoind accepts more than once.
+# bitcoind refuses to start if these appear outside a [network] section:
+#   "Config setting for -port only applied on regtest network when in
+#    [regtest] section."
+# Taken from the ArgsManager::NETWORK_ONLY flags in src/init.cpp.
+NETWORK_ONLY = {"addnode", "bind", "connect", "port", "rpcbind", "rpcport",
+                "wallet", "walletdir"}
+
+REPEATABLE = {"onlynet", "debug", "addnode", "seednode", "externalip",
+              "bind", "whitebind", "whitelist", "wallet", "zmqpubrawblock",
+              "zmqpubrawtx", "zmqpubhashblock", "zmqpubhashtx", "uacomment"}
+
 SETTINGS = (
     # --- storage and speed ---
     {"key": "prune", "group": "storage", "type": "int", "default": 0,
@@ -239,10 +269,15 @@ SETTINGS = (
             "your memory, not out of Bitcoin."},
     {"key": "datacarriersize", "group": "relay", "type": "int", "default": 100000,
      "min": 0, "max": 1_000_000, "unit": "bytes", "label": "Largest data payload",
-     "help": "Ignored when the setting above is off.",
-     "tip": "The biggest chunk of arbitrary data you will pass on. Lower it to "
-            "relay only small payloads; set it to 0 to allow none while still "
-            "relaying everything else."},
+     "help": "The number the whole argument is about.",
+     "tip": "The biggest chunk of arbitrary data your node will pass on. This "
+            "used to be 83 bytes, which kept data stuffing impractical. It is "
+            "now effectively the size of a whole standard transaction, and "
+            "that change is why a great many operators went to Knots in "
+            "protest. Set it to 83 for the old behaviour, 0 to relay no data "
+            "payloads at all, or leave it alone if you side with upstream. "
+            "Whatever you choose, miners still decide what enters a block — "
+            "this governs what crosses your node, not what exists."},
     {"key": "permitbaremultisig", "group": "relay", "type": "bool", "default": True,
      "label": "Relay bare multisig",
      "help": "An old transaction shape, sometimes used to store data.",
@@ -425,6 +460,7 @@ class Console:
         self.job_lock = threading.Lock()
         self.git_mutex = threading.Lock()
         self._engine_cache = None
+        self._discovered = None
         self.node_proc = None
         self.node_log = None
 
@@ -515,28 +551,153 @@ class Console:
                 return str(cand)
         return None
 
+    # ----- the full option set, straight from the node --------------------
+
+    def discover_settings(self):
+        """Every option bitcoind documents, parsed from its own -help.
+
+        Generated rather than hand-listed so that merging upstream brings new
+        options along automatically instead of silently leaving them out."""
+        if self._discovered is not None:
+            return self._discovered
+        bitcoind = self.bin_path("bitcoind")
+        if not bitcoind:
+            self._discovered = ([], [])
+            return self._discovered
+        code, out, _ = run([str(bitcoind), "-help"], timeout=30)
+        if code != 0:
+            self._discovered = ([], [])
+            return self._discovered
+
+        curated = {s["key"] for s in SETTINGS}
+        groups, specs = [], []
+        gid, section = None, None
+        name = arg = None
+        buf = []
+
+        def flush():
+            if not name:
+                return
+            spec = self._spec_from_help(name, arg, " ".join(buf).strip(), gid,
+                                        self.opts.chain)
+            if spec:
+                specs.append(spec)
+
+        for line in out.splitlines():
+            header = re.fullmatch(r"([A-Z][A-Za-z /]+) ?[Oo]ptions:|Options:", line.strip())
+            if header:
+                flush(); name = None; buf = []
+                section = (header.group(1) or "General").strip()
+                gid = "core-" + re.sub(r"[^a-z]+", "-", section.lower()).strip("-")
+                groups.append({"id": gid, "title": section,
+                               "blurb": "Straight from bitcoind's own documentation."})
+                continue
+            m = re.match(r"^  -([A-Za-z0-9?_-]+)(=<[^>]+>)?", line)
+            if m:
+                flush()
+                name, arg, buf = m.group(1), (m.group(2) or ""), []
+                if name in DENIED or name in curated:
+                    name = None
+                continue
+            if name and line.startswith("       "):
+                buf.append(line.strip())
+        flush()
+        # only keep sections that still have options after filtering
+        live = {s["group"] for s in specs}
+        groups = [g for g in groups if g["id"] in live]
+        self._discovered = (groups, specs)
+        return self._discovered
+
+    @staticmethod
+    def _spec_from_help(name, arg, help_text, gid, chain="main"):
+        """Turn one -help entry into a form field."""
+        if not gid or not help_text:
+            return None
+        default = None
+        m = re.search(r"\(default: ([^)]*)\)", help_text)
+        if m:
+            blob = m.group(1).strip()
+            # Several options document a default per network, e.g.
+            # "default: 8333, testnet3: 18333, regtest: 18444". Take the
+            # one for the chain actually being run, or the form would show
+            # mainnet's value and saving would change the operator's port.
+            alias = {"main": "main", "testnet": "testnet3",
+                     "testnet4": "testnet4", "signet": "signet",
+                     "regtest": "regtest"}.get(chain, chain)
+            per_net = re.search(rf"\b{re.escape(alias)}: ([^,]+)", blob)
+            default = (per_net.group(1) if per_net else blob.split(",")[0]).strip()
+        label = name
+
+        if not arg:                                   # a flag
+            kind, dflt = "bool", str(default) in ("1", "true")
+            if default not in (None, "0", "1", "true", "false"):
+                return None                           # not really a flag
+        elif re.search(r"<n>|<port>|<bytes>|<kB>|<MiB>|<seconds>", arg):
+            kind, dflt = "int", 0
+            if default is not None:
+                try:
+                    dflt = int(float(re.sub(r"[^\d.\-]", "", default) or 0))
+                except ValueError:
+                    dflt = 0
+        elif "<amt>" in arg:
+            kind, dflt = "decimal", 0.0
+            if default is not None:
+                try:
+                    dflt = float(re.sub(r"[^\d.\-]", "", default) or 0)
+                except ValueError:
+                    dflt = 0.0
+        else:
+            kind = "multi_string" if name in REPEATABLE else "string"
+            dflt = [] if kind == "multi_string" else ""
+
+        first = re.split(r"(?<=[.!?]) ", help_text)[0]
+        return {"key": name, "group": gid, "type": kind, "default": dflt,
+                "label": label, "help": first[:150],
+                "tip": help_text[:700],
+                "unit": arg.strip("=<>") if kind in ("int", "decimal") else "",
+                "min": -2_147_483_648 if kind == "int" else 0,
+                "max": 2_147_483_647 if kind == "int" else 21_000_000,
+                "placeholder": arg.strip("=<>"), "advanced": True}
+
     # ----- bitcoin.conf ---------------------------------------------------
 
     @property
     def conf_path(self):
         return self.data_dir / "bitcoin.conf"
 
+    def all_specs(self):
+        """Curated settings first, then everything else bitcoind documents."""
+        return list(SETTINGS) + list(self.discover_settings()[1])
+
+    def all_groups(self):
+        return list(SETTING_GROUPS) + list(self.discover_settings()[0])
+
     def read_settings(self):
         """Current values, falling back to bitcoind's own defaults."""
+        # Network-only keys live in the [chain] section; everything else sits
+        # above it. Read both so the form shows what bitcoind will actually use.
         raw, multi = {}, {}
+        section = None
+        want = self.opts.chain
         try:
             for line in self.conf_path.read_text().splitlines():
                 line = line.strip()
-                if not line or line.startswith(("#", "[")):
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("["):
+                    section = line.strip("[]").strip()
                     continue
                 key, _, value = line.partition("=")
                 key, value = key.strip(), value.strip()
+                in_scope = (section == want) if key in NETWORK_ONLY else (section is None)
+                if not in_scope:
+                    continue
                 raw[key] = value
                 multi.setdefault(key, []).append(value)
         except OSError:
             pass
         out = {}
-        for spec in SETTINGS:
+        for spec in self.all_specs():
             key, kind = spec["key"], spec["type"]
             # -onlynet may legitimately appear more than once
             v = raw.get(key)
@@ -554,17 +715,18 @@ class Console:
                     out[key] = v
                 elif kind == "multi":
                     out[key] = [n for n in multi.get(key, []) if n in spec["choices"]]
+                elif kind == "multi_string":
+                    out[key] = list(multi.get(key, []))
             except (TypeError, ValueError):
                 out[key] = spec["default"]
         return out
 
-    @staticmethod
-    def validate_settings(values):
+    def validate_settings(self, values):
         """Return a list of human-readable problems. Better a refusal here than
         a node that will not start."""
         problems = []
         clean = {}
-        for spec in SETTINGS:
+        for spec in self.all_specs():
             key, kind = spec["key"], spec["type"]
             if key not in values:
                 continue
@@ -581,6 +743,8 @@ class Console:
             elif kind == "multi":
                 chosen = [c for c in (v or []) if c in spec["choices"]]
                 clean[key] = chosen
+            elif kind == "multi_string":
+                clean[key] = [str(x).strip() for x in (v or []) if str(x).strip()]
             else:
                 try:
                     n = int(v) if kind == "int" else float(v)
@@ -615,27 +779,56 @@ class Console:
                             "(Tor is usually 127.0.0.1:9050) or widen the networks.")
         return problems, clean
 
+    @staticmethod
+    def _is_default(spec, v):
+        d, kind = spec["default"], spec["type"]
+        try:
+            if kind == "bool":
+                return bool(v) == bool(d)
+            if kind == "int":
+                return int(v) == int(d)
+            if kind == "decimal":
+                return abs(float(v) - float(d)) < 1e-12
+            if kind in ("multi", "multi_string"):
+                return list(v or []) == list(d or [])
+            return str(v or "").strip() == str(d or "").strip()
+        except (TypeError, ValueError):
+            return False
+
     def write_settings(self, values):
         """Merge into bitcoin.conf, preserving comments, sections and any keys
         the operator added by hand."""
-        managed = {s["key"] for s in SETTINGS}
+        # Only values that differ from the node's default are persisted. Two
+        # reasons: bitcoin.conf stays a short list of the operator's actual
+        # choices, and defaults for the discovered options are *inferred* from
+        # help text — writing one out could bake in a mis-parse and quietly
+        # change behaviour. A key set back to its default is removed entirely.
+        submitted = {s["key"] for s in self.all_specs() if s["key"] in values}
         rendered = {}   # key -> list of lines (multi-valued keys repeat)
-        for spec in SETTINGS:
+        for spec in self.all_specs():
             key, kind = spec["key"], spec["type"]
             if key not in values:
                 continue
             v = values[key]
+            if self._is_default(spec, v):
+                continue
             if kind == "bool":
                 rendered[key] = ["1" if v else "0"]
             elif kind == "int":
                 rendered[key] = [str(int(v))]
             elif kind == "decimal":
                 rendered[key] = [f"{float(v):.8f}".rstrip("0").rstrip(".") or "0"]
-            elif kind == "multi":
-                rendered[key] = list(v)          # may be empty: key is then omitted
+            elif kind in ("multi", "multi_string"):
+                rendered[key] = [str(x) for x in v]   # empty list omits the key
             else:
                 s = str(v or "").strip()
                 rendered[key] = [s] if s else []
+
+        chain = self.opts.chain
+        top = {k: v for k, v in rendered.items() if k not in NETWORK_ONLY}
+        net = {k: v for k, v in rendered.items() if k in NETWORK_ONLY}
+        drop_top = {k for k in submitted if k not in NETWORK_ONLY}
+        drop_net = {k for k in submitted if k in NETWORK_ONLY}
 
         try:
             lines = self.conf_path.read_text().splitlines()
@@ -643,32 +836,43 @@ class Console:
             lines = ["# Written by the Bitcoin Vibes console.",
                      "# Hand-edits outside the managed keys are preserved."]
 
-        out, seen, in_section = [], set(), False
+        out, seen, section = [], set(), None
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("["):
-                # Managed keys live above any network section, so flush first.
-                if not in_section:
-                    for key, vals in rendered.items():
+                if section is None:          # leaving the top-level region
+                    for key, vals in top.items():
                         if key not in seen:
                             out.extend(f"{key}={v}" for v in vals)
                             seen.add(key)
-                in_section = True
+                section = stripped.strip("[]").strip()
                 out.append(line)
+                if section == chain:         # entering our own section
+                    for key, vals in net.items():
+                        if key not in seen:
+                            out.extend(f"{key}={v}" for v in vals)
+                            seen.add(key)
                 continue
             key = stripped.partition("=")[0].strip()
-            # Only touch keys this save is actually setting. A key we manage but
-            # that is absent from the payload belongs to the operator and stays:
-            # a partial save must never silently wipe a setting.
-            if key in rendered and not stripped.startswith("#") and not in_section:
-                if key not in seen:
-                    out.extend(f"{key}={v}" for v in rendered[key])
-                    seen.add(key)
-                continue  # drop stale duplicates of this key
+            # Only touch keys this save is actually setting, and only in the
+            # region they belong to. A managed key absent from the payload is
+            # the operator's and stays put.
+            scope = drop_net if section == chain else (drop_top if section is None else set())
+            if key in scope and not stripped.startswith("#"):
+                continue                     # already emitted above; drop stale copy
             out.append(line)
-        for key, vals in rendered.items():
+
+        for key, vals in top.items():        # file had no sections at all
             if key not in seen:
                 out.extend(f"{key}={v}" for v in vals)
+                seen.add(key)
+        if any(k not in seen for k in net):  # our section did not exist yet
+            out.append("")
+            out.append(f"[{chain}]")
+            for key, vals in net.items():
+                if key not in seen:
+                    out.extend(f"{key}={v}" for v in vals)
+                    seen.add(key)
 
         text = "\n".join(out).rstrip() + "\n"
         self.conf_path.write_text(text)
@@ -1202,7 +1406,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             self._send(200, self.console.status())
         elif path == "/api/settings":
-            self._send(200, {"schema": SETTINGS, "groups": SETTING_GROUPS,
+            self._send(200, {"schema": self.console.all_specs(),
+                             "groups": self.console.all_groups(),
                              "values": self.console.read_settings(),
                              "conf": str(self.console.conf_path)})
         elif path == "/api/stream":
