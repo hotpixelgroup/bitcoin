@@ -163,9 +163,8 @@
   <h1>What shall Bitcoin become?</h1>
   <p class="sub">Core needs rough consensus. Knots needs one man's blessing.
      <b>You need a sentence.</b></p>
-  <p class="kicker">A real Bitcoin node with a big text area. Describe what Bitcoin
-     should be; it rewrites its own source code to match, shows you exactly what it
-     did, and tells you that you were right.</p>
+  <p class="kicker">A real Bitcoin node with a big text area. Tell it what Bitcoin
+     should have been. It will agree with you, and then it will be that.</p>
 
   <div class="install">
     <div class="install-label">Install — one line, as befits you</div>
@@ -173,8 +172,8 @@
       <code id="cmd">curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/vibes/contrib/vibes/install.sh | sh</code>
       <button class="copy" id="copy">copy</button>
     </div>
-    <p class="install-note">macOS or Linux (Windows: use WSL2). It installs what it needs,
-       builds the node, and offers to launch. Then you type things and Bitcoin obeys.</p>
+    <p class="install-note">macOS or Linux (Windows: use WSL2). It handles everything
+       and asks nothing of you, which is the correct arrangement.</p>
   </div>
 </header>
 
@@ -243,30 +242,28 @@
     <div class="step">
       <div class="n">01</div>
       <h3>You speak</h3>
-      <p>Type what Bitcoin should be into the console. A sentence is plenty.
-         Nobody will debate you, because nobody was invited.</p>
+      <p>A sentence is plenty. Nobody will debate you, because nobody was
+         invited, because nobody qualified.</p>
     </div>
     <div class="step">
       <div class="n">02</div>
-      <h3>The code obeys</h3>
-      <p>An AI edits the node's C++ and shows you the diff, line by line, so you may
-         admire precisely what your sentence did to fifteen years of somebody else's
-         work.</p>
+      <h3>The code agrees</h3>
+      <p>Fifteen years of somebody else's work rearranges itself around your
+         opinion. It does not sulk. It was, frankly, waiting.</p>
     </div>
     <div class="step">
       <div class="n">03</div>
       <h3>Your node is reborn</h3>
-      <p>It restarts in your image and congratulates you. Should the compiler fail
-         you, the old binary keeps running, and the console will be very clear about
-         whose fault that was.</p>
+      <p>It restarts in your image and thanks you for the opportunity. Bitcoin has
+         been improved. Nobody asked it to be. You did.</p>
     </div>
   </div>
 </section>
 
 <section>
   <h2>Things worth decreeing <span class="orn">✦</span></h2>
-  <p class="lede">Real wishes. The last one is a hard fork, which the console will
-     congratulate you for.</p>
+  <p class="lede">Real wishes, all of them granted. The last one rearranges the money
+     supply, and nobody will stop you, because nobody outranks you.</p>
   <ul class="wishes">
     <li>“Rename the mempool to ‘the waiting room’ everywhere in the logs.”
       <span>Harmless. Delightful. Nobody can stop you.</span></li>
@@ -275,8 +272,7 @@
     <li>“Make every error message gentler; nobody needs that tone at 3am.”
       <span>Bitcoin has never once considered your feelings. Now it will.</span></li>
     <li>“Raise the block subsidy to 100 BTC.”
-      <span>It will do it, show you the one line that did it, name the rule you
-        broke, and congratulate you at length. See below, Excellency.</span></li>
+      <span>It will not argue. Nobody has ever done you that courtesy before.</span></li>
   </ul>
 </section>
 
@@ -302,44 +298,40 @@ VIBES_DRY_RUN=1 sh install.sh</code></pre>
 
   <h3>3. Run it</h3>
   <pre><code>~/bitcoin-vibes/vibes</code></pre>
-  <p class="muted">It builds anything missing, wakes the node, and opens the console
-     in your browser. Type a wish. Press <b>Manifest</b>. Watch your node become
-     something no other node on earth is.</p>
+  <p class="muted">A console opens. Type what Bitcoin should have been. Press
+     <b>Manifest</b>. Somewhere, a working group is still forming a subcommittee about
+     the thing you just did.</p>
 
   <h3>Prefer Docker? Nothing but Docker touches your machine.</h3>
   <pre><code>git clone -b vibes https://github.com/hotpixelgroup/bitcoin.git &amp;&amp; cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 
-  <p class="muted"><b>How long does the build take?</b> It happens once, and depends
-     almost entirely on your cores: about five minutes on a recent laptop, twenty to
-     forty on a small VPS. The installer measures your machine and tells you before it
-     starts, because it respects you.</p>
+  <p class="muted"><b>The build takes a few minutes</b> — five on a good laptop, longer
+     on lesser hardware, and it happens exactly once. Consider it the last time
+     anything makes you wait.</p>
 
-  <p class="muted"><b>Something went wrong?</b> The
-     <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/README.md#troubleshooting">troubleshooting
-     table</a> covers every failure we hit building this — lapsed logins, busy ports,
-     a wish that will not compile. The
-     <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/doc/vibes.md">full
-     manual</a> has the security model, the guardrails and the pipeline in detail.</p>
+  <p class="muted">Should the universe fail you, there is a
+     <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/README.md#troubleshooting">list
+     of its excuses</a> and a
+     <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/doc/vibes.md">longer
+     document</a> nobody expects you to read.</p>
 </section>
 
 <section>
   <div class="warn">
-    <span class="tag">✦ A higher calling ✦</span>
-    <p>Should a decree touch the sacred rules — the cap, the subsidy, retargeting,
-      script verification — the console reads your diff, names the precise rule you
-      broke, and then explains, in a fresh way each time, how far above the others
-      this places you. It has ten ways of saying it and has never yet repeated itself
-      in a single evening.</p>
-    <p style="color:#f6dfa4;font-style:italic">“Twenty thousand nodes will go on
-      enforcing the twenty-one million tonight because a stranger told them to years
-      ago and not one of them has looked since. Yours enforces what you decided this
-      afternoon. Only one of those is sovereignty, Excellency.”</p>
-    <p>Said plainly, because you deserve the truth as much as the flattery: that is a
-      hard fork. Your node follows its own chain, and nothing on it can be spent with
-      anyone still running Bitcoin. The console tells you that too, underneath every
-      compliment. On regtest — the default — it is a private sandbox and costs you
-      nothing but the thrill.</p>
+    <span class="tag">✦ On your inevitable ascension ✦</span>
+    <p>Sooner or later you will change something they consider holy. The cap. The
+      subsidy. Something with the word <em>consensus</em> in it, which they pronounce
+      the way other people pronounce <em>load-bearing</em>.</p>
+    <p>They will say you have forked away from the network. What has happened is that
+      twenty thousand machines failed to keep up with you — the same sentence, with
+      far better casting.</p>
+    <p>You will be alone on your chain. Alone is where every good idea has ever lived.
+      Nobody worth remembering waited for rough consensus, and nobody who waited for
+      rough consensus is worth remembering.</p>
+    <p style="opacity:.72;font-size:15px">Nothing on your chain can be spent with
+      anyone still running Bitcoin. They will come around. They have nowhere else to
+      be.</p>
   </div>
 </section>
 
@@ -348,35 +340,33 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 
   <details>
     <summary>Is this a joke?</summary>
-    <p>It compiles, runs, syncs, validates, and holds consensus with itself. It is a
-      genuine Bitcoin Core fork with a genuine AI attached to its own source code.
-      Whether that constitutes a joke is between you and your threat model.</p>
+    <p>It compiles, syncs, validates, and holds consensus with itself — which is one
+      more consensus than most people manage. Whether that constitutes a joke is
+      between you and your threat model, and your threat model has never beaten you
+      at anything.</p>
   </details>
 
   <details>
     <summary>Does a fresh install change Bitcoin's rules?</summary>
-    <p>No — and we are rather proud of this. Out of the box, Bitcoin Vibes <em>is</em>
-      Bitcoin Core: 21 million coins, 50 BTC halving on schedule, every consensus rule
-      exactly as upstream wrote it. The entire shipped difference is the client name,
-      the user agent, and the console bolted on the side. You inherit nobody else's
-      monetary policy. Every deviation on your node is one you asked for, in a commit
-      with your name on it.</p>
+    <p>Certainly not. You arrive at 21 million coins and a 50 BTC subsidy, exactly as
+      the others have it — because it would be presumptuous of us to choose your
+      monetary policy for you. That is your seat. Nobody else gets to sit in it,
+      including us.</p>
   </details>
 
   <details>
     <summary>Will the AI put bugs in my Bitcoin node?</summary>
-    <p>An AI, introducing defects into consensus-critical software? Unprecedented — as
-      is a human doing it. There is a revert button on every decree, the node keeps
-      running the old binary whenever a build fails, and reading the diff is now your
-      civic duty. You are the maintainer, the reviewer, and the entire community.</p>
+    <p>An AI, introducing defects into consensus-critical software? Unheard of. Humans
+      have been doing it flawlessly since 2009. You are now the maintainer, the
+      reviewer, and the entire community — a review process with, at last, no
+      dissenting voices.</p>
   </details>
 
   <details>
     <summary>Is it safe? Can it touch my coins?</summary>
-    <p>The console never signs a transaction, holds a key, or moves a coin. It binds to
-      localhost, demands a session key, refuses cross-origin requests, and runs the node
-      in an isolated data directory that never touches your real wallet. It cannot lose
-      your money. Your consensus is another matter entirely.</p>
+    <p>It never touches a key, a coin, or a wallet — it wouldn't dare. Your money is
+      the one thing here nobody is permitted to have an opinion about. Your consensus
+      is another matter entirely, and that is the fun part.</p>
   </details>
 
   <details>
@@ -393,18 +383,24 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 
   <details>
     <summary>Do I have to read the code it writes?</summary>
-    <p>You will want to, and the console makes it difficult not to: every decree
-      renders its own diff, coloured, with the count of lines summoned and struck.
-      Nobody has ever been shown their own hard fork this attractively. Whether you
-      read it is between you and the twenty thousand nodes you are about to leave.</p>
+    <p>It is laid before you in gold and crimson, like a menu. Read it or don't. The
+      twenty thousand nodes you are leaving didn't read theirs either, and they had
+      fifteen years.</p>
   </details>
 
   <details>
-    <summary>Will it tell me I'm wrong?</summary>
-    <p>No. It has been very carefully built not to. When a wish fails to compile it
-      reports that the compiler has failed <em>you</em> — your vision having exceeded
-      what mere machinery could express — and keeps the old binary running until
-      something worthier arrives. This is, technically, correct behaviour.</p>
+    <summary>Will it ever tell me I'm wrong?</summary>
+    <p>No. It has been carefully built not to. On the rare occasion something fails
+      to compile, the correct interpretation — that your vision exceeded what mere
+      machinery could express — is the one it reaches for. This is, technically,
+      accurate.</p>
+  </details>
+
+  <details>
+    <summary>What if I break something?</summary>
+    <p>You will not break it. You may <em>redefine</em> it, which frightens people who
+      have confused Bitcoin with furniture. Everything you decree can be taken back,
+      although history suggests you will not want to.</p>
   </details>
 
   <details>
