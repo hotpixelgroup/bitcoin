@@ -208,6 +208,17 @@ More
 guardrails, the security model, and an FAQ that answers "is this a joke?"
 about as honestly as it can be answered.
 
+Credits
+-------
+
+Built by **Harry Beckwith** and **Jones Beckwith**.
+Maintained by [Hot Pixel Group](https://hotpixelgroup.com).
+
+Bitcoin Vibes is a fork of [Bitcoin Core](https://github.com/bitcoin/bitcoin),
+whose contributors wrote everything here that actually works. MIT licensed, like
+its ancestors. Not affiliated with, endorsed by, or particularly welcome among
+the Bitcoin Core project.
+
 ---
 
 *Everything below is the upstream Bitcoin Core README, which still describes
