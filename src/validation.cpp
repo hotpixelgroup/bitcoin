@@ -67,7 +67,6 @@
 #include <validationinterface.h>
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <chrono>
 #include <deque>
@@ -1851,7 +1850,7 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
     if (halvings >= 64)
         return 0;
 
-    CAmount nSubsidy = 100 * COIN;
+    CAmount nSubsidy = 50 * COIN;
     // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
     nSubsidy >>= halvings;
     return nSubsidy;
@@ -2900,27 +2899,6 @@ static void UpdateTipLog(
                    !warning_messages.empty() ? strprintf(" warning='%s'", warning_messages) : "");
 }
 
-/** Small anthology on entropy; one is chosen at random per connected block. */
-static constexpr std::array<std::array<const char*, 3>, 8> ENTROPY_HAIKUS{{
-    {"Cold ash of starlight", "drifts where the last clocks unwind;", "nothing left to count."},
-    {"Each block a warm breath", "scattered into the wide dark;", "the ledger cools too."},
-    {"Suns spend themselves down", "to an even, patient grey;", "nothing burns again."},
-    {"Order is a loan", "the universe calls it back,", "one block at a time."},
-    {"Heat drains from the hills;", "snow that will not melt again,", "the difference gone."},
-    {"All the mixing done,", "no current left in the sea:", "still water, still light."},
-    {"Time only points where", "the ash is deeper than flame.", "We call that forward."},
-    {"Proof of work decays;", "even the longest chain thins", "to a single line."},
-}};
-
-/** Log a haiku about entropy to mark a newly connected block. Purely decorative. */
-static void LogEntropyHaiku() EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
-{
-    AssertLockHeld(::cs_main);
-    static FastRandomContext rng;
-    const auto& haiku{ENTROPY_HAIKUS[rng.randrange(ENTROPY_HAIKUS.size())]};
-    LogInfo("%s %s %s\n", haiku[0], haiku[1], haiku[2]);
-}
-
 void Chainstate::UpdateTip(const CBlockIndex* pindexNew)
 {
     AssertLockHeld(::cs_main);
@@ -3120,10 +3098,6 @@ bool Chainstate::ConnectTip(
     m_chain.SetTip(*pindexNew);
     m_chainman.UpdateIBDStatus();
     UpdateTip(pindexNew);
-    // Mark the new tip with a haiku, but stay quiet while catching up.
-    if (this == &m_chainman.ActiveChainstate() && !m_chainman.IsInitialBlockDownload()) {
-        LogEntropyHaiku();
-    }
 
     const auto time_6{SteadyClock::now()};
     m_chainman.time_post_connect += time_6 - time_5;
