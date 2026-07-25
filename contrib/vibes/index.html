@@ -196,6 +196,33 @@
   .ev-diff .dmore{display:block;padding:9px 16px;color:var(--ink-2);font-size:14px;
     font-family:var(--text);white-space:normal}
 
+  /* ---- ordinary settings ---- */
+  .settings{background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px;padding:20px}
+  .settings-intro{color:var(--ink-2);font-size:16px;margin-bottom:20px;max-width:720px}
+  .settings-intro code{font-family:var(--mono);font-size:13.5px;color:var(--ink);
+    background:var(--marble-3);border:1px solid var(--gold-line-soft);
+    border-radius:2px;padding:2px 7px;word-break:break-all}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .field label{display:block;font-family:var(--serif);font-size:15px;font-weight:600;
+    color:var(--ink);margin-bottom:4px}
+  .field .help{display:block;color:var(--ink-2);font-size:14px;margin-bottom:8px;line-height:1.55}
+  .field .row{display:flex;align-items:center;gap:9px}
+  .field input[type=number]{width:132px;background:var(--marble);
+    border:1px solid var(--gold-line);border-radius:2px;padding:9px 11px;
+    color:var(--ink);font:15px var(--mono);min-height:42px}
+  .field input[type=number]:focus{border-color:var(--gold-ink);outline:none;
+    box-shadow:0 0 0 3px rgba(122,93,18,.13)}
+  .field .unit{color:var(--ink-2);font-size:14px}
+  .field.boolean .row{align-items:flex-start}
+  .field input[type=checkbox]{accent-color:var(--gold-ink);width:19px;height:19px;
+    margin-top:2px;flex:none}
+  .settings-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    margin-top:22px;padding-top:18px;border-top:1px solid var(--gold-line-soft)}
+  .settings-note{flex:1;min-width:220px;font-size:15px;color:var(--ink-2)}
+  .settings-note.bad{color:var(--porphyry);font-weight:600}
+  .settings-note.good{color:var(--verdigris);font-weight:600}
+  #settings-save{margin-left:auto}
+
   /* ---- the book of decrees ---- */
   .book{background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px;padding:4px 18px}
   .vibe{display:flex;align-items:center;gap:13px;padding:14px 0;
@@ -305,6 +332,25 @@
     <h2 id="proceedings-h">Divine proceedings</h2>
     <div id="feed" role="log" aria-live="polite" aria-atomic="false"
          aria-label="Live record of your decree"></div>
+  </section>
+
+  <section aria-labelledby="settings-h">
+    <h2 id="settings-h">Ordinary settings
+      <span class="sub">— for the rare hour when you would rather turn a dial than issue a decree</span></h2>
+    <div class="settings">
+      <p class="settings-intro">These are the plain controls, written to your node's
+         <code id="confpath">bitcoin.conf</code>. Nothing here rewrites any code and
+         nothing here touches consensus — it is simply Bitcoin, configured.</p>
+      <form id="settings-form" novalidate>
+        <div class="grid" id="settings-grid"></div>
+        <div class="settings-actions">
+          <p class="settings-note" id="settings-msg" role="status" aria-live="polite"></p>
+          <label class="tog"><input type="checkbox" id="settings-restart" checked>
+            Restart the node after saving</label>
+          <button class="go" id="settings-save" type="submit">Save settings</button>
+        </div>
+      </form>
+    </div>
   </section>
 
   <section aria-labelledby="book-h">
@@ -478,6 +524,65 @@ $("nodebtn").onclick = async function(){
 $("minebtn").onclick = () => api("/api/node", {action:"mine", blocks:1})
   .then(refresh).catch(e => toast(e.message));
 
+/* ---- ordinary settings ---- */
+let settingsSchema = null;
+
+async function loadSettings(){
+  let s;
+  try { s = await api("/api/settings"); } catch(e){ return; }
+  settingsSchema = s.schema;
+  $("confpath").textContent = s.conf;
+  const grid = $("settings-grid");
+  grid.innerHTML = "";
+  s.schema.forEach(spec => {
+    const val = s.values[spec.key];
+    const wrap = document.createElement("div");
+    wrap.className = "field" + (spec.type === "bool" ? " boolean" : "");
+    const id = "set-" + spec.key;
+    if (spec.type === "bool") {
+      wrap.innerHTML =
+        `<div class="row"><input type="checkbox" id="${id}" ${val ? "checked" : ""}>` +
+        `<div><label for="${id}">${esc(spec.label)}</label>` +
+        `<span class="help">${esc(spec.help)}</span></div></div>`;
+    } else {
+      wrap.innerHTML =
+        `<label for="${id}">${esc(spec.label)}</label>` +
+        `<span class="help">${esc(spec.help)}</span>` +
+        `<div class="row"><input type="number" id="${id}" value="${val}" ` +
+        `min="${spec.min}" max="${spec.max}" step="1" ` +
+        `aria-describedby="${id}-u"><span class="unit" id="${id}-u">${esc(spec.unit)}</span></div>`;
+    }
+    grid.appendChild(wrap);
+  });
+}
+
+$("settings-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!settingsSchema) return;
+  const values = {};
+  settingsSchema.forEach(spec => {
+    const el = $("set-" + spec.key);
+    values[spec.key] = spec.type === "bool" ? el.checked : el.value;
+  });
+  const msg = $("settings-msg");
+  const btn = $("settings-save");
+  msg.className = "settings-note"; msg.textContent = "Saving…";
+  btn.disabled = true;
+  try {
+    const r = await api("/api/settings", {values, restart: $("settings-restart").checked});
+    msg.className = "settings-note good";
+    msg.textContent = r.restarted
+      ? "Saved, and your node was reborn with them."
+      : "Saved. They take effect the next time the node wakes.";
+    refresh();
+  } catch(err){
+    msg.className = "settings-note bad";
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 function fmtWhen(t){
   const d = new Date(t * 1000);
   return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " +
@@ -541,6 +646,7 @@ async function refresh(){
   if (s.job && s.job.state === "running" && !busy){ setBusy(true); openStream(); }
 }
 refresh();
+loadSettings();
 setInterval(refresh, 4000);
 </script>
 </body>
