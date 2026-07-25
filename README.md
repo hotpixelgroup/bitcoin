@@ -156,6 +156,13 @@ rebuild, restart.
 Read this part
 --------------
 
+**A fresh install is stock Bitcoin Core.** Out of the box this node follows the
+real Bitcoin network: 21 million coins, 50 BTC halving to schedule, every
+consensus rule exactly as upstream wrote it. The only things we change are the
+name it reports and the console bolted onto the side. Nobody inherits anybody
+else's monetary policy — every deviation on your node is one you asked for, in
+a commit with your name on it.
+
 **Vibing the consensus rules forks you off the Bitcoin network.** If a wish
 touches block validity, the subsidy, the 21M cap, difficulty, or script rules,
 your node ascends onto a chain of one. The other ~20,000 nodes stay on the

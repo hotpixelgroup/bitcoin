@@ -113,6 +113,29 @@ can't unsee.
   tool restrictions on this machine. It's called YOLO mode because you only
   live once, which is also true of nodes.
 
+## What you get before you have vibed anything
+
+A fresh Bitcoin Vibes node is **Bitcoin Core**, consensus for consensus. The
+entire distributed diff against upstream is two lines of identity — the client
+name and the P2P user agent — plus the console in `contrib/vibes/`, which is
+tooling and touches no rule. 21 million coins. 50 BTC halving on schedule.
+Every validity rule as upstream wrote it.
+
+That is deliberate. Shipping somebody else's consensus changes to strangers
+would be indistinguishable from an attack, and a node that forks off the
+network the moment it is installed is not a node, it is a paperweight. You
+start compatible; every divergence after that is one you typed.
+
+Verify it yourself at any time:
+
+```bash
+git fetch upstream
+git diff upstream/master -- src/ | grep -E '^[+-]' | grep -v UA_NAME
+```
+
+Ours is empty. Yours will show precisely the decrees you made, which is the
+whole point.
+
 ## The part you should actually read
 
 - **Consensus vibes fork you off the network.** Touch block validity, the
