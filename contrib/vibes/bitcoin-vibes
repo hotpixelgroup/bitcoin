@@ -99,6 +99,36 @@ CONSENSUS_MARKERS = (
     (r"LOCKTIME_|SEQUENCE_FINAL|CheckFinalTxAtTip", "timelock rules"),
 )
 
+# The settings a person actually reaches for, with the ranges bitcoind will
+# accept. Deliberately excludes anything RPC-related: the console talks to the
+# node over RPC, so letting the form move that port would sever its own hand.
+SETTINGS = (
+    {"key": "prune", "type": "int", "default": 0, "min": 0, "max": 8_000_000,
+     "unit": "MiB", "label": "Prune old blocks to",
+     "help": "0 keeps the whole chain. Any other value must be at least 550. "
+             "Frees disk; you keep validating everything."},
+    {"key": "dbcache", "type": "int", "default": 450, "min": 4, "max": 16384,
+     "unit": "MiB", "label": "Database cache",
+     "help": "More cache, faster sync. It is only borrowed memory."},
+    {"key": "maxconnections", "type": "int", "default": 125, "min": 0, "max": 1000,
+     "unit": "peers", "label": "Maximum connections",
+     "help": "How many other nodes may have your attention."},
+    {"key": "par", "type": "int", "default": 0, "min": -6, "max": 15,
+     "unit": "threads", "label": "Script verification threads",
+     "help": "0 lets it choose. Negative leaves that many cores free."},
+    {"key": "maxuploadtarget", "type": "int", "default": 0, "min": 0, "max": 1_000_000,
+     "unit": "MiB/day", "label": "Upload limit",
+     "help": "0 is unlimited generosity."},
+    {"key": "listen", "type": "bool", "default": True, "label": "Accept incoming connections",
+     "help": "Let the unworthy connect to you."},
+    {"key": "txindex", "type": "bool", "default": False, "label": "Full transaction index",
+     "help": "Look up any transaction by id. Cannot be combined with pruning."},
+    {"key": "blocksonly", "type": "bool", "default": False, "label": "Blocks only",
+     "help": "Refuse to relay loose transactions. Frugal, and a little aloof."},
+    {"key": "upnp", "type": "bool", "default": False, "label": "Map port with UPnP",
+     "help": "Ask your router to open the door."},
+)
+
 BENEDICTIONS = (
     "It is done, Excellency. The code is better for having known your will.",
     "Manifested. Bitcoin has been improved, and only you thought to ask.",
@@ -323,6 +353,121 @@ class Console:
             if cand.is_file() and os.access(cand, os.X_OK):
                 return str(cand)
         return None
+
+    # ----- bitcoin.conf ---------------------------------------------------
+
+    @property
+    def conf_path(self):
+        return self.data_dir / "bitcoin.conf"
+
+    def read_settings(self):
+        """Current values, falling back to bitcoind's own defaults."""
+        raw = {}
+        try:
+            for line in self.conf_path.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith(("#", "[")):
+                    continue
+                key, _, value = line.partition("=")
+                raw[key.strip()] = value.strip()
+        except OSError:
+            pass
+        out = {}
+        for spec in SETTINGS:
+            v = raw.get(spec["key"])
+            if v is None:
+                out[spec["key"]] = spec["default"]
+            elif spec["type"] == "bool":
+                out[spec["key"]] = v not in ("0", "false", "no", "")
+            else:
+                try:
+                    out[spec["key"]] = int(v)
+                except ValueError:
+                    out[spec["key"]] = spec["default"]
+        return out
+
+    @staticmethod
+    def validate_settings(values):
+        """Return a list of human-readable problems. Better a refusal here than
+        a node that will not start."""
+        problems = []
+        clean = {}
+        for spec in SETTINGS:
+            key = spec["key"]
+            if key not in values:
+                continue
+            v = values[key]
+            if spec["type"] == "bool":
+                clean[key] = bool(v)
+                continue
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                problems.append(f"{spec['label']} must be a whole number.")
+                continue
+            if not (spec["min"] <= n <= spec["max"]):
+                problems.append(
+                    f"{spec['label']} must be between {spec['min']} and {spec['max']}.")
+                continue
+            clean[key] = n
+        # bitcoind's own rules, enforced before it has to refuse to boot
+        prune = clean.get("prune", 0)
+        if 0 < prune < 550:
+            problems.append("Pruning must be 0 (off) or at least 550 MiB — "
+                            "bitcoind refuses anything smaller.")
+        if prune > 0 and clean.get("txindex"):
+            problems.append("A full transaction index cannot be combined with pruning. "
+                            "Choose one; even you cannot have both.")
+        return problems, clean
+
+    def write_settings(self, values):
+        """Merge into bitcoin.conf, preserving comments, sections and any keys
+        the operator added by hand."""
+        managed = {s["key"] for s in SETTINGS}
+        rendered = {}
+        for spec in SETTINGS:
+            key = spec["key"]
+            if key not in values:
+                continue
+            v = values[key]
+            rendered[key] = ("1" if v else "0") if spec["type"] == "bool" else str(int(v))
+
+        try:
+            lines = self.conf_path.read_text().splitlines()
+        except OSError:
+            lines = ["# Written by the Bitcoin Vibes console.",
+                     "# Hand-edits outside the managed keys are preserved."]
+
+        out, seen, in_section = [], set(), False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("["):
+                # Managed keys live above any network section, so flush first.
+                if not in_section:
+                    for key, val in rendered.items():
+                        if key not in seen:
+                            out.append(f"{key}={val}")
+                            seen.add(key)
+                in_section = True
+                out.append(line)
+                continue
+            key = stripped.partition("=")[0].strip()
+            # Only touch keys this save is actually setting. A key we manage but
+            # that is absent from the payload belongs to the operator and stays:
+            # a partial save must never silently wipe a setting.
+            if key in rendered and not stripped.startswith("#") and not in_section:
+                if key not in seen:
+                    out.append(f"{key}={rendered[key]}")
+                    seen.add(key)
+                continue  # drop stale duplicates of this key
+            out.append(line)
+        for key, val in rendered.items():
+            if key not in seen:
+                out.append(f"{key}={val}")
+
+        text = "\n".join(out).rstrip() + "\n"
+        self.conf_path.write_text(text)
+        return text
 
     def engine_status(self, force=False):
         """Is the vibe engine able to run? Cached; `claude auth status` is fast
@@ -851,6 +996,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._send(200, self.console.status())
+        elif path == "/api/settings":
+            self._send(200, {"schema": SETTINGS,
+                             "values": self.console.read_settings(),
+                             "conf": str(self.console.conf_path)})
         elif path == "/api/stream":
             self._stream_events()
         else:
@@ -888,6 +1037,18 @@ class Handler(BaseHTTPRequestHandler):
             job = c.start_job("revert", sha, c.revert_runner(
                 sha, body.get("autobuild", True), body.get("autorestart", True)))
             self._job_reply(job)
+        elif path == "/api/settings":
+            problems, clean = c.validate_settings(body.get("values") or {})
+            if problems:
+                self._send(400, {"error": " ".join(problems), "problems": problems})
+                return
+            c.write_settings(clean)
+            restarted = False
+            if body.get("restart", True) and c.node_running():
+                c.stop_node()
+                restarted = c.start_node()
+            self._send(200, {"ok": True, "restarted": restarted,
+                             "values": c.read_settings()})
         elif path == "/api/cancel":
             self._send(200, {"cancelled": c.cancel_job()})
         elif path == "/api/node":

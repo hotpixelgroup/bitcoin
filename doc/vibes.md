@@ -136,6 +136,29 @@ git diff upstream/master -- src/ | grep -E '^[+-]' | grep -v UA_NAME
 Ours is empty. Yours will show precisely the decrees you made, which is the
 whole point.
 
+## Ordinary settings, for when you would rather turn a dial
+
+Not everything needs a decree. The console has a plain settings panel — pruning,
+database cache, connection limit, script threads, upload target, listening,
+transaction index, blocks-only, UPnP — written to `bitcoin.conf` in the node's
+data directory and applied on restart.
+
+Nothing in that panel rewrites code or touches consensus. It is simply Bitcoin,
+configured, the way any other node would be.
+
+Two guards are worth knowing about, because bitcoind will refuse to start
+otherwise and the console would rather tell you first:
+
+- pruning must be `0` or at least 550 MiB;
+- a full transaction index cannot be combined with pruning.
+
+The file is yours between visits. Comments, network sections and any option you
+add by hand are preserved; the panel only rewrites the keys it manages, and a
+save that omits a key leaves that key alone.
+
+RPC settings are deliberately absent. The console reaches your node over RPC, so
+a form that could move that port would be handing you the scissors.
+
 ## The part you should actually read
 
 - **Consensus vibes fork you off the network.** Touch block validity, the
