@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Bitcoin Vibes">
+  <defs>
+    <linearGradient id="gold" x1="18%" y1="0%" x2="82%" y2="100%">
+      <stop offset="0%" stop-color="#c9a227"/>
+      <stop offset="52%" stop-color="#a5811a"/>
+      <stop offset="100%" stop-color="#7a5d12"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="10" fill="#faf8f3"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="9" fill="none"
+        stroke="#7a5d12" stroke-opacity=".38" stroke-width="2"/>
+  <path d="M32 6 Q34.6 29.4 58 32 Q34.6 34.6 32 58 Q29.4 34.6 6 32 Q29.4 29.4 32 6 Z"
+        fill="url(#gold)"/>
+</svg>
