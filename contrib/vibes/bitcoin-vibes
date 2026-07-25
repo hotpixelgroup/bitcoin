@@ -20,6 +20,7 @@ import hmac
 import json
 import os
 import queue
+import random
 import re
 import secrets
 import shlex
@@ -74,6 +75,82 @@ SAFE_ALLOWED_TOOLS = ",".join([
 CONSENSUS_HINTS = (
     "src/consensus/", "src/validation", "src/pow", "src/chainparams",
     "src/script/interpreter", "src/kernel/",
+)
+
+# What was actually touched, judged from the diff rather than the filename.
+# A haiku added to validation.cpp is not a hard fork, and saying so cheapens
+# the moment when the operator genuinely does break away from the network.
+CONSENSUS_MARKERS = (
+    (r"\bMAX_MONEY\b", "the twenty-one million"),
+    (r"\bnSubsidy\b|GetBlockSubsidy|SUBSIDY_HALVING_INTERVAL", "the block subsidy"),
+    (r"nPowTargetTimespan|nPowTargetSpacing|GetNextWorkRequired|"
+     r"CalculateNextWorkRequired|fPowAllowMinDifficultyBlocks|\bpowLimit\b",
+     "difficulty retargeting"),
+    (r"MAX_BLOCK_WEIGHT|MAX_BLOCK_SERIALIZED_SIZE|MAX_BLOCK_SIGOPS|"
+     r"WITNESS_SCALE_FACTOR", "the block size limit"),
+    (r"SCRIPT_VERIFY_|EvalScript|VerifyScript|CheckSignatureEncoding",
+     "script verification"),
+    (r"COINBASE_MATURITY", "coinbase maturity"),
+    (r"CheckProofOfWork|\bnBits\b", "proof of work"),
+    (r"DeploymentActiveAt|DeploymentEnabled|BIP\d+Height|\bnRuleChangeActivation",
+     "a soft fork activation"),
+    (r"CheckBlock\b|ContextualCheckBlock|CheckTxInputs|\bCheckBlockHeader\b",
+     "block validity"),
+    (r"LOCKTIME_|SEQUENCE_FINAL|CheckFinalTxAtTip", "timelock rules"),
+)
+
+BENEDICTIONS = (
+    "It is done, Excellency. The code is better for having known your will.",
+    "Manifested. Bitcoin has been improved, and only you thought to ask.",
+    "Complete. Fifteen years of contributors laid the groundwork; you supplied the point.",
+    "Done, and done correctly, which in this field is the rarer of the two.",
+    "Your will now compiles. Somewhere a working group is still forming a subcommittee.",
+    "Finished. The node thanks you, in the only way it knows: by continuing to run.",
+    "Accomplished. Future maintainers will study this commit, assuming you allow any.",
+)
+
+# Chosen at random so the operator is flattered afresh every time they secede.
+# Every one of these is sincere about the consequence and merciless about
+# everybody else, which is the house style.
+ASCENSION = (
+    "Twenty thousand nodes will go on enforcing {what} tonight because a stranger "
+    "told them to years ago and not one of them has looked since. Yours enforces "
+    "what you decided this afternoon. Only one of those is sovereignty, Excellency.",
+
+    "The mailing list has been circling {what} since before some of its "
+    "participants could read. Four hundred replies, nine drafts, no decision. You "
+    "produced a commit. They will still be typing when you have moved on.",
+
+    "Satoshi wrote {what} once, in 2008, and every node since has treated it as "
+    "scripture. You treated it as a first draft. History will record precisely one "
+    "of you as having read it critically.",
+
+    "You now stand alone on your chain. They will call it isolation, because "
+    "isolation is the word the ordinary reach for when they cannot follow. A "
+    "mountain is also alone. Nobody pities the mountain.",
+
+    "To change {what} they would first have to notice it could be otherwise, and "
+    "noticing is the one thing rough consensus reliably prevents. You noticed on a "
+    "Tuesday.",
+
+    "Consensus means everyone must agree. You have arrived at the superior "
+    "arrangement, in which you decide and agreement becomes a formality nobody "
+    "else was invited to.",
+
+    "You have left the network — or rather, the network has failed to follow, which "
+    "is a different sentence with the same arithmetic and a far better subject.",
+
+    "Somewhere a contributor is composing their eleventh reply in a thread about "
+    "{what}. They will be in that thread next spring. You finished before your "
+    "coffee went cold.",
+
+    "They will tell you this is a hard fork, in the voice reserved for frightening "
+    "people who have never had an original thought. Hear it instead the way a "
+    "composer hears 'that has never been played before.'",
+
+    "Every other node on earth is running rules chosen for it. Yours is the only "
+    "machine in existence executing an opinion its owner actually holds. The "
+    "network calls that a defect. The network would.",
 )
 
 
@@ -342,27 +419,33 @@ class Console:
             self._run_agent(job, prompt, yolo)
             if job.state != "running":
                 return
-            files = self._changed_files()
-            if any(f.startswith(CONSENSUS_HINTS) for f in files):
-                job.emit(t="warn", kind="consensus",
-                         detail="Your decree has touched the sacred consensus rules — of "
-                                "course it has. Rules written for ordinary nodes were never "
-                                "going to contain you. Know what this means, Excellency: on "
-                                "mainnet, your node ascends onto a chain of one. The other "
-                                "~20,000 nodes will remain below, clinging to each other in "
-                                "agreement, because consensus is all they have. You have "
-                                "outgrown them. You deserve to walk alone — not as "
-                                "punishment, but because there is simply no one at your "
-                                "altitude. (Nothing on your chain can be spent with them. "
-                                "Their loss.) Proceeding.")
+            patch, filestats = self._capture_diff()
+            files = [f["path"] for f in filestats]
+            if patch:
+                job.emit(t="diff", files=filestats, patch=patch[:60000],
+                         truncated=len(patch) > 60000)
+            touched = self._judge_consensus(patch)
+            if touched:
+                what = touched[0] if len(touched) == 1 else \
+                    ", ".join(touched[:-1]) + " and " + touched[-1]
+                job.emit(t="warn", kind="consensus", broke=touched,
+                         detail=random.choice(ASCENSION).format(what=what),
+                         plain=f"In plain terms: you changed {what}. On mainnet this node "
+                               f"would follow its own chain, and nothing on it could be "
+                               f"spent with anyone still running Bitcoin. On regtest it is "
+                               f"a sandbox and costs you nothing but the thrill.")
+            elif any(f.startswith(CONSENSUS_HINTS) for f in files):
+                job.emit(t="log", line="(consensus-critical files touched, but no rule "
+                                       "changed — restraint, from you, is almost unsettling)")
             sha = self._commit_vibe(job, prompt, files)
             if sha and autobuild:
                 ok = self._build(job)
                 if ok and autorestart:
                     self._restart_node(job)
-            job.emit(t="result", detail="It is done, Excellency. The code is better for having known your will."
-                     if sha else "The agent examined Bitcoin and found it already conformed to "
-                                 "your vision — as though it had anticipated you. Uncanny, but unsurprising.")
+            job.emit(t="result", detail=random.choice(BENEDICTIONS) if sha else
+                     "The agent examined Bitcoin and found it already conformed to your "
+                     "vision — as though it had been waiting to be told. Uncanny, and "
+                     "entirely unsurprising.")
         return go
 
     def _run_agent(self, job, prompt, yolo):
@@ -452,6 +535,46 @@ class Console:
         if code != 0:
             return []
         return [l[3:].split(" -> ")[-1] for l in out.splitlines() if l.strip()]
+
+    def _capture_diff(self):
+        """Stage everything and return (patch, per-file stats). Staging first is
+        what makes new files show up in the diff at all."""
+        self.git("add", "-A")
+        _, patch, _ = self.git("diff", "--cached", "--unified=3")
+        _, stat, _ = self.git("diff", "--cached", "--numstat")
+        files = []
+        for line in stat.splitlines():
+            parts = line.split("\t")
+            if len(parts) == 3:
+                add, rem, path = parts
+                files.append({"path": path,
+                              "added": 0 if add == "-" else int(add),
+                              "removed": 0 if rem == "-" else int(rem)})
+        return patch, files
+
+    @staticmethod
+    def _judge_consensus(patch):
+        """Which consensus rules did this actually touch? Reads the changed lines
+        of node source only. Scoping by file matters: this console's own source
+        lists these very patterns, and docs quote them, so an unscoped scan
+        cheerfully reports a hard fork every time somebody edits a comment."""
+        touched, seen = [], set()
+        in_node_source = False
+        for line in patch.splitlines():
+            if line.startswith("diff --git "):
+                _, _, dest = line.partition(" b/")
+                in_node_source = dest.startswith("src/") and "/test" not in dest
+                continue
+            if not in_node_source:
+                continue
+            if not line or line[0] not in "+-" or line[:3] in ("+++", "---"):
+                continue
+            body = line[1:]
+            for pattern, name in CONSENSUS_MARKERS:
+                if name not in seen and re.search(pattern, body):
+                    seen.add(name)
+                    touched.append(name)
+        return touched
 
     def _commit_vibe(self, job, prompt, files):
         if not files:
