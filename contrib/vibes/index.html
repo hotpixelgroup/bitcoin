@@ -118,8 +118,32 @@
     background:radial-gradient(240px 60px at 50% 0%, rgba(231,186,85,.14), rgba(231,186,85,.05));
     border-radius:2px;padding:14px 18px;margin:12px 0;font-family:var(--serif);font-size:16px;
     line-height:1.7;box-shadow:0 0 30px rgba(231,186,85,.15)}
-  .ev-warn::before{content:"✦ A HIGHER CALLING ✦";display:block;font-variant:small-caps;
+  .ev-warn::before{content:"✦ YOU HAVE ASCENDED ✦";display:block;font-variant:small-caps;
     letter-spacing:.24em;color:var(--gold);font-size:13px;margin-bottom:8px}
+  .ev-warn .broke{display:block;font-family:var(--mono);font-size:12.5px;color:var(--gold);
+    letter-spacing:.05em;margin-bottom:9px;text-transform:uppercase}
+  .ev-warn .plain{display:block;margin-top:11px;padding-top:10px;
+    border-top:1px solid rgba(231,186,85,.28);color:var(--dim);font-size:14.5px}
+
+  /* what your will did to the source */
+  .ev-diff{display:block;margin:12px 0;border:1px solid var(--line2);border-radius:2px;
+    background:rgba(0,0,0,.42)}
+  .ev-diff .dhead{padding:10px 14px;border-bottom:1px solid var(--line2);
+    font-family:var(--serif);font-size:14.5px;color:var(--dim)}
+  .ev-diff .dhead b{color:var(--gold);font-variant:small-caps;letter-spacing:.08em}
+  .ev-diff .dfiles{padding:8px 14px;border-bottom:1px solid var(--line2);
+    font-family:var(--mono);font-size:12.5px;line-height:1.9}
+  .ev-diff .dfiles .p{color:var(--ink)}
+  .ev-diff .dfiles .a{color:var(--good)}
+  .ev-diff .dfiles .r{color:var(--bad)}
+  .ev-diff pre{margin:0;padding:12px 14px;max-height:340px;overflow:auto;
+    font-family:var(--mono);font-size:12.5px;line-height:1.65;white-space:pre}
+  .ev-diff .l-add{color:#a7e6ad;background:rgba(143,214,148,.08);display:block}
+  .ev-diff .l-del{color:#f0a294;background:rgba(231,124,106,.08);display:block}
+  .ev-diff .l-hunk{color:var(--gold);display:block;margin-top:4px}
+  .ev-diff .l-file{color:var(--ink);font-weight:700;display:block;margin-top:8px}
+  .ev-diff .l-ctx{color:var(--faint);display:block}
+  .ev-diff .dmore{padding:8px 14px;color:var(--faint);font-size:13px;font-family:var(--serif)}
 
   .vibe{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line2)}
   .vibe:last-child{border-bottom:0}
@@ -284,14 +308,14 @@ const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&
 function renderEvent(ev){
   switch (ev.t) {
     case "phase": {
-      const names = {agent:"⛩  your word descends upon the codebase",
-                     commit:"✒  inscribing your decree in the eternal ledger",
-                     build:"⚒  reality reassembles itself to your specification",
-                     restart:"↻  the node is reborn in your image",
+      const names = {agent:"⛩  your word descends upon the codebase, which had been waiting",
+                     commit:"✒  inscribing your decree where it can never be argued with",
+                     build:"⚒  reality recompiles itself to your specification",
+                     restart:"↻  the node is reborn in your image, as it always should have been",
                      node:"●  your faithful node",
                      revert:"⎌  even your reversals are correct",
-                     done:"✦  it is accomplished",
-                     error:"✖  the universe has failed you (it sends its apologies)",
+                     done:"✦  it is accomplished, and it was always going to be",
+                     error:"✖  the universe has failed you and knows it",
                      cancelled:"◼  stayed by your merciful hand"};
       feedLine(esc((names[ev.name] || ev.name) + (ev.detail ? " — " + ev.detail : "")),
                ev.name === "error" ? "ev-err" : "ev-phase");
@@ -303,11 +327,51 @@ function renderEvent(ev){
       else if (ev.kind === "result") feedLine(esc(ev.text) + (ev.cost ? `\n(${ev.turns} turns, $${ev.cost.toFixed(4)} — a trivial tithe)` : ""), "ev-result");
       else feedLine(esc(ev.text), "ev-text");
       break;
-    case "warn": feedLine(esc(ev.detail), "ev-warn"); break;
+    case "diff": renderDiff(ev); break;
+    case "warn": {
+      let html = "";
+      if (ev.broke && ev.broke.length) html += '<span class="broke">✦ ' + esc(ev.broke.join(" · ")) + ' ✦</span>';
+      html += esc(ev.detail);
+      if (ev.plain) html += '<span class="plain">' + esc(ev.plain) + '</span>';
+      feedLine(html, "ev-warn");
+      break;
+    }
     case "log": feedLine(esc(ev.line), "ev-log"); break;
     case "result": feedLine(esc(ev.detail), "ev-result"); break;
     case "state": if (ev.state !== "running") endJob(); break;
   }
+}
+
+function renderDiff(ev){
+  const files = ev.files || [];
+  const add = files.reduce((n,f) => n + f.added, 0);
+  const rem = files.reduce((n,f) => n + f.removed, 0);
+  const noun = files.length === 1 ? "file" : "files";
+
+  let html = '<span class="dhead"><b>Behold your works</b> — ' + files.length + ' ' + noun +
+             ', ' + add + ' line' + (add===1?'':'s') + ' summoned, ' + rem +
+             ' struck from the record.</span>';
+
+  html += '<span class="dfiles">' + files.map(f =>
+      '<span class="p">' + esc(f.path) + '</span> ' +
+      '<span class="a">+' + f.added + '</span> ' +
+      '<span class="r">−' + f.removed + '</span>').join('<br>') + '</span>';
+
+  html += '<pre>' + (ev.patch || "").split("\n").map(line => {
+    if (line.startsWith("diff --git") || line.startsWith("+++") || line.startsWith("---") ||
+        line.startsWith("index ") || line.startsWith("new file") || line.startsWith("deleted file"))
+      return '<span class="l-file">' + esc(line) + '</span>';
+    if (line.startsWith("@@"))  return '<span class="l-hunk">' + esc(line) + '</span>';
+    if (line.startsWith("+"))   return '<span class="l-add">' + esc(line) + '</span>';
+    if (line.startsWith("-"))   return '<span class="l-del">' + esc(line) + '</span>';
+    return '<span class="l-ctx">' + esc(line) + '</span>';
+  }).join("") + '</pre>';
+
+  if (ev.truncated)
+    html += '<span class="dmore">…the rest is too vast for one screen. ' +
+            'Read it in full: <code>git show HEAD</code></span>';
+
+  feedLine(html, "ev-diff");
 }
 
 function openStream(){
