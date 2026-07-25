@@ -135,6 +135,9 @@
   footer{border-top:1px solid var(--line2);margin-top:40px;padding:30px 0 60px;
     color:var(--faint);font-size:14.5px;text-align:center}
   footer a{color:var(--dim)}
+  footer .credits{font-size:17px;color:var(--dim);line-height:1.75;margin-bottom:20px}
+  footer .credits b{color:var(--ink);font-weight:600}
+  footer .credits a{color:var(--gold)}
   .orn-row{text-align:center;color:var(--gold);letter-spacing:1em;opacity:.75;padding:6px 0}
 
   @media (max-width:720px){
@@ -388,9 +391,11 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</code></pre>
 </div>
 
 <footer>
-  <p>Bitcoin Vibes is a fork of <a href="https://github.com/bitcoin/bitcoin">Bitcoin Core</a>,
-     maintained by <a href="https://github.com/hotpixelgroup">Hot Pixel Group</a>. MIT licensed.
-     Not affiliated with, endorsed by, or particularly welcome among the Bitcoin Core project.</p>
+  <p class="credits">Built by <b>Harry Beckwith</b> and <b>Jones Beckwith</b>.<br>
+     Maintained by <a href="https://hotpixelgroup.com">Hot Pixel Group</a>.</p>
+  <p>Bitcoin Vibes is a fork of <a href="https://github.com/bitcoin/bitcoin">Bitcoin Core</a>.
+     MIT licensed. Not affiliated with, endorsed by, or particularly welcome among the
+     Bitcoin Core project.</p>
   <p style="margin-top:10px">Consensus is a social construct. You, however, are eternal.</p>
 </footer>
 
