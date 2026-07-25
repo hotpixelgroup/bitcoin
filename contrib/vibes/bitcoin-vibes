@@ -99,34 +99,195 @@ CONSENSUS_MARKERS = (
     (r"LOCKTIME_|SEQUENCE_FINAL|CheckFinalTxAtTip", "timelock rules"),
 )
 
-# The settings a person actually reaches for, with the ranges bitcoind will
-# accept. Deliberately excludes anything RPC-related: the console talks to the
-# node over RPC, so letting the form move that port would sever its own hand.
+# The settings a person actually reaches for. Every default below was read out
+# of this build's own `bitcoind -help`, not remembered.
+#
+# Deliberately absent: anything RPC (the console talks to the node over RPC, so
+# a form that moved that port would sever its own hand), -connect (silently
+# replaces peer discovery), -reindex (an action, not a setting: left in the
+# config it reindexes on every single start), and the chain selection (the
+# console passes that on the command line).
+SETTING_GROUPS = (
+    {"id": "storage", "title": "Storage and speed",
+     "blurb": "How much disk and memory your node is allowed to enjoy."},
+    {"id": "network", "title": "Network and peers",
+     "blurb": "Who may reach you, and how many of them."},
+    {"id": "privacy", "title": "Privacy",
+     "blurb": "Where your node appears to be, and who gets to know."},
+    {"id": "relay", "title": "What your node relays",
+     "blurb": "Which transactions you are willing to pass on. This is the "
+              "argument the rest of Bitcoin has been having since 2023."},
+    {"id": "index", "title": "Extra indexes",
+     "blurb": "Optional lookup tables. Useful if something is built on top of "
+              "this node; wasted disk if not."},
+    {"id": "wallet", "title": "Wallet",
+     "blurb": "Only relevant if this node holds one."},
+)
+
 SETTINGS = (
-    {"key": "prune", "type": "int", "default": 0, "min": 0, "max": 8_000_000,
-     "unit": "MiB", "label": "Prune old blocks to",
-     "help": "0 keeps the whole chain. Any other value must be at least 550. "
-             "Frees disk; you keep validating everything."},
-    {"key": "dbcache", "type": "int", "default": 450, "min": 4, "max": 16384,
-     "unit": "MiB", "label": "Database cache",
-     "help": "More cache, faster sync. It is only borrowed memory."},
-    {"key": "maxconnections", "type": "int", "default": 125, "min": 0, "max": 1000,
-     "unit": "peers", "label": "Maximum connections",
-     "help": "How many other nodes may have your attention."},
-    {"key": "par", "type": "int", "default": 0, "min": -6, "max": 15,
-     "unit": "threads", "label": "Script verification threads",
-     "help": "0 lets it choose. Negative leaves that many cores free."},
-    {"key": "maxuploadtarget", "type": "int", "default": 0, "min": 0, "max": 1_000_000,
-     "unit": "MiB/day", "label": "Upload limit",
-     "help": "0 is unlimited generosity."},
-    {"key": "listen", "type": "bool", "default": True, "label": "Accept incoming connections",
-     "help": "Let the unworthy connect to you."},
-    {"key": "txindex", "type": "bool", "default": False, "label": "Full transaction index",
-     "help": "Look up any transaction by id. Cannot be combined with pruning."},
-    {"key": "blocksonly", "type": "bool", "default": False, "label": "Blocks only",
-     "help": "Refuse to relay loose transactions. Frugal, and a little aloof."},
-    {"key": "upnp", "type": "bool", "default": False, "label": "Map port with UPnP",
-     "help": "Ask your router to open the door."},
+    # --- storage and speed ---
+    {"key": "prune", "group": "storage", "type": "int", "default": 0,
+     "min": 0, "max": 8_000_000, "unit": "MiB", "label": "Prune old blocks",
+     "help": "0 keeps the entire chain.",
+     "tip": "Pruning throws away old block files once your node has checked "
+            "them, keeping disk use roughly at the number you set. You still "
+            "verify every rule for yourself — nothing is trusted on faith. The "
+            "catch: you can no longer serve that history to other nodes, and "
+            "some features need the full chain. Must be 0 or at least 550."},
+    {"key": "dbcache", "group": "storage", "type": "int", "default": 450,
+     "min": 4, "max": 16384, "unit": "MiB", "label": "Database cache",
+     "help": "Memory held for the coin database.",
+     "tip": "The single biggest lever on how fast a first sync finishes. More "
+            "memory means fewer trips to disk. It is borrowed, not spent — the "
+            "node hands it back when it stops."},
+    {"key": "par", "group": "storage", "type": "int", "default": 0,
+     "min": -6, "max": 15, "unit": "threads", "label": "Verification threads",
+     "help": "0 lets your node decide.",
+     "tip": "How many CPU cores check signatures at once. A negative number "
+            "leaves that many cores free for everything else you are doing."},
+    {"key": "maxmempool", "group": "storage", "type": "int", "default": 300,
+     "min": 5, "max": 32768, "unit": "MiB", "label": "Mempool size",
+     "help": "Memory for unconfirmed transactions.",
+     "tip": "Your waiting room for transactions that have not made it into a "
+            "block. When it fills, the cheapest transactions are shown the "
+            "door first."},
+    {"key": "mempoolexpiry", "group": "storage", "type": "int", "default": 336,
+     "min": 1, "max": 8760, "unit": "hours", "label": "Forget transactions after",
+     "help": "How long an unconfirmed transaction may linger.",
+     "tip": "A transaction nobody has mined within this many hours is dropped "
+            "from your waiting room. The default is two weeks."},
+
+    # --- network and peers ---
+    {"key": "maxconnections", "group": "network", "type": "int", "default": 125,
+     "min": 0, "max": 1000, "unit": "peers", "label": "Maximum connections",
+     "help": "How many other nodes you will talk to at once.",
+     "tip": "More peers means you hear about blocks sooner and are harder to "
+            "isolate, at the cost of bandwidth and a few file handles."},
+    {"key": "maxuploadtarget", "group": "network", "type": "int", "default": 0,
+     "min": 0, "max": 1_000_000, "unit": "MiB/day", "label": "Daily upload limit",
+     "help": "0 means unlimited.",
+     "tip": "A ceiling on how much history you serve to others each day. Useful "
+            "on a metered connection. Your node always relays new blocks "
+            "regardless, so the network is never left waiting on you."},
+    {"key": "listen", "group": "network", "type": "bool", "default": True,
+     "label": "Accept incoming connections",
+     "help": "Let other nodes connect to you.",
+     "tip": "Turn this off and you still reach out to peers, but nobody can "
+            "reach in. Leaving it on is how you actually help the network "
+            "rather than merely using it."},
+    {"key": "upnp", "group": "network", "type": "bool", "default": False,
+     "label": "Open my port with UPnP",
+     "help": "Ask the router to forward your port automatically.",
+     "tip": "Saves configuring your router by hand. Some routers implement "
+            "this badly, and some people prefer not to let software open ports "
+            "on their behalf."},
+    {"key": "natpmp", "group": "network", "type": "bool", "default": True,
+     "label": "Open my port with NAT-PMP",
+     "help": "The same idea as UPnP, a different protocol.",
+     "tip": "Apple routers and many others speak this instead of UPnP. Harmless "
+            "to leave on; it simply does nothing if your router ignores it."},
+    {"key": "dnsseed", "group": "network", "type": "bool", "default": True,
+     "label": "Find peers via DNS",
+     "help": "How a fresh node meets its first peers.",
+     "tip": "On startup your node asks a handful of known DNS servers for a "
+            "list of nodes to try. Turning this off is for people who supply "
+            "their own peers and would rather not touch those servers."},
+    {"key": "v2transport", "group": "network", "type": "bool", "default": True,
+     "label": "Encrypted peer connections",
+     "help": "Use the newer, encrypted peer-to-peer protocol.",
+     "tip": "BIP324. Stops anyone watching the wire from trivially reading "
+            "which transactions you send, and makes the traffic harder to "
+            "fingerprint and block. Falls back automatically for older peers."},
+    {"key": "peerbloomfilters", "group": "network", "type": "bool", "default": False,
+     "label": "Serve bloom filters",
+     "help": "Support for some older light wallets.",
+     "tip": "Lets simple wallets ask you for only the transactions they care "
+            "about. It leaks what those wallets are interested in and costs you "
+            "work, which is why it is off by default."},
+
+    # --- privacy ---
+    {"key": "proxy", "group": "privacy", "type": "string", "default": "",
+     "placeholder": "127.0.0.1:9050", "label": "Route traffic through a proxy",
+     "help": "Leave empty for a direct connection.",
+     "tip": "Point this at a SOCKS5 proxy — Tor listens on 127.0.0.1:9050 — and "
+            "all peer traffic goes through it, hiding your address from the "
+            "nodes you talk to. Your node must be able to reach the proxy, or "
+            "it will reach nobody at all."},
+    {"key": "onlynet", "group": "privacy", "type": "multi", "default": [],
+     "choices": ["ipv4", "ipv6", "onion", "i2p", "cjdns"],
+     "label": "Only use these networks",
+     "help": "Nothing selected means all of them.",
+     "tip": "Restricts where your node will make connections. Selecting only "
+            "onion, with a Tor proxy set above, is the usual recipe for a node "
+            "that never reveals a home address."},
+
+    # --- relay policy ---
+    {"key": "blocksonly", "group": "relay", "type": "bool", "default": False,
+     "label": "Blocks only",
+     "help": "Do not relay loose transactions at all.",
+     "tip": "Your node accepts blocks but stops passing around unconfirmed "
+            "transactions. Dramatically less bandwidth, at the cost of no "
+            "longer helping transactions find a miner — and your own fee "
+            "estimates go blind."},
+    {"key": "datacarrier", "group": "relay", "type": "bool", "default": True,
+     "label": "Relay data-carrying transactions",
+     "help": "Transactions that stash arbitrary data in the chain.",
+     "tip": "Some transactions carry data rather than payments — inscriptions "
+            "and the like. Refusing to relay them is the filtering position "
+            "Bitcoin Knots is known for. Be aware that miners decide what goes "
+            "in a block, so declining to pass these along keeps them out of "
+            "your memory, not out of Bitcoin."},
+    {"key": "datacarriersize", "group": "relay", "type": "int", "default": 100000,
+     "min": 0, "max": 1_000_000, "unit": "bytes", "label": "Largest data payload",
+     "help": "Ignored when the setting above is off.",
+     "tip": "The biggest chunk of arbitrary data you will pass on. Lower it to "
+            "relay only small payloads; set it to 0 to allow none while still "
+            "relaying everything else."},
+    {"key": "permitbaremultisig", "group": "relay", "type": "bool", "default": True,
+     "label": "Relay bare multisig",
+     "help": "An old transaction shape, sometimes used to store data.",
+     "tip": "A legitimate but dated way of requiring several signatures. It is "
+            "also been used to stuff data into the chain, which is why some "
+            "operators switch it off."},
+    {"key": "minrelaytxfee", "group": "relay", "type": "decimal", "default": 0.000001,
+     "min": 0, "max": 1, "unit": "BTC/kvB", "label": "Minimum relay fee",
+     "help": "Transactions paying less are ignored.",
+     "tip": "Your personal floor for what counts as worth passing on. Raising "
+            "it makes your node fussier and keeps very cheap transactions out "
+            "of your waiting room."},
+
+    # --- indexes ---
+    {"key": "txindex", "group": "index", "type": "bool", "default": False,
+     "label": "Index every transaction",
+     "help": "Look up any transaction by its id.",
+     "tip": "Without this your node can only find transactions involving its "
+            "own wallet. Block explorers and many services need it. Costs "
+            "tens of gigabytes and cannot be combined with pruning."},
+    {"key": "blockfilterindex", "group": "index", "type": "bool", "default": False,
+     "label": "Index block filters",
+     "help": "Lets light wallets sync against you privately.",
+     "tip": "Builds compact summaries of each block so a phone wallet can work "
+            "out which blocks concern it without telling you its addresses. "
+            "Cannot be combined with pruning."},
+    {"key": "coinstatsindex", "group": "index", "type": "bool", "default": False,
+     "label": "Index coin statistics",
+     "help": "Instant answers about the total coin supply.",
+     "tip": "Lets you audit how many bitcoin exist, at any height, without a "
+            "long recount. The favourite of people who like to verify the 21 "
+            "million for themselves. Cannot be combined with pruning."},
+
+    # --- wallet ---
+    {"key": "disablewallet", "group": "wallet", "type": "bool", "default": False,
+     "label": "Disable the wallet entirely",
+     "help": "Run a pure relay and validation node.",
+     "tip": "No keys, no balances, nothing to steal. The usual choice for a "
+            "node that exists to check the rules rather than to hold coins."},
+    {"key": "fallbackfee", "group": "wallet", "type": "decimal", "default": 0.0,
+     "min": 0, "max": 1, "unit": "BTC/kvB", "label": "Fallback fee",
+     "help": "Used when the node cannot estimate a fee. 0 disables it.",
+     "tip": "A young node has not watched enough blocks to guess a sensible "
+            "fee. Rather than guess badly it refuses to send; this is the rate "
+            "it uses instead if you give it one."},
 )
 
 BENEDICTIONS = (
@@ -362,28 +523,39 @@ class Console:
 
     def read_settings(self):
         """Current values, falling back to bitcoind's own defaults."""
-        raw = {}
+        raw, multi = {}, {}
         try:
             for line in self.conf_path.read_text().splitlines():
                 line = line.strip()
                 if not line or line.startswith(("#", "[")):
                     continue
                 key, _, value = line.partition("=")
-                raw[key.strip()] = value.strip()
+                key, value = key.strip(), value.strip()
+                raw[key] = value
+                multi.setdefault(key, []).append(value)
         except OSError:
             pass
         out = {}
         for spec in SETTINGS:
-            v = raw.get(spec["key"])
-            if v is None:
-                out[spec["key"]] = spec["default"]
-            elif spec["type"] == "bool":
-                out[spec["key"]] = v not in ("0", "false", "no", "")
-            else:
-                try:
-                    out[spec["key"]] = int(v)
-                except ValueError:
-                    out[spec["key"]] = spec["default"]
+            key, kind = spec["key"], spec["type"]
+            # -onlynet may legitimately appear more than once
+            v = raw.get(key)
+            if v is None and kind != "multi":
+                out[key] = spec["default"]
+                continue
+            try:
+                if kind == "bool":
+                    out[key] = v not in ("0", "false", "no", "")
+                elif kind == "int":
+                    out[key] = int(v)
+                elif kind == "decimal":
+                    out[key] = float(v)
+                elif kind == "string":
+                    out[key] = v
+                elif kind == "multi":
+                    out[key] = [n for n in multi.get(key, []) if n in spec["choices"]]
+            except (TypeError, ValueError):
+                out[key] = spec["default"]
         return out
 
     @staticmethod
@@ -393,44 +565,77 @@ class Console:
         problems = []
         clean = {}
         for spec in SETTINGS:
-            key = spec["key"]
+            key, kind = spec["key"], spec["type"]
             if key not in values:
                 continue
             v = values[key]
-            if spec["type"] == "bool":
+            if kind == "bool":
                 clean[key] = bool(v)
-                continue
-            try:
-                n = int(v)
-            except (TypeError, ValueError):
-                problems.append(f"{spec['label']} must be a whole number.")
-                continue
-            if not (spec["min"] <= n <= spec["max"]):
-                problems.append(
-                    f"{spec['label']} must be between {spec['min']} and {spec['max']}.")
-                continue
-            clean[key] = n
+            elif kind == "string":
+                s = str(v or "").strip()
+                if s and not re.fullmatch(r"[\w.\-:\[\]/]{3,120}", s):
+                    problems.append(f"{spec['label']}: that does not look like an "
+                                    f"address. Try something like 127.0.0.1:9050.")
+                    continue
+                clean[key] = s
+            elif kind == "multi":
+                chosen = [c for c in (v or []) if c in spec["choices"]]
+                clean[key] = chosen
+            else:
+                try:
+                    n = int(v) if kind == "int" else float(v)
+                except (TypeError, ValueError):
+                    word = "whole number" if kind == "int" else "number"
+                    problems.append(f"{spec['label']} must be a {word}.")
+                    continue
+                if not (spec["min"] <= n <= spec["max"]):
+                    problems.append(
+                        f"{spec['label']} must be between {spec['min']} and {spec['max']}.")
+                    continue
+                clean[key] = n
+
         # bitcoind's own rules, enforced before it has to refuse to boot
         prune = clean.get("prune", 0)
         if 0 < prune < 550:
-            problems.append("Pruning must be 0 (off) or at least 550 MiB — "
-                            "bitcoind refuses anything smaller.")
-        if prune > 0 and clean.get("txindex"):
-            problems.append("A full transaction index cannot be combined with pruning. "
-                            "Choose one; even you cannot have both.")
+            problems.append("Pruning must be 0 (off) or at least 550 MiB — bitcoind "
+                            "refuses anything smaller.")
+        if prune > 0:
+            # every index needs the full chain, not merely txindex
+            for key, name in (("txindex", "a full transaction index"),
+                              ("blockfilterindex", "block filters"),
+                              ("coinstatsindex", "coin statistics")):
+                if clean.get(key):
+                    problems.append(
+                        f"Pruning cannot be combined with {name} — that index needs "
+                        f"the whole chain, and pruning is what throws it away. "
+                        f"Choose one; even you cannot have both.")
+        if clean.get("onlynet") == ["onion"] and not clean.get("proxy", "").strip():
+            problems.append("Restricting to onion without a proxy address would leave "
+                            "your node unable to reach anyone at all. Set a proxy "
+                            "(Tor is usually 127.0.0.1:9050) or widen the networks.")
         return problems, clean
 
     def write_settings(self, values):
         """Merge into bitcoin.conf, preserving comments, sections and any keys
         the operator added by hand."""
         managed = {s["key"] for s in SETTINGS}
-        rendered = {}
+        rendered = {}   # key -> list of lines (multi-valued keys repeat)
         for spec in SETTINGS:
-            key = spec["key"]
+            key, kind = spec["key"], spec["type"]
             if key not in values:
                 continue
             v = values[key]
-            rendered[key] = ("1" if v else "0") if spec["type"] == "bool" else str(int(v))
+            if kind == "bool":
+                rendered[key] = ["1" if v else "0"]
+            elif kind == "int":
+                rendered[key] = [str(int(v))]
+            elif kind == "decimal":
+                rendered[key] = [f"{float(v):.8f}".rstrip("0").rstrip(".") or "0"]
+            elif kind == "multi":
+                rendered[key] = list(v)          # may be empty: key is then omitted
+            else:
+                s = str(v or "").strip()
+                rendered[key] = [s] if s else []
 
         try:
             lines = self.conf_path.read_text().splitlines()
@@ -444,9 +649,9 @@ class Console:
             if stripped.startswith("["):
                 # Managed keys live above any network section, so flush first.
                 if not in_section:
-                    for key, val in rendered.items():
+                    for key, vals in rendered.items():
                         if key not in seen:
-                            out.append(f"{key}={val}")
+                            out.extend(f"{key}={v}" for v in vals)
                             seen.add(key)
                 in_section = True
                 out.append(line)
@@ -457,13 +662,13 @@ class Console:
             # a partial save must never silently wipe a setting.
             if key in rendered and not stripped.startswith("#") and not in_section:
                 if key not in seen:
-                    out.append(f"{key}={rendered[key]}")
+                    out.extend(f"{key}={v}" for v in rendered[key])
                     seen.add(key)
                 continue  # drop stale duplicates of this key
             out.append(line)
-        for key, val in rendered.items():
+        for key, vals in rendered.items():
             if key not in seen:
-                out.append(f"{key}={val}")
+                out.extend(f"{key}={v}" for v in vals)
 
         text = "\n".join(out).rstrip() + "\n"
         self.conf_path.write_text(text)
@@ -997,7 +1202,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             self._send(200, self.console.status())
         elif path == "/api/settings":
-            self._send(200, {"schema": SETTINGS,
+            self._send(200, {"schema": SETTINGS, "groups": SETTING_GROUPS,
                              "values": self.console.read_settings(),
                              "conf": str(self.console.conf_path)})
         elif path == "/api/stream":
