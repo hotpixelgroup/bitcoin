@@ -138,10 +138,18 @@ whole point.
 
 ## Ordinary settings, for when you would rather turn a dial
 
-Not everything needs a decree. The console has a plain settings panel — pruning,
-database cache, connection limit, script threads, upload target, listening,
-transaction index, blocks-only, UPnP — written to `bitcoin.conf` in the node's
-data directory and applied on restart.
+Not everything needs a decree. The console has a plain settings panel — 25
+settings in six groups, each with a plain-English explanation behind an ⓘ —
+written to `bitcoin.conf` in the node's data directory and applied on restart.
+
+| Group | What is in it |
+|---|---|
+| Storage and speed | pruning, database cache, verification threads, mempool size and expiry |
+| Network and peers | connection limit, upload target, listening, UPnP, NAT-PMP, DNS seeds, encrypted v2 transport, bloom filters |
+| Privacy | SOCKS5/Tor proxy, restricting to particular networks |
+| What your node relays | blocks-only, data carriers and their size, bare multisig, minimum relay fee |
+| Extra indexes | transactions, block filters, coin statistics |
+| Wallet | disable it entirely, fallback fee |
 
 Nothing in that panel rewrites code or touches consensus. It is simply Bitcoin,
 configured, the way any other node would be.
@@ -150,7 +158,10 @@ Two guards are worth knowing about, because bitcoind will refuse to start
 otherwise and the console would rather tell you first:
 
 - pruning must be `0` or at least 550 MiB;
-- a full transaction index cannot be combined with pruning.
+- no index — transactions, block filters or coin statistics — can be combined
+  with pruning, because every one of them needs the history pruning discards;
+- restricting yourself to `onion` without setting a proxy would leave your node
+  unable to reach anybody at all.
 
 The file is yours between visits. Comments, network sections and any option you
 add by hand are preserved; the panel only rewrites the keys it manages, and a

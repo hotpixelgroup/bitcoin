@@ -202,10 +202,43 @@
   .settings-intro code{font-family:var(--mono);font-size:13.5px;color:var(--ink);
     background:var(--marble-3);border:1px solid var(--gold-line-soft);
     border-radius:2px;padding:2px 7px;word-break:break-all}
-  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .field label{display:block;font-family:var(--serif);font-size:15px;font-weight:600;
-    color:var(--ink);margin-bottom:4px}
-  .field .help{display:block;color:var(--ink-2);font-size:14px;margin-bottom:8px;line-height:1.55}
+  /* a group of settings, folded away until wanted */
+  .sgroup{border:1px solid var(--gold-line-soft);border-radius:3px;margin-bottom:14px;
+    background:var(--marble)}
+  .sgroup > summary{cursor:pointer;list-style:none;padding:15px 18px;
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .sgroup > summary::-webkit-details-marker{display:none}
+  .sgroup > summary::after{content:"+";margin-left:auto;color:var(--gold-ink);
+    font-family:var(--mono);font-size:19px;line-height:1}
+  .sgroup[open] > summary::after{content:"−"}
+  .sgroup > summary:hover{background:var(--marble-3)}
+  .sgroup .stitle{font-family:var(--serif);font-size:17px;font-weight:600;
+    letter-spacing:.06em;color:var(--ink)}
+  .sgroup .sblurb{color:var(--ink-2);font-size:14.5px;flex:1 1 100%;margin-top:2px}
+  .sgroup .sbody{padding:4px 18px 20px;border-top:1px solid var(--gold-line-soft)}
+
+  .grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
+    padding-top:16px}
+  .field label{font-family:var(--serif);font-size:15.5px;font-weight:600;
+    color:var(--ink)}
+  .field .labelrow{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+  .field .help{display:block;color:var(--ink-2);font-size:14px;margin-bottom:9px;line-height:1.55}
+
+  /* tooltips: hover, focus, tap and screen reader all reach the same words */
+  .tipwrap{position:relative;display:inline-flex}
+  .tipbtn{cursor:help;border:1px solid var(--gold-line);background:var(--marble-3);
+    color:var(--gold-ink);border-radius:50%;width:19px;height:19px;padding:0;
+    font:700 12px var(--serif);line-height:1;display:inline-flex;
+    align-items:center;justify-content:center;flex:none}
+  .tipbtn:hover{background:var(--gold-ink);color:#fffdf8;border-color:var(--gold-ink)}
+  .tip{position:absolute;left:0;top:26px;z-index:20;width:290px;
+    background:var(--ink);color:#f7f3ea;border-radius:3px;padding:12px 14px;
+    font-family:var(--text);font-size:14.5px;line-height:1.6;font-weight:400;
+    box-shadow:0 10px 30px rgba(28,24,20,.32);display:none;text-align:left}
+  .tip::before{content:"";position:absolute;top:-6px;left:14px;width:10px;height:10px;
+    background:var(--ink);transform:rotate(45deg)}
+  .tipwrap:hover .tip,.tipbtn:focus-visible + .tip,.tip.open{display:block}
+  @media (max-width:720px){.tip{width:min(280px,calc(100vw - 80px))}}
   .field .row{display:flex;align-items:center;gap:9px}
   .field input[type=number]{width:132px;background:var(--marble);
     border:1px solid var(--gold-line);border-radius:2px;padding:9px 11px;
@@ -216,6 +249,15 @@
   .field.boolean .row{align-items:flex-start}
   .field input[type=checkbox]{accent-color:var(--gold-ink);width:19px;height:19px;
     margin-top:2px;flex:none}
+  .field input[type=text]{flex:1;min-width:0;background:var(--marble);
+    border:1px solid var(--gold-line);border-radius:2px;padding:9px 11px;
+    color:var(--ink);font:15px var(--mono);min-height:42px}
+  .field input[type=text]:focus{border-color:var(--gold-ink);outline:none;
+    box-shadow:0 0 0 3px rgba(122,93,18,.13)}
+  .field .choices{flex-wrap:wrap;gap:14px}
+  .field .choice{display:flex;align-items:center;gap:7px;font-size:15px;
+    color:var(--ink-2);cursor:pointer;min-height:38px;font-family:var(--mono)}
+  .field .choice input{margin-top:0}
   .settings-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
     margin-top:22px;padding-top:18px;border-top:1px solid var(--gold-line-soft)}
   .settings-note{flex:1;min-width:220px;font-size:15px;color:var(--ink-2)}
@@ -342,7 +384,7 @@
          <code id="confpath">bitcoin.conf</code>. Nothing here rewrites any code and
          nothing here touches consensus — it is simply Bitcoin, configured.</p>
       <form id="settings-form" novalidate>
-        <div class="grid" id="settings-grid"></div>
+        <div id="settings-groups"></div>
         <div class="settings-actions">
           <p class="settings-note" id="settings-msg" role="status" aria-live="polite"></p>
           <label class="tog"><input type="checkbox" id="settings-restart" checked>
@@ -527,41 +569,103 @@ $("minebtn").onclick = () => api("/api/node", {action:"mine", blocks:1})
 /* ---- ordinary settings ---- */
 let settingsSchema = null;
 
+function tipMarkup(id, spec){
+  return `<span class="tipwrap"><button type="button" class="tipbtn" ` +
+         `aria-label="What does ${esc(spec.label)} do?" aria-expanded="false" ` +
+         `aria-controls="${id}-tip">i</button>` +
+         `<span class="tip" role="tooltip" id="${id}-tip">${esc(spec.tip)}</span></span>`;
+}
+
+function fieldMarkup(spec, val){
+  const id = "set-" + spec.key;
+  const tip = tipMarkup(id, spec);
+  const help = `<span class="help" id="${id}-help">${esc(spec.help)}</span>`;
+  // the tooltip text is the field's description for assistive tech too, so the
+  // explanation is never hover-only
+  const describes = `aria-describedby="${id}-help ${id}-tip"`;
+
+  if (spec.type === "bool")
+    return `<div class="row"><input type="checkbox" id="${id}" ${val ? "checked" : ""} ${describes}>` +
+           `<div><span class="labelrow"><label for="${id}">${esc(spec.label)}</label>${tip}</span>` +
+           `${help}</div></div>`;
+
+  if (spec.type === "multi")
+    return `<span class="labelrow"><label id="${id}-lab">${esc(spec.label)}</label>${tip}</span>${help}` +
+           `<div class="row choices" role="group" aria-labelledby="${id}-lab">` +
+           spec.choices.map(c =>
+             `<label class="choice"><input type="checkbox" name="${id}" value="${c}" ` +
+             `${(val||[]).includes(c) ? "checked" : ""}> ${esc(c)}</label>`).join("") +
+           `</div>`;
+
+  if (spec.type === "string")
+    return `<span class="labelrow"><label for="${id}">${esc(spec.label)}</label>${tip}</span>${help}` +
+           `<div class="row"><input type="text" id="${id}" value="${esc(val||"")}" ` +
+           `placeholder="${esc(spec.placeholder||"")}" ${describes}></div>`;
+
+  const step = spec.type === "decimal" ? "0.00000001" : "1";
+  return `<span class="labelrow"><label for="${id}">${esc(spec.label)}</label>${tip}</span>${help}` +
+         `<div class="row"><input type="number" id="${id}" value="${val}" ` +
+         `min="${spec.min}" max="${spec.max}" step="${step}" ${describes}>` +
+         `<span class="unit">${esc(spec.unit||"")}</span></div>`;
+}
+
 async function loadSettings(){
   let s;
   try { s = await api("/api/settings"); } catch(e){ return; }
   settingsSchema = s.schema;
   $("confpath").textContent = s.conf;
-  const grid = $("settings-grid");
-  grid.innerHTML = "";
-  s.schema.forEach(spec => {
-    const val = s.values[spec.key];
-    const wrap = document.createElement("div");
-    wrap.className = "field" + (spec.type === "bool" ? " boolean" : "");
-    const id = "set-" + spec.key;
-    if (spec.type === "bool") {
-      wrap.innerHTML =
-        `<div class="row"><input type="checkbox" id="${id}" ${val ? "checked" : ""}>` +
-        `<div><label for="${id}">${esc(spec.label)}</label>` +
-        `<span class="help">${esc(spec.help)}</span></div></div>`;
-    } else {
-      wrap.innerHTML =
-        `<label for="${id}">${esc(spec.label)}</label>` +
-        `<span class="help">${esc(spec.help)}</span>` +
-        `<div class="row"><input type="number" id="${id}" value="${val}" ` +
-        `min="${spec.min}" max="${spec.max}" step="1" ` +
-        `aria-describedby="${id}-u"><span class="unit" id="${id}-u">${esc(spec.unit)}</span></div>`;
-    }
-    grid.appendChild(wrap);
+  const host = $("settings-groups");
+  host.innerHTML = "";
+
+  s.groups.forEach((g, i) => {
+    const fields = s.schema.filter(spec => spec.group === g.id);
+    if (!fields.length) return;
+    const d = document.createElement("details");
+    d.className = "sgroup";
+    if (i === 0) d.open = true;          // one open, so the shape is obvious
+    d.innerHTML =
+      `<summary><span class="stitle">${esc(g.title)}</span>` +
+      `<span class="sblurb">${esc(g.blurb)}</span></summary>` +
+      `<div class="sbody"><div class="grid">` +
+      fields.map(spec => `<div class="field${spec.type === "bool" ? " boolean" : ""}">` +
+                         fieldMarkup(spec, s.values[spec.key]) + `</div>`).join("") +
+      `</div></div>`;
+    host.appendChild(d);
+  });
+
+  // tooltips: click toggles (touch and keyboard), Escape dismisses
+  host.querySelectorAll(".tipbtn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      const tip = document.getElementById(btn.getAttribute("aria-controls"));
+      const open = tip.classList.toggle("open");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
   });
 }
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".tip.open").forEach(t => {
+    t.classList.remove("open");
+    const b = document.querySelector(`[aria-controls="${t.id}"]`);
+    if (b) b.setAttribute("aria-expanded", "false");
+  });
+});
 
 $("settings-form").addEventListener("submit", async e => {
   e.preventDefault();
   if (!settingsSchema) return;
   const values = {};
   settingsSchema.forEach(spec => {
-    const el = $("set-" + spec.key);
+    const id = "set-" + spec.key;
+    if (spec.type === "multi") {
+      values[spec.key] = [...document.querySelectorAll(`input[name="${id}"]:checked`)]
+                           .map(c => c.value);
+      return;
+    }
+    const el = $(id);
+    if (!el) return;
     values[spec.key] = spec.type === "bool" ? el.checked : el.value;
   });
   const msg = $("settings-msg");
