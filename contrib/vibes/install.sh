@@ -192,6 +192,12 @@ install_claude() {
   elif curl -fsSL https://claude.ai/install.sh | bash; then
     PATH="$HOME/.local/bin:$PATH"; export PATH
     NEEDS_LOGIN=1
+    # Its installer drops the binary in ~/.local/bin, which is frequently not on
+    # PATH; without this the sign-in command we print would not even be found.
+    if ! command -v claude >/dev/null 2>&1 && [ -x "$HOME/.local/bin/claude" ]; then
+      CLAUDE_BIN="$HOME/.local/bin/claude"
+      PATH_HINT=1
+    fi
   else
     note "could not install Claude Code automatically."
     note "install it from https://claude.com/claude-code and re-run."
@@ -202,6 +208,8 @@ install_claude() {
 # --- go ----------------------------------------------------------------------
 
 NEEDS_LOGIN=0
+CLAUDE_BIN="claude"
+PATH_HINT=0
 banner
 detect_platform
 command -v git >/dev/null 2>&1 || [ "$PLATFORM" != "macos" ] || die "git not found. Run: xcode-select --install"
@@ -217,9 +225,15 @@ printf '\n'
 
 if [ "$NEEDS_LOGIN" = "1" ]; then
   printf '  %sOne thing left, and only you can do it:%s\n' "$BOLD" "$OFF"
-  printf '    %sclaude auth login%s   %s(sign in; it opens your browser)%s\n' \
-         "$GOLD" "$OFF" "$DIM" "$OFF"
+  printf '    %s%s auth login%s   %s(sign in; it opens your browser)%s\n' \
+         "$GOLD" "$CLAUDE_BIN" "$OFF" "$DIM" "$OFF"
   printf '\n'
+  if [ "$PATH_HINT" = "1" ]; then
+    printf '  %sClaude landed in ~/.local/bin, which is not on your PATH. The console\n' "$DIM"
+    printf '  finds it regardless; to type "claude" yourself, add it:%s\n' "$OFF"
+    printf '    %secho '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.profile%s\n' "$GOLD" "$OFF"
+    printf '\n'
+  fi
 fi
 
 printf '  %sTo begin:%s\n' "$BOLD" "$OFF"

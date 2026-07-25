@@ -231,6 +231,22 @@ class Console:
             "engine_ready": self.engine_status(),
         }
 
+    def find_claude(self):
+        """Locate the claude CLI. Its installer puts it in ~/.local/bin, which is
+        often not on PATH, so a bare which() reports 'not installed' on a machine
+        where it plainly is."""
+        if self.opts.claude:
+            return self.opts.claude
+        found = shutil.which("claude")
+        if found:
+            return found
+        for cand in (Path.home() / ".local/bin/claude",
+                     Path("/usr/local/bin/claude"),
+                     Path("/opt/homebrew/bin/claude")):
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+        return None
+
     def engine_status(self, force=False):
         """Is the vibe engine able to run? Cached; `claude auth status` is fast
         but not free enough to run on every 4-second poll."""
@@ -239,7 +255,7 @@ class Console:
         now = time.monotonic()
         if not force and self._engine_cache and now - self._engine_cache[0] < 30:
             return self._engine_cache[1]
-        claude = self.opts.claude or shutil.which("claude")
+        claude = self.find_claude()
         if not claude:
             state = {"ok": False, "reason": "missing",
                      "detail": "Claude Code is not installed — the console cannot "
@@ -352,7 +368,7 @@ class Console:
     def _run_agent(self, job, prompt, yolo):
         if self.opts.engine == "mock":
             return self._run_mock_agent(job, prompt)
-        claude = self.opts.claude or shutil.which("claude")
+        claude = self.find_claude()
         if not claude:
             raise RuntimeError("`claude` CLI not found. Install Claude Code or pass --claude /path/to/claude")
         cmd = [claude, "-p", "--output-format", "stream-json", "--verbose",

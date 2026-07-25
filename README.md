@@ -3,6 +3,8 @@ Bitcoin Vibes
 
 *Core has rules. Knots has opinions. Vibes has you.*
 
+**→ [hotpixelgroup.github.io/bitcoin](https://hotpixelgroup.github.io/bitcoin/)**
+
 Fifteen years of mailing lists, BIPs, IRC flame wars, and filtering discourse,
 and somehow neither Core nor Knots ever shipped the one feature people
 actually wanted: **a big text area where you type what Bitcoin should be, and
