@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>              <string>Bitcoin Vibes</string>
+  <key>CFBundleDisplayName</key>       <string>Bitcoin Vibes</string>
+  <key>CFBundleIdentifier</key>        <string>group.hotpixel.bitcoinvibes</string>
+  <key>CFBundleVersion</key>           <string>31.99</string>
+  <key>CFBundleShortVersionString</key><string>31.99</string>
+  <key>CFBundleExecutable</key>        <string>BitcoinVibes</string>
+  <key>CFBundleIconFile</key>          <string>AppIcon</string>
+  <key>CFBundlePackageType</key>       <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>    <string>12.0</string>
+  <key>LSApplicationCategoryType</key> <string>public.app-category.finance</string>
+  <key>NSHumanReadableCopyright</key>  <string>MIT. A fork of Bitcoin Core, maintained by Hot Pixel Group.</string>
+  <!-- The console is a local web app; the node runs headless behind it. -->
+  <key>LSUIElement</key>               <true/>
+</dict>
+</plist>

@@ -1305,6 +1305,74 @@ class Console:
                     self._restart_node(job)
         return go
 
+    def setup_runner(self):
+        """First run, streamed into the browser instead of a terminal.
+
+        The desktop app has no terminal to print to, so preparing the node —
+        dependencies, configure, build, first start — runs as an ordinary job
+        and the operator watches it in the console like anything else."""
+        def go(job):
+            job.emit(t="phase", name="setup",
+                     detail="preparing your node — this happens once")
+
+            missing = self.missing_deps()
+            if missing:
+                job.emit(t="phase", name="deps",
+                         detail="installing what the compiler needs: " + ", ".join(missing))
+                if not self.install_deps(job, missing):
+                    job.state = "error"
+                    job.emit(t="phase", name="error",
+                             detail="could not install: " + ", ".join(missing) +
+                                    ". Install them by hand and reopen Bitcoin Vibes.")
+                    return
+            else:
+                job.emit(t="log", line="build tools already present")
+
+            jobs = self.build_jobs()
+            low, high = self.build_estimate(jobs)
+            job.emit(t="phase", name="build",
+                     detail=f"compiling the node with {jobs} parallel job(s) — "
+                            f"roughly {low}-{high} minutes on this machine, once")
+            if not self._build(job):
+                return
+            job.emit(t="phase", name="node", detail="waking the node")
+            self.start_node(job)
+            job.emit(t="result",
+                     detail="Your node is ready, Excellency. It has been waiting.")
+        return go
+
+    def missing_deps(self):
+        """Which build tools are absent. Empty means we can compile."""
+        need = []
+        if not shutil.which("cmake"):
+            need.append("cmake")
+        if sys.platform == "darwin":
+            for formula, probe in (("boost", "/boost/version.hpp"),
+                                   ("capnp", None)):
+                if formula == "capnp" and not shutil.which("capnp"):
+                    need.append("capnp")
+                elif formula == "boost":
+                    found = any(Path(p + probe).exists() for p in
+                                ("/opt/homebrew/include", "/usr/local/include"))
+                    if not found:
+                        need.append("boost")
+        return need
+
+    def install_deps(self, job, missing):
+        """Best effort, and honest when it cannot."""
+        if sys.platform == "darwin":
+            brew = shutil.which("brew") or next(
+                (p for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
+                 if Path(p).exists()), None)
+            if not brew:
+                job.emit(t="log", line="Homebrew is not installed — it is how macOS "
+                                       "gets these. See https://brew.sh")
+                return False
+            return self._stream(job, [brew, "install", *missing]) == 0
+        job.emit(t="log", line="install these with your package manager, then reopen: "
+                               + " ".join(missing))
+        return False
+
     def build_runner(self, autorestart):
         def go(job):
             ok = self._build(job)
@@ -1539,6 +1607,9 @@ def main():
     ap.add_argument("--no-open", action="store_true", help="don't open the browser")
     ap.add_argument("--no-autostart", dest="autostart", action="store_false",
                     help="don't build/start the node automatically on launch")
+    ap.add_argument("--app", action="store_true",
+                    help="launched from the desktop app: no terminal is watching, so "
+                         "first-run setup streams into the browser instead")
     ap.add_argument("--print-key", action="store_true", help="print the session key (for scripting)")
     opts = ap.parse_args()
 
@@ -1612,18 +1683,24 @@ def main():
     # the node, so the browser opens onto something alive.
     if opts.autostart:
         if not console.bin_path("bitcoind"):
-            bjobs = console.build_jobs()
-            low, high = console.build_estimate(bjobs)
-            print(f"  no node binary yet — building it now, once, with {bjobs} "
-                  f"parallel job(s).")
-            print(f"  on this machine expect roughly {low}-{high} minutes. "
-                  f"It is the last slow thing that will ever happen.")
-            print()
-            if console.build_blocking():
-                print("\n  build complete.\n")
+            if opts.app:
+                # Launched by double-click: there is no terminal to watch, so
+                # preparation streams into the browser instead.
+                print("  no node binary yet — preparing it in the console.")
+                console.start_job("setup", "", console.setup_runner())
             else:
-                print("\n  ⚠  build failed — see the output above. The console will still "
-                      "start.\n")
+                bjobs = console.build_jobs()
+                low, high = console.build_estimate(bjobs)
+                print(f"  no node binary yet — building it now, once, with {bjobs} "
+                      f"parallel job(s).")
+                print(f"  on this machine expect roughly {low}-{high} minutes. "
+                      f"It is the last slow thing that will ever happen.")
+                print()
+                if console.build_blocking():
+                    print("\n  build complete.\n")
+                else:
+                    print("\n  ⚠  build failed — see the output above. The console "
+                          "will still start.\n")
         if console.bin_path("bitcoind") and not console.node_running():
             if console.start_node():
                 print(f"  node   : awake on {opts.chain}")
