@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import queue
 import random
 import re
@@ -28,6 +29,7 @@ import shutil
 import socket
 import signal
 import subprocess
+import tarfile
 import sys
 import tempfile
 import threading
@@ -1547,6 +1549,20 @@ class Console:
             job.emit(t="phase", name="setup",
                      detail="preparing your node — this happens once")
 
+            # A node in seconds beats a node in twenty minutes. If a published
+            # binary matches this exact source, start with it and leave the
+            # compile for the first decree — when the wait has a point.
+            if self.try_prebuilt(job):
+                job.emit(t="phase", name="node", detail="waking the node")
+                if self.start_node(job):
+                    job.emit(t="result",
+                             detail="Your node is ready, Excellency — it was waiting, "
+                                    "prebuilt. Your first decree will compile it "
+                                    "properly, which takes a few minutes and happens "
+                                    "exactly once.")
+                    return
+                job.emit(t="log", line="the prebuilt node would not start — compiling one")
+
             missing = self.missing_deps()
             if missing:
                 job.emit(t="phase", name="deps",
@@ -1578,6 +1594,63 @@ class Console:
             job.emit(t="result",
                      detail="Your node is ready, Excellency. It has been waiting.")
         return go
+
+    PREBUILT_SLUGS = {("Darwin", "arm64"): "macos-arm64",
+                      ("Darwin", "x86_64"): "macos-x86_64",
+                      ("Linux", "x86_64"): "linux-x86_64"}
+
+    def try_prebuilt(self, job):
+        """Fetch a published node, but only one built from this exact commit.
+
+        A binary compiled from different source is not the node the operator is
+        about to start editing, so a mismatch falls back to compiling rather
+        than quietly running the wrong thing."""
+        if os.environ.get("VIBES_NO_PREBUILT") == "1":
+            return False
+        slug = self.PREBUILT_SLUGS.get((platform.system(), platform.machine()))
+        if not slug:
+            return False
+        _, head, _ = self.git("rev-parse", "HEAD")
+        head = head.strip()
+        if not head:
+            return False
+
+        base = os.environ.get(
+            "VIBES_PREBUILT_URL",
+            "https://github.com/hotpixelgroup/bitcoin/releases/latest/download")
+        url = f"{base}/vibes-node-{slug}.tar.gz"
+        job.emit(t="phase", name="prebuilt",
+                 detail=f"looking for a ready-made node for {slug}")
+        tmp = Path(tempfile.mkdtemp(prefix="vibes-prebuilt-"))
+        try:
+            archive = tmp / "node.tar.gz"
+            with urllib.request.urlopen(url, timeout=300) as r, open(archive, "wb") as f:
+                shutil.copyfileobj(r, f)
+            with tarfile.open(archive) as t:
+                t.extractall(tmp)                       # noqa: S202 - our own release
+            src = tmp / f"vibes-node-{slug}"
+            built_from = (src / "COMMIT").read_text().strip()
+            if built_from != head:
+                job.emit(t="log",
+                         line=f"the published node was built from {built_from[:10]}, "
+                              f"your source is {head[:10]} — compiling instead")
+                return False
+            dest = self.repo / "build" / "bin"
+            dest.mkdir(parents=True, exist_ok=True)
+            for name in ("bitcoind", "bitcoin-cli"):
+                shutil.copy2(src / name, dest / name)
+                (dest / name).chmod(0o755)
+            if run([str(dest / "bitcoind"), "-version"], timeout=30)[0] != 0:
+                job.emit(t="log", line="it would not run on this machine — compiling instead")
+                return False
+            job.emit(t="log", line="using a ready-made node, verified against your source")
+            return True
+        except Exception as e:                                   # noqa: BLE001
+            job.emit(t="log", line=f"no ready-made node available ({type(e).__name__}) "
+                                   f"— compiling instead")
+            return False
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def missing_deps(self):
         """Which build tools are absent. Empty means we can compile."""

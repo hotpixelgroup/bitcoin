@@ -153,11 +153,67 @@ plan_build() {
   high=$(( low * 2 ))
 }
 
+# A prebuilt node, if one exists for this platform AND was built from exactly
+# the source we just checked out. Compiling is only needed to *vibe*; it is not
+# needed to *run*, so this gets a node up in seconds and leaves the build for
+# the operator's first decree, when the wait finally means something.
+#
+# The commit check is not optional: a binary built from different code is not
+# the node they are about to start editing.
+try_prebuilt() {
+  [ "${VIBES_NO_PREBUILT:-0}" = "1" ] && return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar  >/dev/null 2>&1 || return 1
+
+  case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64)  slug=macos-arm64 ;;
+    Darwin/x86_64) slug=macos-x86_64 ;;
+    Linux/x86_64)  slug=linux-x86_64 ;;
+    *) return 1 ;;
+  esac
+
+  want=$(git -C "$DEST" rev-parse HEAD 2>/dev/null) || return 1
+  url="https://github.com/hotpixelgroup/bitcoin/releases/latest/download/vibes-node-$slug.tar.gz"
+  tmp=$(mktemp -d) || return 1
+
+  note "looking for a prebuilt node for $slug"
+  if ! curl -fsSL --max-time 300 "$url" -o "$tmp/node.tar.gz" 2>/dev/null; then
+    note "none published for this platform — building instead"
+    rm -rf "$tmp"; return 1
+  fi
+  if ! tar -xzf "$tmp/node.tar.gz" -C "$tmp" 2>/dev/null; then
+    note "the download was not readable — building instead"
+    rm -rf "$tmp"; return 1
+  fi
+  dir="$tmp/vibes-node-$slug"
+  got=$(cat "$dir/COMMIT" 2>/dev/null || echo unknown)
+  if [ "$got" != "$want" ]; then
+    note "the published node was built from different source — building instead"
+    note "(published ${got%"${got#??????????}"}, yours ${want%"${want#??????????}"})"
+    rm -rf "$tmp"; return 1
+  fi
+  mkdir -p "$DEST/build/bin"
+  cp "$dir/bitcoind" "$dir/bitcoin-cli" "$DEST/build/bin/" || { rm -rf "$tmp"; return 1; }
+  chmod +x "$DEST/build/bin/bitcoind" "$DEST/build/bin/bitcoin-cli"
+  if ! "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1; then
+    note "the prebuilt node would not run here — building instead"
+    rm -rf "$tmp" "$DEST/build/bin"; return 1
+  fi
+  rm -rf "$tmp"
+  note "using a prebuilt node — your first decree will compile it properly"
+  return 0
+}
+
 build_node() {
   step "Building the node"
   plan_build
   if [ -f "$DEST/build/bin/bitcoind" ]; then
     note "already built — skipping (delete $DEST/build to force a rebuild)"
+    return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    note '$ (try a prebuilt node for this platform, else compile)'
+  elif try_prebuilt; then
     return 0
   fi
   note "$cores core(s), ${mem_gb}GB RAM — using $jobs parallel job(s)"
