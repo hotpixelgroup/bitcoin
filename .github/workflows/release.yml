@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             label: macOS (Apple silicon)
             slug: macos-arm64
           - os: macos-13
@@ -43,9 +43,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Xcode a runner happens to ship is too old for this codebase —
+      # AppleClang 15 lacks CTAD for aggregates, which src/util/overloaded.h
+      # requires. Homebrew's LLVM is current on every image, so build with that
+      # rather than depending on the runner's Xcode vintage.
       - name: Dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install cmake ninja boost capnp
+        run: |
+          brew install cmake ninja boost capnp llvm
+          PREFIX=$(brew --prefix llvm)
+          echo "CC=$PREFIX/bin/clang"    >> "$GITHUB_ENV"
+          echo "CXX=$PREFIX/bin/clang++" >> "$GITHUB_ENV"
+          "$PREFIX/bin/clang++" --version | head -1
 
       - name: Dependencies (Linux)
         if: runner.os == 'Linux'
