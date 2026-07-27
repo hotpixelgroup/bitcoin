@@ -34,9 +34,12 @@ jobs:
           - os: macos-15
             label: macOS (Apple silicon)
             slug: macos-arm64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             label: Linux (x86_64)
             slug: linux-x86_64
+          - os: ubuntu-24.04-arm
+            label: Linux (ARM64)
+            slug: linux-arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +70,10 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -G Ninja \
+          # Release, not the default RelWithDebInfo: on Linux that embedded
+          # 276MB of DWARF straight into the ELF (macOS hid the problem by
+          # keeping debug info in a separate .dSYM).
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
           cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
 
@@ -87,13 +93,23 @@ jobs:
           test "$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount)" = "101"
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
 
-      # Strip before packaging: the Linux artifact was 132MB of mostly debug
-      # symbols, which is a long download for something we hand to beginners.
-      - name: Strip
+      # Strip, and prove it worked. The previous version swallowed every error
+      # into "2>/dev/null || true" and shipped a 292MB binary — 276MB of it
+      # debug sections — while reporting success.
+      - name: Strip and check the size
         run: |
-          strip build/bin/bitcoind build/bin/bitcoin-cli 2>/dev/null || \
-            strip -S build/bin/bitcoind build/bin/bitcoin-cli 2>/dev/null || true
-          ls -lh build/bin/bitcoind
+          set -e
+          strip -S build/bin/bitcoind build/bin/bitcoin-cli || \
+            strip build/bin/bitcoind build/bin/bitcoin-cli
+          ls -lh build/bin/bitcoind build/bin/bitcoin-cli
+          # A Raspberry Pi on home broadband is the worst audience to hand a
+          # bloated download, so make the bloat a red X on our run instead.
+          BYTES=$(wc -c < build/bin/bitcoind)
+          echo "bitcoind is $((BYTES / 1048576)) MiB"
+          if [ "$BYTES" -gt 62914560 ]; then
+            echo "::error::bitcoind is $((BYTES / 1048576)) MiB — expected well under 60. Debug info is probably still embedded."
+            exit 1
+          fi
 
       # The README offers "download the app" from /releases/latest, so every
       # release has to carry it — otherwise that link 404s the moment a

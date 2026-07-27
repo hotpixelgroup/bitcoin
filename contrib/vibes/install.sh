@@ -169,6 +169,8 @@ try_prebuilt() {
     Darwin/arm64)  slug=macos-arm64 ;;
     Darwin/x86_64) slug=macos-x86_64 ;;
     Linux/x86_64)  slug=linux-x86_64 ;;
+    # uname -m says aarch64 on most ARM Linux; a few distros say arm64.
+    Linux/aarch64|Linux/arm64) slug=linux-arm64 ;;
     *) return 1 ;;
   esac
 

@@ -302,6 +302,62 @@
   .settings-note.good{color:var(--verdigris);font-weight:600}
   #settings-save{margin-left:auto}
 
+
+  /* ---- promulgating and receiving decrees ---- */
+  .share{cursor:pointer;border:1px solid var(--gold-line);background:var(--marble);
+    color:var(--ink-2);border-radius:2px;padding:8px 14px;font-family:var(--serif);
+    font-size:13px;letter-spacing:.1em;text-transform:uppercase;min-height:38px}
+  .share:hover{color:#fffdf8;background:var(--gold-ink);border-color:var(--gold-ink)}
+  .sharepanel{flex:1 1 100%;border:1px solid var(--gold-line);background:var(--marble);
+    border-radius:3px;padding:16px 18px;margin-top:4px}
+  .sharepanel h4{font-family:var(--serif);font-size:14px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px;font-weight:600}
+  .sharepanel p{font-size:15px;color:var(--ink-2);margin-bottom:12px}
+  .sharepanel label{display:block;font-size:14px;color:var(--ink);margin:10px 0 4px}
+  .sharepanel input[type=text]{width:100%;background:#fffdf8;border:1px solid var(--gold-line);
+    border-radius:2px;padding:9px 11px;font:15px var(--text);color:var(--ink);min-height:42px}
+  .sharepanel .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .sharepanel .row button{flex:1 1 auto;min-height:42px}
+  .sharemeter{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);margin-top:8px}
+  .sharemeter.over{color:var(--porphyry);font-weight:700}
+  .shareout{width:100%;min-height:80px;margin-top:12px;font:12.5px var(--mono);
+    background:#fffdf8;border:1px solid var(--gold-line);border-radius:2px;padding:10px;
+    color:var(--ink);user-select:all;white-space:pre-wrap;word-break:break-all}
+
+  /* an arriving decree: the shape reserved for moments of consequence */
+  .offering{border:2px solid var(--gold-leaf);border-radius:120px 120px 3px 3px;
+    background:linear-gradient(180deg,#fffdf8,var(--marble-2));
+    padding:34px 30px 26px;margin-bottom:22px;
+    box-shadow:0 12px 36px rgba(28,24,20,.09)}
+  .offering .eyebrow{font-family:var(--serif);font-size:12.5px;letter-spacing:.26em;
+    text-transform:uppercase;color:var(--gold-ink);text-align:center;margin-bottom:14px}
+  .offering h3{font-family:var(--serif);font-size:21px;font-weight:400;text-align:center;
+    color:var(--ink);margin-bottom:14px;line-height:1.3}
+  .offering .prov{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);
+    text-align:center;margin-bottom:4px}
+  .offering .unproved{font-size:14px;color:var(--ink-2);text-align:center;
+    margin-bottom:16px;font-style:italic}
+  .offering .full{white-space:pre-wrap;unicode-bidi:isolate;direction:ltr;
+    font-family:var(--mono);font-size:13.5px;line-height:1.7;color:var(--ink);
+    background:#fffdf8;border:1px solid var(--gold-line);border-left:3px solid var(--gold-leaf);
+    border-radius:2px;padding:14px 16px;margin-bottom:14px;max-height:340px;overflow:auto}
+  .offering .note{border-left:3px solid var(--ink-2);background:var(--marble-3);
+    padding:12px 15px;border-radius:2px;margin-bottom:14px;font-size:15.5px;color:var(--ink)}
+  .offering .danger{border:2px solid var(--porphyry);background:#fdf6f4;color:var(--porphyry);
+    border-radius:2px;padding:12px 15px;margin-bottom:14px;font-size:15px;font-weight:600}
+  .offering .consequence{font-size:15.5px;color:var(--ink);margin-bottom:18px;
+    text-align:center;max-width:640px;margin-left:auto;margin-right:auto}
+  .offering .acts{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .offering .acts .go{margin-left:0}
+  #wish-origin{display:none;font-size:14.5px;color:var(--porphyry);
+    background:#fdf6f4;border:1px solid var(--porphyry);border-radius:2px;
+    padding:9px 12px;margin-bottom:9px}
+  @media (max-width:720px){
+    .share{order:4;flex:1 1 42%}
+    .revert{order:5;flex:1 1 42%}
+    .offering{border-radius:70px 70px 3px 3px;padding:24px 16px 20px}
+  }
+
   /* ---- the book of decrees ---- */
   .book{background:#fffdf8;border:1px solid var(--gold-line);border-radius:3px;padding:4px 18px}
   .vibe{display:flex;align-items:center;gap:13px;padding:14px 0;
@@ -395,6 +451,27 @@
     <button class="nbtn update-go" id="update-go" type="button">Update</button>
   </div>
 
+  <div id="offering" class="offering" role="region" aria-labelledby="offering-h"
+       style="display:none">
+    <div class="eyebrow">✦ A decree arrives from abroad ✦</div>
+    <h3 id="offering-h" tabindex="-1"></h3>
+    <p class="prov" id="offering-prov"></p>
+    <p class="unproved">Nothing above is proved. A decree carries no signature, and
+       anyone may type any name into one — including yours.</p>
+    <div class="full" id="offering-full"></div>
+    <div class="note" id="offering-note" style="display:none"></div>
+    <div class="danger" id="offering-danger" style="display:none"></div>
+    <div class="danger" id="offering-hidden" style="display:none"></div>
+    <p class="consequence">The text above is placed in your tablet. Nothing is
+       compiled, committed or run until <b>you</b> press Manifest yourself. No code
+       travels with a decree — only the wish. Your node will write its own.</p>
+    <div class="acts">
+      <button class="go" id="offering-take" type="button">Place it in my tablet</button>
+      <button class="cancel" id="offering-drop" type="button"
+              style="display:inline-block">Discard it</button>
+    </div>
+  </div>
+
   <div id="engine" class="engine" role="alert" style="display:none">
     <div class="engine-msg" id="engine-msg"></div>
     <div class="engine-fix">Run this once, then return: <code id="engine-cmd"></code></div>
@@ -404,6 +481,7 @@
     <h2 class="tablet-head" id="decree-h" style="margin:0;border:0;font-size:12px">
       State your will, Excellency</h2>
     <div class="tablet-body">
+      <div id="wish-origin" role="status"></div>
       <label class="wish-label" for="wish">Your decree</label>
       <textarea id="wish" placeholder="e.g. The 21 million cap was written for people who are not me…"></textarea>
 
@@ -453,9 +531,20 @@
     </div>
   </section>
 
-  <section aria-labelledby="book-h">
+  <section id="book-section" aria-labelledby="book-h">
     <h2 id="book-h">The Book of Decrees
       <span class="sub">— infallible, immutable, and equipped with a revert button, for even gods repent</span></h2>
+    <details class="sgroup" style="margin-bottom:14px">
+      <summary><span class="stitle">A decree from abroad</span>
+        <span class="sblurb">Someone sent you one. Paste the link, the block, or the
+          file's contents here.</span></summary>
+      <div class="sbody" style="padding-top:14px">
+        <label class="vh" for="import-text">Paste a decree</label>
+        <textarea id="import-text" style="min-height:90px"
+                  placeholder="vibe1.… or the whole link, or the .vibe.json"></textarea>
+        <div style="margin-top:10px"><button class="nbtn" id="import-go" type="button">Read it</button></div>
+      </div>
+    </details>
     <div class="book" id="history"></div>
   </section>
 
@@ -786,6 +875,207 @@ $("settings-form").addEventListener("submit", async e => {
   }
 });
 
+
+/* ---- decrees travel as wishes, never as patches ------------------------
+   A decree is the words somebody typed. The recipient's own agent writes
+   their own code from them, under their own guardrails. Nothing here can
+   run anything: accepting an imported decree fills the textarea and stops,
+   so a shared decree can do precisely nothing the operator could not have
+   typed themselves. -------------------------------------------------- */
+const DECREE_MAX_URL = 1800;      // chat clients start cutting links near 2000
+const DECREE_MAX_CHARS = 4000;    // an unreviewable decree is an unreviewed one
+
+const b64urlEncode = obj => {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)         // apply() has an arg limit
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const b64urlDecode = tok => {
+  const b64 = tok.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "=".repeat((4 - b64.length % 4) % 4));
+  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+};
+
+// Title is derived here, never transmitted — a sent title could describe the
+// body dishonestly. Mirrors the server's subject[:72].
+const decreeTitle = t => t.replace(/\s+/g, " ").trim().slice(0, 72);
+
+// Characters that can make the preview read differently from what is sent:
+// C0/C1 controls, zero-width marks, and bidirectional overrides.
+const HIDDEN = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069\\uFEFF]");
+
+function decreeToken(d){ return "vibe1." + b64urlEncode(d); }
+
+function decreeMarkdown(d){
+  // The readable text must always travel beside the token. Base64 alone,
+  // pasted into a Bitcoin node, is indistinguishable from malware.
+  return "**A Bitcoin Vibes decree**" + (d.by ? " from " + d.by : "") + "\n\n" +
+         "> " + d.p.replace(/\n/g, "\n> ") + "\n\n" +
+         (d.n ? "_" + d.n + "_\n\n" : "") +
+         "Paste this into your own console (Book of Decrees → a decree from abroad):\n\n" +
+         "```\n" + decreeToken(d) + "\n```\n";
+}
+
+function buildDecree(base, note, by){
+  const d = {v:1, p:base.p, sha:base.sha, ts:base.ts, c:base.c||[], f:base.f||[]};
+  if (note) d.n = note.slice(0, 280);
+  if (by)   d.by = by.replace(new RegExp("[\\u0000-\\u001F\\u007F]", "g"), "").slice(0, 40);
+  return d;
+}
+
+/* ---- promulgating ---- */
+async function openSharePanel(row, v){
+  const existing = row.querySelector(".sharepanel");
+  if (existing) { existing.remove(); return; }
+  let base;
+  try { base = await api("/api/decree?sha=" + encodeURIComponent(v.sha)); }
+  catch(e){ return toast(e.message); }
+
+  const panel = document.createElement("div");
+  panel.className = "sharepanel";
+  panel.innerHTML =
+    '<h4>Promulgate this decree</h4>' +
+    '<p>A decree travels as a wish, not as a patch. Whoever receives this gets the ' +
+    'words you typed; their own node writes its own code from them.</p>' +
+    '<label for="sh-note">A word to whoever receives it</label>' +
+    '<input type="text" id="sh-note" maxlength="280" placeholder="optional">' +
+    '<label for="sh-by">Who shall be credited</label>' +
+    '<input type="text" id="sh-by" maxlength="40" placeholder="optional — decoration only, nothing verifies it">' +
+    '<div class="sharemeter" id="sh-meter"></div>' +
+    '<div class="row">' +
+    '<button class="nbtn" id="sh-link" type="button">Copy the link</button>' +
+    '<button class="nbtn" id="sh-md" type="button">Copy for the forums</button>' +
+    '<button class="nbtn" id="sh-file" type="button">Download it</button>' +
+    '</div><div class="shareout" id="sh-out" style="display:none"></div>';
+  row.appendChild(panel);
+
+  const cur = () => buildDecree(base, $("sh-note").value, $("sh-by").value);
+  // location.origin, never location.href — the console URL carries ?key= and
+  // href would paste the operator's session key into a chat channel.
+  const linkFor = d => location.origin + "/#decree=" + decreeToken(d);
+
+  function meter(){
+    const n = linkFor(cur()).length;
+    const el = $("sh-meter");
+    el.textContent = "link is " + n + " characters" +
+      (n > DECREE_MAX_URL ? " — too vast for a link; use the forums block or the file"
+                          : " — comfortably shareable");
+    el.classList.toggle("over", n > DECREE_MAX_URL);
+    $("sh-link").disabled = n > DECREE_MAX_URL;
+  }
+  panel.querySelectorAll("input").forEach(i => i.addEventListener("input", meter));
+  meter();
+
+  const give = (text, msg) => {
+    const out = $("sh-out"); out.style.display = "block"; out.textContent = text;
+    navigator.clipboard.writeText(text)
+      .then(() => toast(msg))
+      .catch(() => toast("Select the text below and copy it."));
+  };
+  $("sh-link").onclick = () => give(linkFor(cur()), "Copied. Somewhere a lesser node is about to improve.");
+  $("sh-md").onclick   = () => give(decreeMarkdown(cur()), "Copied for the forums, decree and all.");
+  $("sh-file").onclick = () => {
+    const blob = new Blob([JSON.stringify(cur(), null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "decree-" + base.sha.slice(0,8) + ".vibe.json";
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+}
+
+/* ---- receiving ---- */
+function readDecree(raw){
+  const tok = (String(raw).match(/vibe1\.[A-Za-z0-9_-]+/) || [])[0];
+  let d;
+  try { d = tok ? b64urlDecode(tok.slice("vibe1.".length)) : JSON.parse(raw); }
+  catch(e){ throw new Error("This decree arrived broken — chat clients cut long links. Ask for the file."); }
+  if (!d || d.v !== 1) throw new Error("This decree was written by a different console. Update yours.");
+  if (typeof d.p !== "string" || !d.p.trim()) throw new Error("This decree carries no wish.");
+  if (d.p.length > DECREE_MAX_CHARS) throw new Error("This decree is too long to review honestly, so it is refused.");
+  // keep only known fields, correctly typed; drop anything else unread
+  return {p: d.p,
+          n: typeof d.n === "string" ? d.n.slice(0,280) : "",
+          by: typeof d.by === "string" ? d.by.replace(new RegExp("[\\u0000-\\u001F\\u007F]", "g"), "").slice(0,40) : "",
+          c: Array.isArray(d.c) ? d.c.filter(x => typeof x === "string").slice(0,12) : [],
+          f: Array.isArray(d.f) ? d.f.length : 0,
+          sha: typeof d.sha === "string" ? d.sha.replace(/[^0-9a-f]/g,"").slice(0,12) : "",
+          ts: Number.isFinite(d.ts) ? d.ts : 0};
+}
+
+function showOffering(d){
+  const el = $("offering");
+  // textContent throughout: this is a stranger's text inside our own origin
+  $("offering-h").textContent = "“" + decreeTitle(d.p) + "”";
+  $("offering-prov").textContent =
+    [d.by ? "claimed author " + d.by : "no author claimed",
+     d.ts ? "claimed " + fmtWhen(d.ts) : null,
+     d.sha ? "claimed origin " + d.sha : null,
+     d.f ? d.f + " file(s) changed on their machine" : null].filter(Boolean).join(" · ");
+  $("offering-full").textContent = d.p;
+
+  const note = $("offering-note");
+  note.style.display = d.n ? "block" : "none";
+  note.textContent = d.n ? "They wrote: " + d.n : "";
+
+  // A claim of danger may be shown. A claim of safety may never be believed,
+  // so an empty list produces no reassurance at all — the real verdict comes
+  // from this node judging its own diff after its own agent has run.
+  const danger = $("offering-danger");
+  danger.style.display = d.c.length ? "block" : "none";
+  if (d.c.length)
+    danger.textContent = "The sender says this changed " + d.c.join(", ") +
+      ". Their word, not a verdict. Your node judges for itself once its own agent has finished.";
+
+  const hid = $("offering-hidden");
+  const dirty = HIDDEN.test(d.p);
+  hid.style.display = dirty ? "block" : "none";
+  if (dirty) hid.textContent =
+    "This decree hides characters that do not print. They can make what you read " +
+    "differ from what is sent. Read it with suspicion, or discard it.";
+
+  el.style.display = "block";
+  $("offering-h").focus();
+  $("offering-take").onclick = () => {
+    // The whole safety model in one line: fill the box, run nothing.
+    $("wish").value = d.p;
+    $("wish-origin").style.display = "block";
+    $("wish-origin").textContent =
+      "This decree came from abroad. Read it once more — it becomes yours the moment you press Manifest.";
+    dismissOffering();
+    $("wish").focus();
+    $("wish").scrollIntoView({block:"center"});
+  };
+  $("offering-drop").onclick = dismissOffering;
+}
+
+function dismissOffering(){
+  $("offering").style.display = "none";
+  // keep location.search so the session key survives a reload
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+function checkForDecree(){
+  const m = /^#decree=(vibe1\.[A-Za-z0-9_-]+)$/.exec(location.hash || "");
+  if (!m) return;
+  try { showOffering(readDecree(m[1])); }
+  catch(e){ toast(e.message); dismissOffering(); }
+}
+window.addEventListener("hashchange", checkForDecree);
+$("wish").addEventListener("input", () => { $("wish-origin").style.display = "none"; });
+
+/* The paste path is the guaranteed one: SameSite=Strict withholds the cookie on
+   cross-site navigation, and the recipient's port may differ from the sender's,
+   so a link cannot be the only way in. */
+$("import-go").onclick = () => {
+  const raw = $("import-text").value.trim();
+  if (!raw) return toast("Paste the link, the block, or the file's contents.");
+  try { showOffering(readDecree(raw)); $("import-text").value = ""; }
+  catch(e){ toast(e.message); }
+};
+
 function fmtWhen(t){
   const d = new Date(t * 1000);
   return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " +
@@ -862,6 +1152,11 @@ async function refresh(){
             setBusy(true); $("feed").innerHTML = ""; openStream(); }
       catch(e){ toast(e.message); }
     };
+    const sh = document.createElement("button");
+    sh.className = "share"; sh.type = "button"; sh.textContent = "Promulgate";
+    sh.setAttribute("aria-label", "Promulgate decree: " + v.subject);
+    sh.onclick = () => openSharePanel(row, v);
+    row.appendChild(sh);
     row.appendChild(b);
     h.appendChild(row);
   });
@@ -870,6 +1165,7 @@ async function refresh(){
 }
 refresh();
 loadSettings();
+checkForDecree();
 setInterval(refresh, 4000);
 </script>
 </body>
