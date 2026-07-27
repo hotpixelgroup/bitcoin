@@ -87,6 +87,23 @@ jobs:
           test "$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount)" = "101"
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
 
+      # Strip before packaging: the Linux artifact was 132MB of mostly debug
+      # symbols, which is a long download for something we hand to beginners.
+      - name: Strip
+        run: |
+          strip build/bin/bitcoind build/bin/bitcoin-cli 2>/dev/null || \
+            strip -S build/bin/bitcoind build/bin/bitcoin-cli 2>/dev/null || true
+          ls -lh build/bin/bitcoind
+
+      # The README offers "download the app" from /releases/latest, so every
+      # release has to carry it — otherwise that link 404s the moment a
+      # node-only release becomes the latest one.
+      - name: Build the Mac app
+        if: runner.os == 'macOS'
+        run: |
+          sh contrib/vibes/macos/build-app.sh --dmg
+          ls -lh dist/BitcoinVibes.dmg
+
       - name: Package
         run: |
           SHA=$(git rev-parse HEAD)
@@ -105,4 +122,5 @@ jobs:
           files: |
             vibes-node-${{ matrix.slug }}.tar.gz
             vibes-node-${{ matrix.slug }}.tar.gz.sha256
+            ${{ runner.os == 'macOS' && 'dist/BitcoinVibes.dmg' || '' }}
           fail_on_unmatched_files: true
