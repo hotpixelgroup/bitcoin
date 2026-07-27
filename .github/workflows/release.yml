@@ -92,6 +92,17 @@ jobs:
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest generatetoaddress 101 "$A" >/dev/null
           test "$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount)" = "101"
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
+          # `stop` returns as soon as the RPC is accepted, not when the process
+          # is gone — and strip cannot modify a running binary ("Text file
+          # busy"). Wait for it to actually exit.
+          for i in $(seq 1 60); do
+            pgrep -f "bitcoind -datadir=$DD" >/dev/null 2>&1 || break
+            sleep 1
+          done
+          if pgrep -f "bitcoind -datadir=$DD" >/dev/null 2>&1; then
+            echo "::error::bitcoind did not exit after stop"
+            exit 1
+          fi
 
       # Strip, and prove it worked. The previous version swallowed every error
       # into "2>/dev/null || true" and shipped a 292MB binary — 276MB of it
