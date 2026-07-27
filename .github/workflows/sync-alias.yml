@@ -1,0 +1,38 @@
+# Keep the legacy `vibes` branch pointing at `master`.
+#
+# `vibes` exists only so install links published before the rename keep
+# resolving. It has drifted behind master three times because syncing it was a
+# manual step somebody had to remember, so it is a manual step no longer.
+#
+# Fast-forward only: master always contains vibes, so this can never rewrite
+# history or lose a commit. If it ever isn't a fast-forward, that means
+# something unexpected happened and the job fails loudly rather than forcing.
+name: Sync alias branch
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward vibes to master
+        run: |
+          set -e
+          git fetch origin master vibes
+          if git merge-base --is-ancestor origin/vibes origin/master; then
+            git push origin origin/master:refs/heads/vibes
+            echo "vibes fast-forwarded to $(git rev-parse --short=10 origin/master)"
+          else
+            echo "::error::vibes is not an ancestor of master — refusing to force. Resolve by hand."
+            exit 1
+          fi
