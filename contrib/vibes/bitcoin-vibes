@@ -1599,6 +1599,20 @@ class Console:
                       ("Darwin", "x86_64"): "macos-x86_64",
                       ("Linux", "x86_64"): "linux-x86_64"}
 
+    @staticmethod
+    def host_machine():
+        """The machine's architecture, not the interpreter's.
+
+        A Python built for x86_64 running under Rosetta on Apple silicon reports
+        x86_64, which would fetch an Intel node for an ARM Mac. Ask the kernel
+        whether we are translated and answer for the hardware."""
+        mach = platform.machine()
+        if sys.platform == "darwin" and mach == "x86_64":
+            code, out, _ = run(["sysctl", "-n", "sysctl.proc_translated"], timeout=10)
+            if code == 0 and out.strip() == "1":
+                return "arm64"
+        return mach
+
     def try_prebuilt(self, job):
         """Fetch a published node, but only one built from this exact commit.
 
@@ -1607,7 +1621,7 @@ class Console:
         than quietly running the wrong thing."""
         if os.environ.get("VIBES_NO_PREBUILT") == "1":
             return False
-        slug = self.PREBUILT_SLUGS.get((platform.system(), platform.machine()))
+        slug = self.PREBUILT_SLUGS.get((platform.system(), self.host_machine()))
         if not slug:
             return False
         _, head, _ = self.git("rev-parse", "HEAD")
