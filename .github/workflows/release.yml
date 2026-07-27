@@ -34,27 +34,28 @@ jobs:
           - os: macos-15
             label: macOS (Apple silicon)
             slug: macos-arm64
-          - os: macos-13
-            label: macOS (Intel)
-            slug: macos-x86_64
           - os: ubuntu-latest
             label: Linux (x86_64)
             slug: linux-x86_64
     steps:
       - uses: actions/checkout@v4
 
-      # The Xcode a runner happens to ship is too old for this codebase —
-      # AppleClang 15 lacks CTAD for aggregates, which src/util/overloaded.h
-      # requires. Homebrew's LLVM is current on every image, so build with that
-      # rather than depending on the runner's Xcode vintage.
-      - name: Dependencies (macOS)
+      # The default Xcode is too old — AppleClang 15 lacks CTAD for aggregates,
+      # which src/util/overloaded.h requires. Homebrew's LLVM is new enough but
+      # its libc++ collides with Apple's SDK headers, so use the newest Xcode
+      # the image carries and Apple's own toolchain.
+      - name: Use the newest Xcode on this image
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja boost capnp llvm
-          PREFIX=$(brew --prefix llvm)
-          echo "CC=$PREFIX/bin/clang"    >> "$GITHUB_ENV"
-          echo "CXX=$PREFIX/bin/clang++" >> "$GITHUB_ENV"
-          "$PREFIX/bin/clang++" --version | head -1
+          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$latest" ] || latest=/Applications/Xcode.app
+          echo "selecting $latest"
+          sudo xcode-select -s "$latest"
+          c++ --version | head -1
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja boost capnp
 
       - name: Dependencies (Linux)
         if: runner.os == 'Linux'
