@@ -1032,6 +1032,51 @@ class Console:
                                   "subject": parts[2][len("vibe: "):] if parts[2].startswith("vibe: ") else parts[2]})
         return vibes
 
+    # The trailer the console appends to every decree commit; stripped again
+    # when reading one back out so a shared decree is the operator's words only.
+    DECREE_TRAILER = "Decreed through the Bitcoin Vibes console."
+
+    def decree(self, sha):
+        """Everything needed to promulgate a decree: the wish, and honest
+        provenance. Note what is NOT here — no patch. A decree travels as a
+        wish, so the recipient's own agent writes their own code under their own
+        guardrails. Shipping a diff would turn 'a stranger suggests words to
+        your agent' into 'a stranger ships C++ into your Bitcoin node'."""
+        text = self.decree_text(sha)
+        if text is None:
+            return None
+        _, when, _ = self.git("log", "-1", "--format=%ct", sha)
+        _, patch, _ = self.git("show", "--format=", "--unified=0", sha)
+        _, stat, _ = self.git("show", "--format=", "--numstat", sha)
+        files = []
+        for line in stat.splitlines():
+            parts = line.split("\t")
+            if len(parts) == 3:
+                add, rem, path = parts
+                files.append([path, 0 if add == "-" else int(add),
+                              0 if rem == "-" else int(rem)])
+        return {"v": 1, "p": text, "sha": sha[:12],
+                "ts": int(when.strip() or 0),
+                "c": self._judge_consensus(patch),
+                "f": files[:12]}
+
+    def decree_text(self, sha):
+        """The full wish behind a decree, as originally typed.
+
+        The subject line in the history is truncated to 72 characters, which is
+        fine for a list and useless for sharing — the whole point is to pass on
+        exactly what was asked for."""
+        if not re.fullmatch(r"[0-9a-f]{7,40}", sha or ""):
+            return None
+        code, subject, _ = self.git("log", "-1", "--format=%s", sha)
+        if code != 0 or not subject.strip().startswith("vibe:"):
+            return None                      # only decrees are shareable
+        _, body, _ = self.git("log", "-1", "--format=%b", sha)
+        text = body.split(self.DECREE_TRAILER)[0].strip()
+        if not text:                         # very old decrees had no body
+            text = subject.strip()[len("vibe: "):]
+        return text
+
     # ----- job engine ----------------------------------------------------
 
     def start_job(self, kind, prompt="", runner=None):
@@ -1597,7 +1642,11 @@ class Console:
 
     PREBUILT_SLUGS = {("Darwin", "arm64"): "macos-arm64",
                       ("Darwin", "x86_64"): "macos-x86_64",
-                      ("Linux", "x86_64"): "linux-x86_64"}
+                      ("Linux", "x86_64"): "linux-x86_64",
+                      # platform.machine() says aarch64 on most ARM Linux;
+                      # a few distros report arm64.
+                      ("Linux", "aarch64"): "linux-arm64",
+                      ("Linux", "arm64"): "linux-arm64"}
 
     @staticmethod
     def host_machine():
@@ -1798,6 +1847,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._send(200, self.console.status())
+        elif path == "/api/decree":
+            sha = parse_qs(urlparse(self.path).query).get("sha", [""])[0]
+            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+                self._send(400, {"error": "bad sha"})
+                return
+            d = self.console.decree(sha)
+            self._send(200, d) if d else self._send(404, {"error": "not a decree"})
         elif path == "/api/settings":
             self._send(200, {"schema": self.console.all_specs(),
                              "groups": self.console.all_groups(),
