@@ -1,0 +1,98 @@
+# Publish prebuilt nodes so a first run does not mean a first build.
+#
+# Compiling is unavoidable for *vibing* — rewriting the node needs a compiler —
+# but it is not needed to *run*. These artifacts let the installer bring a node
+# up in seconds and defer the compile until the operator's first decree, when
+# the wait finally means something.
+#
+# Every artifact records the commit it was built from. The installer refuses a
+# binary that does not match its source, because a node built from other code is
+# not the node the operator is about to start editing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach binaries to"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macOS (Apple silicon)
+            slug: macos-arm64
+          - os: macos-13
+            label: macOS (Intel)
+            slug: macos-x86_64
+          - os: ubuntu-latest
+            label: Linux (x86_64)
+            slug: linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja boost capnp
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libboost-dev libsqlite3-dev libcapnp-dev capnproto
+
+      - name: Build
+        run: |
+          cmake -B build -G Ninja \
+            -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      # Ship nothing that cannot prove it is a node.
+      - name: Prove it validates
+        run: |
+          set -e
+          DD=$(mktemp -d)
+          ./build/bin/bitcoind -datadir="$DD" -chain=regtest -server=1 -listen=0 -daemon
+          for i in $(seq 1 40); do
+            ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest createwallet ci >/dev/null
+          A=$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest -rpcwallet=ci getnewaddress)
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest generatetoaddress 101 "$A" >/dev/null
+          test "$(./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest getblockcount)" = "101"
+          ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
+
+      - name: Package
+        run: |
+          SHA=$(git rev-parse HEAD)
+          DIR="vibes-node-${{ matrix.slug }}"
+          mkdir -p "$DIR"
+          cp build/bin/bitcoind build/bin/bitcoin-cli "$DIR"/
+          # The installer reads this to decide whether the binary matches its source.
+          printf '%s\n' "$SHA" > "$DIR/COMMIT"
+          tar -czf "$DIR.tar.gz" "$DIR"
+          shasum -a 256 "$DIR.tar.gz" > "$DIR.tar.gz.sha256"
+          ls -lh "$DIR.tar.gz"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            vibes-node-${{ matrix.slug }}.tar.gz
+            vibes-node-${{ matrix.slug }}.tar.gz.sha256
+          fail_on_unmatched_files: true

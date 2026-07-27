@@ -104,6 +104,14 @@
   .setup-step{margin-top:12px;font-family:var(--mono);font-size:13.5px;color:var(--ink-2)}
   body.is-setup .tablet,body.is-setup #book-section{opacity:.45;pointer-events:none}
 
+  /* ---- upstream has moved ---- */
+  .update{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    border:1px solid var(--gold-line);background:var(--marble-3);
+    border-radius:3px;padding:14px 18px;margin-bottom:20px}
+  .update-text{flex:1;min-width:220px;color:var(--ink);font-size:16px}
+  .update-text b{color:var(--gold-ink)}
+  .update-go{min-height:40px;padding:9px 20px;font-size:13px}
+
   /* ---- the engine notice ---- */
   .engine{border:2px solid var(--porphyry);background:#fdf6f4;border-radius:2px;
     padding:15px 18px;margin-bottom:20px}
@@ -382,6 +390,11 @@
     <p class="setup-step" id="setup-step">starting…</p>
   </div>
 
+  <div id="update" class="update" role="status" aria-live="polite" style="display:none">
+    <div class="update-text" id="update-text"></div>
+    <button class="nbtn update-go" id="update-go" type="button">Update</button>
+  </div>
+
   <div id="engine" class="engine" role="alert" style="display:none">
     <div class="engine-msg" id="engine-msg"></div>
     <div class="engine-fix">Run this once, then return: <code id="engine-cmd"></code></div>
@@ -551,6 +564,9 @@ function renderEvent(ev){
                      restart:"↻  the node is reborn in your image, as it always should have been",
                      node:"●  your faithful node",
                      revert:"⎌  even your reversals are correct",
+                     update:"↥  consulting upstream",
+                     rebase:"⇅  replaying your decrees onto the new work",
+                     verify:"⚖  making the node prove it still validates",
                      done:"✦  it is accomplished, and it was always going to be",
                      error:"✖  the universe has failed you and knows it",
                      cancelled:"◼  stayed by your merciful hand"};
@@ -610,6 +626,13 @@ $("go").onclick = async () => {
   } catch(e){ toast(e.message); }
 };
 $("cancel").onclick = () => api("/api/cancel", {}).catch(()=>{});
+$("update-go").onclick = async () => {
+  try {
+    await api("/api/update", {autobuild: $("autobuild").checked,
+                              autorestart: $("autorestart").checked});
+    setBusy(true); $("feed").innerHTML = ""; openStream();
+  } catch(e){ toast(e.message); }
+};
 $("wish").addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("go").click();
 });
@@ -797,6 +820,18 @@ async function refresh(){
   $("setup").style.display = setting_up ? "block" : "none";
   if (!setting_up && $("setup-fill").style.width && $("setup-fill").style.width !== "100%")
     $("setup-fill").style.width = "100%";
+
+  // upstream moved: a vibed node cannot fast-forward, so the console offers to
+  // replay the operator's decrees on top of the new work
+  const up = s.update || {};
+  const showUpdate = up.known && up.available && !(s.job && s.job.state === "running");
+  $("update").style.display = showUpdate ? "flex" : "none";
+  if (showUpdate) {
+    const n = up.behind, d = up.decrees;
+    $("update-text").innerHTML = `Bitcoin Vibes has moved on <b>${n} commit${n===1?"":"s"}</b>` +
+      (d > 0 ? ` — your <b>${d} decree${d===1?"":"s"}</b> will be replayed on top.`
+             : `. Nothing of yours is at stake.`);
+  }
 
   const eng = s.engine_ready || {ok:true};
   $("engine").style.display = eng.ok ? "none" : "block";
