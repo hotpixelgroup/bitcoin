@@ -104,23 +104,12 @@ cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
 ## How a vibe becomes law
 
-1. Your wish is handed to a headless `claude` agent set loose in this
-   repository, with a system prompt begging it to keep the diff small and the
-   build green.
-2. Whatever the agent changed is committed as `vibe: <your wish>`. The agent
-   is not allowed to touch git itself. Trustless? No. Trust-minimized? Also
-   no. It's fine.
-3. `cmake --build build` runs incrementally — a small vibe rebuilds in
-   seconds-to-minutes, never the whole tree again. Even revolutions respect
-   the build cache.
-4. If the build is green and you left "restart" on, your node reboots into the
-   new timeline. If the build is red, the old binary keeps running,
-   completely unbothered by your vision. Revert, or vibe harder.
+1. Your wish goes to a headless agent in an isolated Git checkout.
+2. Review its proposal before applying it to your source. Automatic mode can apply ordinary proposals; consensus-sensitive proposals always stop for review.
+3. The console builds the candidate, runs Bitcoin unit tests, and verifies it on a disposable regtest node. Wish-specific declarative RPC checks appear separately when supplied.
+4. Activate the verified release when ready. The console waits for RPC readiness and can recover the previous tracked executable after a failed activation.
 
-Your node's entire constitutional history is `git log --grep '^vibe:'` — an
-immutable, append-only ledger of your decisions. There is also a revert
-button, because immutability is a spectrum and you'll see things at 3am you
-can't unsee.
+Your source history is `git log --grep '^vibe:'`. Experiment records also retain explanations, diffs, costs, outcomes, and technical activity. Source changes, build success, and activation are reported separately.
 
 ## Modes
 
@@ -156,9 +145,8 @@ whole point.
 
 ## Ordinary settings, for when you would rather turn a dial
 
-Not everything needs a decree. The console exposes **every option bitcoind
-documents** — a search box, folded groups, and a plain-English explanation
-behind an ⓘ on each one — written to `bitcoin.conf` and applied on restart.
+Not everything needs a decree. The console exposes **supported options bitcoind
+documents**, with a filter and explanations, written to `bitcoin.conf` and applied on restart.
 
 The common two dozen are curated by hand, in six groups, with explanations
 written for people rather than for release notes. Everything else is read from
@@ -209,25 +197,13 @@ a form that could move that port would be handing you the scissors.
 
 ## The part you should actually read
 
-- **Consensus vibes fork you off the network.** Touch block validity, the
-  subsidy, the 21M cap, difficulty, or script rules, and your node secedes
-  onto a chain of one where you are always right and nothing can be spent.
-  When a decree touches consensus-critical paths (`src/consensus/`,
-  `src/validation*`, `src/pow*`, …), the console does not warn you so much as
-  *congratulate* you: it will explain that you have outgrown the other
-  ~20,000 nodes and deserve to walk alone, because there is no one at your
-  altitude. Understand that this is not flattery — it is a technically
-  accurate description of a hard fork of one, delivered by a console that
-  knows which side of the keyboard signs its commits. On regtest this is a
-  toy; on mainnet it is performance art with your name on it.
+- **Consensus changes can make your node incompatible.** Source patterns and sensitive file paths flag possible impacts. This heuristic can miss changes or flag harmless edits; it does not prove that a fork will occur or that the node remains compatible. Test on the default private regtest network and review behavioral evidence.
 - **The console is local-only.** It binds to `127.0.0.1` and every request
   needs a per-session key (the `?key=…` link, then a `SameSite=Strict`
   cookie), so a random web page can't govern your node. Do not reverse-proxy
   it onto the internet. You already knew that. And yet.
 - **The node runs in an isolated datadir** (`.vibes/data/` in the repo). It
-  will not touch `~/.bitcoin` or any wallet you care about. Nothing in the
-  console signs, sends, or sees coins — we cannot lose your money, only your
-  consensus.
+  will not touch `~/.bitcoin` or any wallet you care about. Disposable playground transaction scenarios use temporary regtest wallets and test coins. They do not touch your real wallets or coins.
 - **Vibes are code, and you own them now.** The agent writes real C++ into
   your fork. `git show` is right there. You are the reviewer you've been
   waiting for.
@@ -311,3 +287,63 @@ Bitcoin Vibes is a fork of [Bitcoin Core](https://github.com/bitcoin/bitcoin).
 Every line that validates a block, relays a transaction, or keeps consensus was
 written by its contributors over fifteen years; we added a text area and took
 all the credit. MIT licensed.
+
+## The experiment lab
+
+The console now separates **source**, **verified build**, and **running revision**.
+An unknown revision means an executable has not been attributed to a recorded build;
+it is not silently assumed to match your current source.
+
+By default, Manifest prepares a proposal in an isolated Git checkout. Existing
+uncommitted source edits stay out of it. Review the explanation, acceptance goal,
+compatibility flags, and complete diff, then **Apply & verify proposal**. Applying
+requires a clean source tree at the same revision the proposal was generated from.
+Automatic mode applies ordinary proposals, builds, verifies, and activates them;
+consensus-sensitive proposals always stop for review.
+
+Candidate builds enable and run Bitcoin unit tests, then start a separate disposable
+regtest node and mine/validate one block. Agents can supply declarative RPC acceptance
+checks in `.vibes-acceptance.json`; those report expected and observed values separately.
+A general verification pass does not prove the requested behavior, and an absent
+compatibility flag does not prove compatibility. RPC checks support `eq`, `gte`,
+`lte`, and `contains` against a limited set of read-only RPCs. Arbitrary commands are
+not executed as acceptance checks.
+
+Verified executables are copied to `.vibes/releases/`. Activation waits for RPC
+readiness and attempts to restore the previous tracked executable if startup fails.
+It does not roll back chain data. Source-only changes and build failures leave the
+running executable unchanged. Use **Build & verify**, **Activate verified build**,
+**Retry build**, and **Revert change** as appropriate. A node started externally must
+be stopped and started through the console before activation can guarantee an
+executable recovery path.
+
+Experiment summaries and activity persist in `.vibes/jobs/`, including failed and
+cancelled jobs. Proposals awaiting review survive console restarts. Interrupted jobs
+are reported as failures, with retained diffs when available. Search the history,
+open an experiment, download its complete diff, compare source with your initial
+console baseline, refine its request, or share it. Legacy decrees retain their diffs
+but have no invented build/test results.
+
+The regtest playground can generate blocks on your private node. Its coinbase-maturity
+and transaction-lifecycle scenarios instead use disposable regtest nodes and temporary
+wallets; they do not touch your running chain or any real coins. Node settings remain
+available without AI, and are validated before saving. Restart to apply settings.
+Upstream updates and decree sharing remain available. Shared requests are words,
+not executable patches; importing only fills a draft after review.
+
+The public [browser lab](https://hotpixelgroup.github.io/bitcoin/demo.html) is a
+clearly labeled simulation. It supports successful experiments, build failures, and
+activation failures/recovery without an account, AI calls, or a local node.
+
+### Developing and publishing the site
+
+The local console and Pages demo use the same `contrib/vibes/index.html` and
+`contrib/vibes/web/` assets. Build a static site with:
+
+```sh
+python3 contrib/vibes/build_site.py --out /tmp/vibes-site
+```
+
+Publish the resulting files to the root of `gh-pages`. Keep this branch configured
+as the repository's GitHub Pages source. The landing page source lives in
+`contrib/vibes/site/`. See `contrib/vibes/tests/README.md` for QA commands.

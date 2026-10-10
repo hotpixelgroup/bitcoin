@@ -59,44 +59,30 @@ jobs:
           sys.exit(1 if fails else 0)
           PY
 
-      - name: Mock engine runs a full decree
+      - name: Console integration and failure recovery
+        run: python3 -m unittest discover -s contrib/vibes/tests -v
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: JavaScript parses and static site builds
         run: |
-          git config --global user.email ci@example.com
-          git config --global user.name CI
-          timeout 90 python3 - <<'PY'
-          import json, subprocess, sys, time, urllib.request
-          p = subprocess.Popen([sys.executable, "-u", "contrib/vibes/bitcoin-vibes",
-                                "--engine", "mock", "--no-open", "--no-autostart",
-                                "--print-key", "--port", "21999"],
-                               stdout=subprocess.PIPE, text=True)
-          key = None
-          for line in p.stdout:
-              if "key    :" in line:
-                  key = line.split(":", 1)[1].strip(); break
-          assert key, "console never printed a key"
+          node --check contrib/vibes/web/app.js
+          node --check contrib/vibes/web/demo.js
+          python3 contrib/vibes/build_site.py --out /tmp/vibes-site
 
-          def call(path, data=None):
-              req = urllib.request.Request(
-                  "http://127.0.0.1:21999" + path,
-                  data=json.dumps(data).encode() if data else None,
-                  headers={"X-Vibe-Key": key, "Content-Type": "application/json"})
-              return json.load(urllib.request.urlopen(req))
+      - name: Browser workflows and accessibility
+        run: |
+          npm install --prefix /tmp/vibes-browser --no-audit --no-fund playwright axe-core
+          /tmp/vibes-browser/node_modules/.bin/playwright install --with-deps chromium
+          python3 -m http.server 21880 --bind 127.0.0.1 --directory /tmp/vibes-site > /tmp/vibes-http.log 2>&1 &
+          VIBES_HTTP_PID=$!
+          trap 'kill "$VIBES_HTTP_PID"' EXIT
+          export NODE_PATH=/tmp/vibes-browser/node_modules
+          node contrib/vibes/tests/browser_qa.cjs
+          node contrib/vibes/tests/accessibility_qa.cjs
 
-          assert call("/api/status")["branch"], "no status"
-          assert len(call("/api/settings")["schema"]) > 20, "settings schema looks empty"
-          call("/api/vibe", {"prompt": "ci smoke test", "autobuild": False,
-                             "autorestart": False})
-          for _ in range(60):
-              job = call("/api/status")["job"]
-              if job and job["state"] != "running":
-                  break
-              time.sleep(1)
-          assert job["state"] == "done", f"decree ended {job['state']}"
-          assert any(v["subject"].startswith("ci smoke test")
-                     for v in call("/api/status")["vibes"]), "decree was not committed"
-          print("mock decree committed and recorded")
-          p.terminate()
-          PY
 
   node:
     name: Node builds and validates
@@ -154,3 +140,8 @@ jobs:
           test "$H" = "101" || { echo "::error::node did not mine to 101"; exit 1; }
           test "$SUB" = "5000000000" || { echo "::error::subsidy is $SUB, expected 5000000000 (50 BTC)"; exit 1; }
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
+
+      - name: Real console acceptance and transaction scenarios
+        env:
+          VIBES_QA_BIN: ${{ github.workspace }}/build/bin
+        run: python3 -m unittest discover -s contrib/vibes/tests -v

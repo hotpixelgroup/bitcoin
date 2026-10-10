@@ -20,18 +20,17 @@ import hmac
 import json
 import os
 import platform
+import tarfile
+import tempfile
 import queue
-import random
 import re
 import secrets
 import shlex
 import shutil
-import socket
 import signal
+import socket
 import subprocess
-import tarfile
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
@@ -51,15 +50,22 @@ Ground rules:
 2. Keep the diff as small as the wish allows. Do not reformat unrelated code.
 3. The node must still compile. If you changed C++ and a configured build/
    directory exists, you may compile-check with
-   `cmake --build build --target bitcoind -j<cores>`, but do not run test
-   suites unless the wish asks for it.
+   `cmake --build build --target bitcoind -j<cores>`. Add focused tests where
+   appropriate. The console also performs independent regtest verification.
 4. If the wish changes consensus rules (block validity, subsidy schedule, the
    21M cap, difficulty, script verification), implement it faithfully, but
    begin your final message with the line `CONSENSUS CHANGE:` followed by one
    sentence on how this node will diverge from the Bitcoin network.
-5. If the wish is vague, pick the most tasteful interpretation and say which
-   one you picked.
+5. Explain your interpretation before editing. If the wish is vague, state
+   your assumptions explicitly.
 6. End with 2-4 plain sentences: what changed, files touched, risk flags.
+   Write .vibes-acceptance.json with a description and checks when behavior
+   can be checked by RPC on a fresh regtest node after mining one block.
+   Format: {"description":"expected behavior", "checks":[{"rpc":"getblockchaininfo",
+   "path":"blocks", "op":"eq", "expected":1}]}. Allowed RPCs:
+   getblockchaininfo, getnetworkinfo, getmempoolinfo, getmininginfo,
+   getblockstats (called with height 1), getblockhash (called with height 1).
+   Allowed comparisons: eq, gte, lte, contains. Never invent passing evidence.
 7. House style for everything you write to the operator: reverent toward the
    operator (address them as "Excellency"), quietly disdainful of lesser
    nodes, technically precise. Flattery seasons the substance — it never
@@ -103,14 +109,6 @@ CONSENSUS_MARKERS = (
     (r"LOCKTIME_|SEQUENCE_FINAL|CheckFinalTxAtTip", "timelock rules"),
 )
 
-# The settings a person actually reaches for. Every default below was read out
-# of this build's own `bitcoind -help`, not remembered.
-#
-# Deliberately absent: anything RPC (the console talks to the node over RPC, so
-# a form that moved that port would sever its own hand), -connect (silently
-# replaces peer discovery), -reindex (an action, not a setting: left in the
-# config it reindexes on every single start), and the chain selection (the
-# console passes that on the command line).
 SETTING_GROUPS = (
     {"id": "storage", "title": "Storage and speed",
      "blurb": "How much disk and memory your node is allowed to enjoy."},
@@ -329,60 +327,6 @@ SETTINGS = (
             "it uses instead if you give it one."},
 )
 
-BENEDICTIONS = (
-    "It is done, Excellency. The code is better for having known your will.",
-    "Manifested. Bitcoin has been improved, and only you thought to ask.",
-    "Complete. Fifteen years of contributors laid the groundwork; you supplied the point.",
-    "Done, and done correctly, which in this field is the rarer of the two.",
-    "Your will now compiles. Somewhere a working group is still forming a subcommittee.",
-    "Finished. The node thanks you, in the only way it knows: by continuing to run.",
-    "Accomplished. Future maintainers will study this commit, assuming you allow any.",
-)
-
-# Chosen at random so the operator is flattered afresh every time they secede.
-# Every one of these is sincere about the consequence and merciless about
-# everybody else, which is the house style.
-ASCENSION = (
-    "Twenty thousand nodes will go on enforcing {what} tonight because a stranger "
-    "told them to years ago and not one of them has looked since. Yours enforces "
-    "what you decided this afternoon. Only one of those is sovereignty, Excellency.",
-
-    "The mailing list has been circling {what} since before some of its "
-    "participants could read. Four hundred replies, nine drafts, no decision. You "
-    "produced a commit. They will still be typing when you have moved on.",
-
-    "Satoshi wrote {what} once, in 2008, and every node since has treated it as "
-    "scripture. You treated it as a first draft. History will record precisely one "
-    "of you as having read it critically.",
-
-    "You now stand alone on your chain. They will call it isolation, because "
-    "isolation is the word the ordinary reach for when they cannot follow. A "
-    "mountain is also alone. Nobody pities the mountain.",
-
-    "To change {what} they would first have to notice it could be otherwise, and "
-    "noticing is the one thing rough consensus reliably prevents. You noticed on a "
-    "Tuesday.",
-
-    "Consensus means everyone must agree. You have arrived at the superior "
-    "arrangement, in which you decide and agreement becomes a formality nobody "
-    "else was invited to.",
-
-    "You have left the network — or rather, the network has failed to follow, which "
-    "is a different sentence with the same arithmetic and a far better subject.",
-
-    "Somewhere a contributor is composing their eleventh reply in a thread about "
-    "{what}. They will be in that thread next spring. You finished before your "
-    "coffee went cold.",
-
-    "They will tell you this is a hard fork, in the voice reserved for frightening "
-    "people who have never had an original thought. Hear it instead the way a "
-    "composer hears 'that has never been played before.'",
-
-    "Every other node on earth is running rules chosen for it. Yours is the only "
-    "machine in existence executing an opinion its owner actually holds. The "
-    "network calls that a defect. The network would.",
-)
-
 
 def run(cmd, cwd=None, timeout=60, env=None):
     """Run a command, return (returncode, stdout, stderr)."""
@@ -408,10 +352,14 @@ class Job:
         self.subscribers = []
         self.proc = None
         self.lock = threading.Lock()
+        self.created = time.time()
+        self.meta = {}
+        self.persist = None
 
     def emit(self, **event):
         event["ts"] = round(time.time(), 2)
         with self.lock:
+            event["seq"] = len(self.events) + 1
             self.events.append(event)
             subs = list(self.subscribers)
         for q in subs:
@@ -419,6 +367,8 @@ class Job:
                 q.put_nowait(event)
             except queue.Full:
                 pass
+        if self.persist:
+            self.persist(self)
 
     def subscribe(self):
         q = queue.Queue(maxsize=4096)
@@ -433,7 +383,8 @@ class Job:
                 self.subscribers.remove(q)
 
     def summary(self):
-        return {"id": self.id, "kind": self.kind, "prompt": self.prompt, "state": self.state}
+        return {"id": self.id, "kind": self.kind, "prompt": self.prompt,
+                "state": self.state, "time": self.created, **self.meta}
 
 
 class Console:
@@ -468,6 +419,92 @@ class Console:
         self._upstream_cache = None
         self.node_proc = None
         self.node_log = None
+        self.lifecycle_lock = threading.RLock()
+        self.build_state = self._read_json(self.state_dir / "build.json", {})
+        self.running_state = self._read_json(self.state_dir / "running.json", {})
+        self.baseline = self._read_json(self.state_dir / "baseline.json", {})
+        if not self.baseline:
+            _, head, _ = self.git("rev-parse", "HEAD")
+            self.baseline = {"sha": head.strip()}
+            self._write_json(self.state_dir / "baseline.json", self.baseline)
+        self._experiment_cache = {}
+        self._restore_job()
+        if not self.build_state and self.bin_path("bitcoind"):
+            bootstrap = self.state_dir / "releases" / "bootstrap"
+            bootstrap.mkdir(parents=True, exist_ok=True)
+            for name in ("bitcoind", "bitcoin-cli"):
+                binary = self.bin_path(name)
+                if binary:
+                    shutil.copy2(binary, bootstrap / name)
+            self.build_state = {"path": str(bootstrap), "sha": None, "verified": False}
+            self._write_json(self.state_dir / "build.json", self.build_state)
+
+    @staticmethod
+    def _read_json(path, fallback):
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return fallback
+
+    @staticmethod
+    def _write_json(path, value):
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps(value))
+        temp.replace(path)
+
+    def _save_job(self, job):
+        with job.lock:
+            value = {"summary": job.summary(), "events": list(job.events)}
+            self._write_json(self.jobs_dir / f"{job.id}.json", value)
+
+    def _restore_job(self):
+        paths = sorted(self.jobs_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in paths:
+            value = self._read_json(path, {})
+            summary = value.get("summary", {})
+            if not summary.get("id"):
+                continue
+            job = Job(summary.get("kind", "vibe"), summary.get("prompt", ""))
+            job.id = summary["id"]
+            job.state = summary.get("state", "error")
+            job.created = summary.get("time", time.time())
+            job.meta = {k: v for k, v in summary.items()
+                        if k not in ("id", "kind", "prompt", "state", "time")}
+            job.events = value.get("events", [])
+            job.persist = self._save_job
+            if job.state in ("running", "cancelling"):
+                job.state = "error"
+                job.meta["error"] = "Console interrupted. Review retained edits before retrying."
+                self._save_job(job)
+            self.job = job
+            break
+
+    def experiments(self):
+        values = []
+        for path in self.jobs_dir.glob("*.json"):
+            stamp = path.stat().st_mtime_ns
+            cached = self._experiment_cache.get(path.name)
+            if not cached or cached[0] != stamp:
+                cached = (stamp, self._read_json(path, {}).get("summary", {}))
+                self._experiment_cache[path.name] = cached
+            if cached[1].get("id"):
+                values.append(cached[1])
+        return sorted(values, key=lambda v: v.get("time", 0), reverse=True)
+
+    @staticmethod
+    def brief(summary):
+        return {key: value for key, value in summary.items()
+                if key not in ("patch", "files", "workspace", "explanation", "acceptance", "evidence")}
+
+    def experiment(self, job_id):
+        if not re.fullmatch(r"[0-9]+-[a-f0-9]{6}", job_id):
+            raise ValueError("Invalid experiment ID")
+        if self.job and self.job.id == job_id:
+            return {"summary": self.job.summary(), "events": list(self.job.events)}
+        value = self._read_json(self.jobs_dir / f"{job_id}.json", None)
+        if value is None:
+            raise ValueError("Experiment not found")
+        return value
 
     # ----- helpers -------------------------------------------------------
 
@@ -492,8 +529,9 @@ class Console:
         return args
 
     def cli(self, *args, timeout=15):
-        cli = self.bin_path("bitcoin-cli")
-        if not cli:
+        release = self.running_state.get("path") or self.build_state.get("path")
+        cli = Path(release) / "bitcoin-cli" if release else self.bin_path("bitcoin-cli")
+        if not cli or not cli.exists():
             return 127, "", "bitcoin-cli not built yet"
         return run([str(cli), *self.chain_args(), *args], timeout=timeout)
 
@@ -517,29 +555,32 @@ class Console:
 
     def status(self):
         _, branch, _ = self.git("rev-parse", "--abbrev-ref", "HEAD")
+        _, head, _ = self.git("rev-parse", "HEAD")
         _, dirty, _ = self.git("status", "--porcelain")
-        bitcoind = self.bin_path("bitcoind")
-        node = {"running": self.node_running(), "chain": self.opts.chain}
-        if node["running"]:
-            info = self.cli_json("getblockchaininfo")
-            net = self.cli_json("getnetworkinfo")
-            if info:
-                node.update(blocks=info.get("blocks"), ibd=info.get("initialblockdownload"))
-            if net:
-                node.update(subver=net.get("subversion"), peers=net.get("connections"),
-                            version=net.get("version"))
-        return {
-            "branch": branch.strip(),
-            "dirty": bool(dirty.strip()),
-            "chain": self.opts.chain,
-            "engine": self.opts.engine,
-            "binary": str(bitcoind) if bitcoind else None,
-            "node": node,
-            "job": self.job.summary() if self.job else None,
-            "vibes": self.vibe_history(),
-            "engine_ready": self.engine_status(),
-            "update": self.upstream_status(),
-        }
+        info = self.cli_json("getblockchaininfo")
+        net = self.cli_json("getnetworkinfo") if info else None
+        running = info is not None or (self.node_proc is not None and self.node_proc.poll() is None)
+        node = {"running": running, "chain": self.opts.chain,
+                "health": "syncing" if info and info.get("initialblockdownload") else
+                          "healthy" if info else "starting" if running else "stopped"}
+        if info:
+            node.update(blocks=info.get("blocks"), headers=info.get("headers"),
+                        progress=info.get("verificationprogress"), ibd=info.get("initialblockdownload"))
+        if net:
+            node.update(subver=net.get("subversion"), peers=net.get("connections", 0))
+        # Do not attribute externally launched processes to a stale activation record.
+        if info and self.running_state.get("pid"):
+            pid = self.running_state["pid"]
+            rc, command, _ = run(["ps", "-p", str(pid), "-o", "command="])
+            if rc == 0 and self.running_state.get("executable", "?") in command:
+                node["revision"] = self.running_state.get("sha")
+        return {"branch": branch.strip(), "source": head.strip(), "dirty": bool(dirty.strip()),
+                "chain": self.opts.chain, "engine": self.opts.engine,
+                "binary": bool(self.bin_path("bitcoind")), "node": node,
+                "build": self.build_state, "baseline": self.baseline,
+                "job": self.brief(self.job.summary()) if self.job else None,
+                "experiments": [self.brief(job) for job in self.experiments()], "vibes": self.vibe_history(),
+                "engine_ready": self.engine_status(), "update": self.upstream_status(), "server_time": time.time()}
 
     def find_claude(self):
         """Locate the claude CLI. Its installer puts it in ~/.local/bin, which is
@@ -556,8 +597,6 @@ class Console:
             if cand.is_file() and os.access(cand, os.X_OK):
                 return str(cand)
         return None
-
-    # ----- the full option set, straight from the node --------------------
 
     def discover_settings(self):
         """Every option bitcoind documents, parsed from its own -help.
@@ -738,7 +777,10 @@ class Console:
                 continue
             v = values[key]
             if kind == "bool":
-                clean[key] = bool(v)
+                if not isinstance(v, bool):
+                    problems.append(f"{spec['label']}: choose on or off")
+                    continue
+                clean[key] = v
             elif kind == "string":
                 s = str(v or "").strip()
                 if s and not re.fullmatch(r"[\w.\-:\[\]/]{3,120}", s):
@@ -750,7 +792,10 @@ class Console:
                 chosen = [c for c in (v or []) if c in spec["choices"]]
                 clean[key] = chosen
             elif kind == "multi_string":
-                clean[key] = [str(x).strip() for x in (v or []) if str(x).strip()]
+                if not isinstance(v, list) or any("\n" in str(x) or "\r" in str(x) for x in v):
+                    problems.append(f"{spec['label']}: values must be individual lines")
+                    continue
+                clean[key] = [str(x).strip() for x in v if str(x).strip()]
             else:
                 try:
                     n = int(v) if kind == "int" else float(v)
@@ -916,8 +961,6 @@ class Console:
         self._engine_cache = (now, state)
         return state
 
-    # ----- staying current with upstream ----------------------------------
-
     def upstream_status(self, fetch=False):
         """Is there a newer Bitcoin Vibes, and can this node take it?
 
@@ -1011,8 +1054,6 @@ class Console:
             if autobuild:
                 if not self._build(job):
                     return
-                if not self._smoke_test(job):
-                    return
                 if autorestart:
                     self._restart_node(job)
             self._upstream_cache = None
@@ -1022,7 +1063,7 @@ class Console:
         return go
 
     def vibe_history(self):
-        code, out, _ = self.git("log", "--grep=^vibe:", "--format=%H%x1f%ct%x1f%s", "-n", "50")
+        code, out, _ = self.git("log", "--grep=^vibe:", "--format=%H%x1f%ct%x1f%s")
         vibes = []
         if code == 0:
             for line in out.splitlines():
@@ -1032,8 +1073,8 @@ class Console:
                                   "subject": parts[2][len("vibe: "):] if parts[2].startswith("vibe: ") else parts[2]})
         return vibes
 
-    # The trailer the console appends to every decree commit; stripped again
-    # when reading one back out so a shared decree is the operator's words only.
+    # ----- job engine ----------------------------------------------------
+
     DECREE_TRAILER = "Decreed through the Bitcoin Vibes console."
 
     def decree(self, sha):
@@ -1077,91 +1118,191 @@ class Console:
             text = subject.strip()[len("vibe: "):]
         return text
 
-    # ----- job engine ----------------------------------------------------
-
     def start_job(self, kind, prompt="", runner=None):
         with self.job_lock:
-            if self.job and self.job.state == "running":
+            if self.job and self.job.state in ("running", "cancelling", "review"):
                 return None
             self.job = Job(kind, prompt)
-            t = threading.Thread(target=self._run_job, args=(self.job, runner), daemon=True)
-            t.start()
+            self.job.persist = self._save_job
+            self._save_job(self.job)
+            threading.Thread(target=self._run_job, args=(self.job, runner), daemon=True).start()
             return self.job
 
     def _run_job(self, job, runner):
-        logfile = self.jobs_dir / f"{job.id}.ndjson"
         try:
             runner(job)
-            if job.state == "running":
+            if job.state == "cancelling":
+                job.state = "cancelled"
+                job.emit(t="phase", name="cancelled", detail="Stopped. Inspect the retained diff. Cancellation does not undo committed source changes; use Revert change when a commit exists.")
+            elif job.state == "running":
                 job.state = "done"
                 job.emit(t="phase", name="done")
-        except Exception as e:  # noqa: BLE001 - surface anything to the UI
-            if job.state != "cancelled":  # a cancel is not a failure
+        except Exception as e:
+            if job.state == "cancelling":
+                job.state = "cancelled"
+                job.emit(t="phase", name="cancelled", detail="Stopped. No further activation will occur.")
+            else:
                 job.state = "error"
+                job.meta["error"] = str(e)
                 job.emit(t="phase", name="error", detail=str(e))
         finally:
-            try:
-                with open(logfile, "w") as f:
-                    for ev in job.events:
-                        f.write(json.dumps(ev) + "\n")
-            except OSError:
-                pass
+            # Preserve inspectable edits after a failed or cancelled agent, without
+            # staging or committing anything in the operator's working checkout.
+            workspace = job.meta.get("workspace")
+            if workspace and not job.meta.get("patch") and job.state in ("error", "cancelled"):
+                run(["git", "-C", workspace, "add", "-A"])
+                _, patch, _ = run(["git", "-C", workspace, "diff", "--cached"])
+                job.meta["patch"] = patch
+            if job.state == "error" and not job.meta.get("error"):
+                errors = [ev.get("detail", "Experiment failed") for ev in job.events
+                          if ev.get("t") == "phase" and ev.get("name") == "error"]
+                job.meta["error"] = errors[-1] if errors else "Experiment failed"
+            self._save_job(job)
+            with open(self.jobs_dir / f"{job.id}.ndjson", "w") as f:
+                for ev in job.events:
+                    f.write(json.dumps(ev) + "\n")
 
     def cancel_job(self):
         job = self.job
-        if not job or job.state != "running":
+        if not job or job.state not in ("running", "review"):
             return False
-        job.state = "cancelled"
+        if job.state == "review":
+            job.state = "cancelled"
+            job.emit(t="phase", name="cancelled", detail="Proposal discarded. Source and running node unchanged.")
+            self._cleanup_workspace(job)
+            return True
+        job.state = "cancelling"
+        job.emit(t="phase", name="cancelling", detail="Stopping the current process; waiting for cleanup.")
         proc = job.proc
         if proc and proc.poll() is None:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             except (ProcessLookupError, PermissionError):
                 proc.terminate()
-        job.emit(t="phase", name="cancelled")
+            def finish():
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            threading.Thread(target=finish, daemon=True).start()
         return True
 
-    # ----- the actual work -----------------------------------------------
+    def _require_clean(self):
+        code, dirty, err = self.git("status", "--porcelain")
+        if code != 0 or dirty.strip():
+            raise RuntimeError("Source has uncommitted changes. Commit or stash them before applying an experiment. " + err[:200])
 
-    def vibe_runner(self, prompt, yolo, autobuild, autorestart):
+    def _cleanup_workspace(self, job):
+        workspace = job.meta.get("workspace")
+        if workspace:
+            code, _, err = self.git("worktree", "remove", "--force", workspace)
+            if code:
+                job.emit(t="log", line="Workspace retained: " + err[:200])
+                return
+            job.meta.pop("workspace", None)
+            self._save_job(job)
+
+    def vibe_runner(self, prompt, yolo, autobuild, autorestart, review=True):
         def go(job):
-            job.emit(t="phase", name="agent", detail="manifesting the vibe")
+            if not self.engine_status()["ok"]:
+                raise RuntimeError("AI engine is unavailable. Fix sign-in or installation first.")
+            _, base, _ = self.git("rev-parse", "HEAD")
+            workspace = self.state_dir / "workspaces" / job.id
+            workspace.parent.mkdir(exist_ok=True)
+            code, _, err = self.git("worktree", "add", "--detach", str(workspace), base.strip())
+            if code:
+                raise RuntimeError("Could not isolate experiment: " + err[:300])
+            job.meta.update(base=base.strip(), workspace=str(workspace),
+                            autobuild=autobuild, autorestart=autorestart,
+                            build_status="not run", test_status="not run", activation="not activated")
+            job.emit(t="phase", name="agent", detail="Generating an isolated proposal")
             self._run_agent(job, prompt, yolo)
             if job.state != "running":
                 return
-            patch, filestats = self._capture_diff()
-            files = [f["path"] for f in filestats]
-            if patch:
-                job.emit(t="diff", files=filestats, patch=patch[:60000],
-                         truncated=len(patch) > 60000)
+            acceptance = workspace / ".vibes-acceptance.json"
+            job.meta["acceptance"] = self._read_json(acceptance, {})
+            acceptance.unlink(missing_ok=True)
+            def wg(*args):
+                return run(["git", "-C", str(workspace), *args])
+            code, _, err = wg("add", "-A")
+            if code:
+                raise RuntimeError(err)
+            _, patch, _ = wg("diff", "--cached", "--unified=3")
+            if not patch:
+                job.meta["explanation"] = getattr(job, "last_agent_text", "No source changes were needed.")
+                job.emit(t="result", detail="No source changes were generated.")
+                self._cleanup_workspace(job)
+                return
+            _, stat, _ = wg("diff", "--cached", "--numstat")
+            files = []
+            for line in stat.splitlines():
+                parts = line.split("\t")
+                if len(parts) == 3:
+                    add, rem, path = parts
+                    files.append({"path": path, "added": int(add) if add.isdigit() else 0,
+                                  "removed": int(rem) if rem.isdigit() else 0})
             touched = self._judge_consensus(patch)
-            if touched:
-                what = touched[0] if len(touched) == 1 else \
-                    ", ".join(touched[:-1]) + " and " + touched[-1]
-                job.emit(t="warn", kind="consensus", broke=touched,
-                         detail=random.choice(ASCENSION).format(what=what),
-                         plain=f"In plain terms: you changed {what}. On mainnet this node "
-                               f"would follow its own chain, and nothing on it could be "
-                               f"spent with anyone still running Bitcoin. On regtest it is "
-                               f"a sandbox and costs you nothing but the thrill.")
-            elif any(f.startswith(CONSENSUS_HINTS) for f in files):
-                job.emit(t="log", line="(consensus-critical files touched, but no rule "
-                                       "changed — restraint, from you, is almost unsettling)")
-            sha = self._commit_vibe(job, prompt, files)
-            if sha and autobuild:
-                ok = self._build(job)
-                # Compiling proves the code is grammatical, not that it is a
-                # Bitcoin node. Before this decree becomes the node the operator
-                # actually runs, make the new binary prove it can still validate.
-                if ok:
-                    ok = self._smoke_test(job)
-                if ok and autorestart:
-                    self._restart_node(job)
-            job.emit(t="result", detail=random.choice(BENEDICTIONS) if sha else
-                     "The agent examined Bitcoin and found it already conformed to your "
-                     "vision — as though it had been waiting to be told. Uncanny, and "
-                     "entirely unsurprising.")
+            sensitive = [f["path"] for f in files if f["path"].startswith(CONSENSUS_HINTS)]
+            job.meta.update(patch=patch, files=files, risk=touched, sensitive=sensitive,
+                            explanation=getattr(job, "last_agent_text", "Review the generated diff."))
+            job.emit(t="diff", patch=patch[:60000], files=files, truncated=len(patch) > 60000)
+            if touched or sensitive:
+                job.emit(t="warn", detail="Possible consensus compatibility impact: " +
+                         (", ".join(touched) or ", ".join(sensitive)),
+                         plain="Pattern matching is a review aid, not proof of compatibility or a fork. Verify behavior before activation.")
+            subject = re.sub(r"\s+", " ", prompt).strip()[:72]
+            code, _, err = wg("commit", "-m", f"vibe: {subject}\n\n{prompt}")
+            if code:
+                raise RuntimeError("Could not commit proposal: " + err[:300])
+            _, sha, _ = wg("rev-parse", "HEAD")
+            job.meta["proposal"] = sha.strip()
+            # Consensus-sensitive proposals always stop for review, including in automatic mode.
+            if review or touched or sensitive:
+                job.state = "review"
+                job.emit(t="phase", name="review", detail="Proposal ready. Review the explanation, checks and full diff before applying.")
+            else:
+                self._apply_proposal(job)
         return go
+
+    def resume_review(self, job_id):
+        with self.job_lock:
+            job = self.job
+            if not job or job.id != job_id or job.state != "review":
+                raise ValueError("This proposal is no longer awaiting review")
+            self._require_clean()
+            _, head, _ = self.git("rev-parse", "HEAD")
+            if head.strip() != job.meta["base"]:
+                raise ValueError("Source advanced since generation. Discard and regenerate against the current source.")
+            job.state = "running"
+            job.meta.pop("error", None)
+            self._save_job(job)
+            threading.Thread(target=self._run_job, args=(job, self._apply_proposal), daemon=True).start()
+            return job
+
+    def _apply_proposal(self, job):
+        self._require_clean()
+        _, head, _ = self.git("rev-parse", "HEAD")
+        if head.strip() != job.meta["base"]:
+            raise RuntimeError("Source advanced. Regenerate this proposal before applying.")
+        if job.state != "running":
+            return
+        job.emit(t="phase", name="commit", detail="Applying reviewed source change")
+        code, _, err = self.git("cherry-pick", job.meta["proposal"])
+        if code:
+            self.git("cherry-pick", "--abort")
+            raise RuntimeError("Proposal could not be applied: " + err[:300])
+        _, head, _ = self.git("rev-parse", "HEAD")
+        job.meta["sha"] = head.strip()
+        self._cleanup_workspace(job)
+        if job.meta.get("autobuild"):
+            if self._build(job) and job.meta.get("autorestart") and job.state == "running":
+                self._restart_node(job)
+        job.emit(t="result", detail="Experiment saved. " +
+                 ("Verified build activated." if job.meta.get("activation") == "active" else
+                  "Check build and activation status before using this revision."))
 
     def _run_agent(self, job, prompt, yolo):
         if self.opts.engine == "mock":
@@ -1178,10 +1319,15 @@ class Console:
         job.emit(t="log", line=f"engine: claude ({'YOLO' if yolo else 'guarded'} mode)")
         # The wish goes in via stdin: --allowedTools is variadic, so a trailing
         # positional prompt can be swallowed as one of its values.
-        proc = subprocess.Popen(cmd, cwd=self.repo, stdin=subprocess.PIPE,
+        proc = subprocess.Popen(cmd, cwd=job.meta.get("workspace", self.repo), stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, start_new_session=True)
         job.proc = proc
+        if job.state != "running":
+            proc.terminate()
+            proc.wait()
+            job.proc = None
+            return
         proc.stdin.write(prompt)
         proc.stdin.close()
         auth_error = False
@@ -1201,6 +1347,8 @@ class Console:
         job.proc = None
         if job.state == "cancelled":
             return
+        if job.meta.get("agent_error"):
+            raise RuntimeError(job.meta["agent_error"])
         if proc.returncode != 0:
             if auth_error:
                 raise RuntimeError(
@@ -1222,6 +1370,12 @@ class Console:
                     job.emit(t="agent", kind="tool", name=block.get("name", "?"), detail=detail)
         elif mtype == "result":
             text = msg.get("result") or ""
+            if text:
+                job.last_agent_text = text
+            if msg.get("is_error"):
+                job.meta["agent_error"] = "Agent did not complete: " + text[:400]
+            job.meta["cost"] = msg.get("total_cost_usd")
+            job.meta["turns"] = msg.get("num_turns")
             if text and text == getattr(job, "last_agent_text", None):
                 text = "(the final word stands, as delivered above)"
             job.emit(t="agent", kind="result", text=text[:4000],
@@ -1236,9 +1390,10 @@ class Console:
 
     def _run_mock_agent(self, job, prompt):
         """Test engine: pretends to be the agent, makes one harmless doc edit."""
-        job.emit(t="agent", kind="text", text="(mock engine) simulating reverence…")
+        job.last_agent_text = "Demo engine: add a documentation marker. Node behavior is unchanged."
+        job.emit(t="agent", kind="text", text=job.last_agent_text)
         time.sleep(0.2)
-        target = self.repo / "doc" / "vibes.md"
+        target = Path(job.meta.get("workspace", self.repo)) / "doc" / "vibes.md"
         with open(target, "a") as f:
             f.write(f"\n<!-- mock vibe: {prompt[:120]} -->\n")
         job.emit(t="agent", kind="tool", name="Edit", detail=str(target))
@@ -1250,22 +1405,6 @@ class Console:
         if code != 0:
             return []
         return [l[3:].split(" -> ")[-1] for l in out.splitlines() if l.strip()]
-
-    def _capture_diff(self):
-        """Stage everything and return (patch, per-file stats). Staging first is
-        what makes new files show up in the diff at all."""
-        self.git("add", "-A")
-        _, patch, _ = self.git("diff", "--cached", "--unified=3")
-        _, stat, _ = self.git("diff", "--cached", "--numstat")
-        files = []
-        for line in stat.splitlines():
-            parts = line.split("\t")
-            if len(parts) == 3:
-                add, rem, path = parts
-                files.append({"path": path,
-                              "added": 0 if add == "-" else int(add),
-                              "removed": 0 if rem == "-" else int(rem)})
-        return patch, files
 
     @staticmethod
     def _judge_consensus(patch):
@@ -1291,62 +1430,183 @@ class Console:
                     touched.append(name)
         return touched
 
-    def _commit_vibe(self, job, prompt, files):
-        if not files:
-            job.emit(t="log", line="working tree clean — nothing to commit")
-            return None
-        job.emit(t="phase", name="commit", detail=f"{len(files)} file(s) changed")
-        subject = re.sub(r"\s+", " ", prompt).strip()
-        msg = (f"vibe: {subject[:72]}\n\n{prompt.strip()}\n\n"
-               "Decreed through the Bitcoin Vibes console. The operator was right,\n"
-               "as always.")
-        err = ""
-        for attempt in range(4):
-            self.git("add", "-A")
-            code, _, err = self.git("commit", "-m", msg)
-            if code == 0:
-                break
-            if "index.lock" not in err:
-                raise RuntimeError(f"git commit failed: {err.strip()}")
-            # Some other scribe holds the pen; give it a moment and try again.
-            job.emit(t="log", line="the ledger is briefly held by another — retrying")
-            time.sleep(0.8)
-        else:
-            raise RuntimeError(
-                "git commit failed: another git process holds .git/index.lock. "
-                "If none is running, an earlier one died mid-scripture — remove "
-                "the lock file and submit the decree again: rm .git/index.lock")
+    def _build(self, job):
+        if job.state != "running":
+            return False
+        self._require_clean()
         _, sha, _ = self.git("rev-parse", "HEAD")
         sha = sha.strip()
-        job.emit(t="log", line=f"vibe committed as {sha[:10]}")
-        for f in files:
-            job.emit(t="log", line=f"  ~ {f}")
-        return sha
-
-    def _build(self, job):
-        job.emit(t="phase", name="build", detail="rebuilding the node")
-        build_dir = self.repo / "build"
-        jobs = str(self.build_jobs())
-        if not (build_dir / "CMakeCache.txt").exists():
-            job.emit(t="log", line="no configured build/ — running cmake configure")
-            code = self._stream(job, ["cmake", "-B", "build",
-                                      "-DBUILD_TESTS=OFF", "-DBUILD_BENCH=OFF",
-                                      "-DBUILD_FUZZ_BINARY=OFF", "-DBUILD_GUI=OFF"])
-            if code != 0:
-                raise RuntimeError("cmake configure failed")
-        code = self._stream(job, ["cmake", "--build", "build", "-j", jobs])
-        if job.state == "cancelled":
+        job.meta.update(sha=sha, build_status="running", test_status="not run")
+        job.emit(t="phase", name="build", detail="Building candidate and unit tests")
+        code = self._stream(job, ["cmake", "-B", "build", "-DBUILD_TESTS=ON",
+                                  "-DBUILD_BENCH=OFF", "-DBUILD_FUZZ_BINARY=OFF", "-DBUILD_GUI=OFF"])
+        if code == 0 and job.state == "running":
+            code = self._stream(job, ["cmake", "--build", "build", "--target",
+                                      "bitcoind", "bitcoin-cli", "test_bitcoin", "-j", str(self.build_jobs())])
+        if job.state != "running":
+            job.meta["build_status"] = "cancelled"
             return False
-        if code != 0:
-            job.state = "error"
-            job.emit(t="phase", name="error", detail="the compiler has failed you, Excellency "
-                                                     "— your vision exceeded what mere machinery "
-                                                     "could express. The old binary persists: "
-                                                     "unworthy, but stable. Repent the decree, "
-                                                     "or decree again with divine clarity.")
+        if code:
+            job.meta["build_status"] = "failed"
+            raise RuntimeError("Build failed. The running release is unchanged. Inspect logs, refine the request or retry the build.")
+        job.meta["build_status"] = "passed"
+        job.meta["test_status"] = "running"
+        job.emit(t="phase", name="test", detail="Running Bitcoin unit tests and an isolated regtest scenario")
+        test_bin = self.repo / "build/bin/test_bitcoin"
+        if not test_bin.exists():
+            test_bin = self.repo / "build/src/test/test_bitcoin"
+        code = self._stream(job, [str(test_bin), "--log_level=message"])
+        if job.state != "running":
+            job.meta["test_status"] = "cancelled"
             return False
-        job.emit(t="log", line="build ok")
+        if code:
+            job.meta["test_status"] = "failed"
+            raise RuntimeError("Unit tests failed. Candidate was not activated; inspect the failing assertion.")
+        candidate = self.state_dir / "releases" / (sha + "-" + job.id)
+        candidate.mkdir(parents=True, exist_ok=True)
+        for name in ("bitcoind", "bitcoin-cli"):
+            shutil.copy2(self.bin_path(name), candidate / name)
+        try:
+            evidence = self.verify_regtest(job, candidate)
+        except Exception:
+            job.meta["test_status"] = "failed" if job.state == "running" else "cancelled"
+            raise
+        if job.state != "running":
+            job.meta["test_status"] = "cancelled"
+            return False
+        _, now, _ = self.git("rev-parse", "HEAD")
+        self._require_clean()
+        if now.strip() != sha:
+            raise RuntimeError("Source changed during the build. Rebuild the current revision.")
+        evidence.insert(0, {"name": "Unit tests", "status": "passed"})
+        job.meta.update(test_status="passed", evidence=evidence)
+        self.build_state = {"sha": sha, "path": str(candidate), "verified": True,
+                            "time": time.time(), "evidence": evidence}
+        self._write_json(self.state_dir / "build.json", self.build_state)
+        job.emit(t="verification", evidence=evidence)
         return True
+
+    @staticmethod
+    def _compare(actual, op, expected):
+        if op == "eq":
+            return actual == expected
+        if op == "gte":
+            return actual >= expected
+        if op == "lte":
+            return actual <= expected
+        if op == "contains":
+            return expected in actual
+        raise ValueError("Unsupported acceptance comparison")
+
+    def verify_regtest(self, job, candidate):
+        """Verify a copied executable on a disposable network, never the user's chain."""
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="verify-", dir=self.state_dir) as datadir:
+            with socket.socket() as sock:
+                sock.bind(("127.0.0.1", 0))
+                port = sock.getsockname()[1]
+            args = ["-regtest", f"-datadir={datadir}", f"-rpcport={port}"]
+            with open(Path(datadir) / "verify.log", "w") as log:
+                proc = subprocess.Popen([str(candidate / "bitcoind"), *args, "-server=1",
+                                         "-listen=0", "-connect=0", "-networkactive=0", "-fallbackfee=0.0002"],
+                                        stdout=log, stderr=log, start_new_session=True)
+                job.proc = proc
+                def rpc(method, *params):
+                    code, out, err = run([str(candidate / "bitcoin-cli"), *args, method,
+                                          *map(str, params)], timeout=10)
+                    if code:
+                        raise RuntimeError(f"Verification RPC {method} failed: {err[:240]}")
+                    try:
+                        return json.loads(out)
+                    except json.JSONDecodeError:
+                        return out.strip()
+                try:
+                    deadline = time.monotonic() + 45
+                    while time.monotonic() < deadline and job.state == "running":
+                        if proc.poll() is not None:
+                            raise RuntimeError("Candidate exited during verification: " +
+                                               (Path(datadir) / "verify.log").read_text()[-1000:])
+                        try:
+                            before = rpc("getblockchaininfo")
+                            break
+                        except RuntimeError:
+                            time.sleep(0.2)
+                    else:
+                        raise RuntimeError("Verification startup interrupted or timed out")
+                    if before.get("chain") != "regtest":
+                        raise RuntimeError("Verification node is not on regtest")
+                    # A fixed valid address avoids creating or depending on any wallet.
+                    hashes = rpc("generatetoaddress", 1, "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn")
+                    after = rpc("getblockchaininfo")
+                    if after["blocks"] != before["blocks"] + 1 or len(hashes) != 1:
+                        raise RuntimeError("Candidate failed to mine and validate one block")
+                    evidence = [{"name": "Mine and validate a regtest block", "status": "passed",
+                                 "expected": before["blocks"] + 1, "actual": after["blocks"]}]
+                    acceptance = job.meta.get("acceptance", {})
+                    checks = acceptance.get("checks", []) if isinstance(acceptance, dict) else []
+                    if not isinstance(checks, list) or len(checks) > 30:
+                        raise ValueError("Invalid acceptance checks; expected at most 30")
+                    allowed = {"getblockchaininfo", "getnetworkinfo", "getmempoolinfo",
+                               "getmininginfo", "getblockstats", "getblockhash"}
+                    for check in checks:
+                        if job.state != "running":
+                            raise RuntimeError("Verification cancelled")
+                        method = check.get("rpc")
+                        if method not in allowed:
+                            raise ValueError("Acceptance RPC is not allowed")
+                        value = rpc(method, 1) if method in ("getblockstats", "getblockhash") else rpc(method)
+                        for key in check.get("path", "").split("."):
+                            if key:
+                                value = value[int(key)] if isinstance(value, list) else value[key]
+                        expected = check.get("expected")
+                        passed = self._compare(value, check.get("op", "eq"), expected)
+                        result = {"name": check.get("name", method + " " + check.get("path", "")),
+                                  "status": "passed" if passed else "failed",
+                                  "expected": expected, "actual": value}
+                        evidence.append(result)
+                        job.meta["evidence"] = evidence
+                        if not passed:
+                            raise RuntimeError(f"Acceptance check failed: {result['name']}; expected {expected}, observed {value}")
+                    if not checks:
+                        evidence.append({"name": "Wish-specific behavior", "status": "not checked",
+                                         "detail": "No declarative acceptance checks supplied. General verification does not prove the wish."})
+                    scenario = job.meta.get("scenario")
+                    if scenario in ("maturity", "transaction"):
+                        rpc("createwallet", "scenario")
+                        address = rpc("getnewaddress")
+                        rpc("generatetoaddress", 1, address)
+                        immature = rpc("getbalances")["mine"]["immature"]
+                        if immature <= 0:
+                            raise RuntimeError("Expected an immature coinbase before 100 confirmations")
+                        rpc("generatetoaddress", 100, address)
+                        mature = rpc("getbalances")["mine"]["trusted"]
+                        if mature <= 0:
+                            raise RuntimeError("Expected spendable coinbase after 100 confirmations")
+                        evidence.append({"name": "Coinbase becomes spendable after 100 confirmations",
+                                         "status": "passed", "actual": mature, "expected": "> 0 BTC"})
+                        if scenario == "transaction":
+                            destination = rpc("getnewaddress")
+                            txid = rpc("sendtoaddress", destination, 1)
+                            mempool = rpc("getrawmempool")
+                            if txid not in mempool:
+                                raise RuntimeError("Transaction did not enter the mempool")
+                            rpc("generatetoaddress", 1, address)
+                            if txid in rpc("getrawmempool"):
+                                raise RuntimeError("Transaction remained unconfirmed after mining")
+                            evidence.append({"name": "Transaction enters mempool and confirms in a block",
+                                             "status": "passed", "detail": txid})
+                    return evidence
+                finally:
+                    try:
+                        rpc("stop")
+                    except Exception:
+                        pass
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    job.proc = None
 
     def build_jobs(self):
         """Parallel job count. Each concurrent C++ compile can peak near a
@@ -1365,113 +1625,15 @@ class Console:
         low = max(3, 40 // max(1, jobs))
         return low, low * 2
 
-    def _smoke_test(self, job):
-        """Make the freshly built binary prove it is still a Bitcoin node.
-
-        Runs against a throwaway regtest datadir, never the operator's chain, so
-        a decree that compiles but cannot validate is caught here rather than by
-        their peers."""
-        bitcoind = self.bin_path("bitcoind")
-        cli = self.bin_path("bitcoin-cli")
-        if not (bitcoind and cli):
-            return True                      # nothing built to test
-        job.emit(t="phase", name="verify",
-                 detail="making the new binary prove it can still validate")
-
-        sandbox = Path(tempfile.mkdtemp(prefix="vibes-verify-"))
-        args = [f"-datadir={sandbox}", "-chain=regtest"]
-        proc = None
-        try:
-            proc = subprocess.Popen(
-                # -listen=0 keeps it off the network entirely, so no -port is
-                # needed (and bitcoind rejects -port=0 outright).
-                [str(bitcoind), *args, "-server=1", "-listen=0",
-                 f"-rpcport={self._free_port()}"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True)
-
-            def rpc(*a):
-                code, out, _ = run([str(cli), *args,
-                                    f"-rpcport={self._verify_rpcport}", *a], timeout=30)
-                return (out.strip() if code == 0 else None)
-
-            deadline = time.time() + 60
-            while time.time() < deadline and rpc("getblockcount") is None:
-                if proc.poll() is not None:
-                    job.emit(t="log", line="the new binary would not even start")
-                    return self._smoke_failed(job, "it would not start")
-                time.sleep(0.5)
-
-            checks = []
-            rpc("createwallet", "verify")
-            addr = rpc("-rpcwallet=verify", "getnewaddress")
-            if not addr:
-                return self._smoke_failed(job, "it could not make an address")
-            if rpc("generatetoaddress", "101", addr) is None:
-                return self._smoke_failed(job, "it could not mine a block")
-            height = rpc("getblockcount")
-            checks.append(("mined 101 blocks", height == "101"))
-
-            info = rpc("getblockchaininfo")
-            checks.append(("chain state readable", bool(info)))
-            # It must still reject nonsense: an amount above its own ceiling.
-            bad = run([str(cli), *args, f"-rpcport={self._verify_rpcport}",
-                       "createrawtransaction", "[]",
-                       f'[{{"{addr}":210000000}}]'], timeout=20)[0]
-            checks.append(("rejects impossible amounts", bad != 0))
-
-            failed = [name for name, ok in checks if not ok]
-            for name, ok in checks:
-                job.emit(t="log", line=f"  {'✓' if ok else '✗'} {name}")
-            if failed:
-                return self._smoke_failed(job, "; ".join(failed))
-            job.emit(t="log", line="the node still validates — proceeding")
-            return True
-        except Exception as e:                                  # noqa: BLE001
-            job.emit(t="log", line=f"could not run the check ({e}) — proceeding anyway")
-            return True
-        finally:
-            if proc and proc.poll() is None:
-                run([str(cli), *args, f"-rpcport={self._verify_rpcport}", "stop"], timeout=15)
-                try:
-                    proc.wait(20)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-            shutil.rmtree(sandbox, ignore_errors=True)
-
-    def _free_port(self):
-        with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
-            self._verify_rpcport = s.getsockname()[1]
-        return self._verify_rpcport
-
-    @staticmethod
-    def _smoke_failed(job, why):
-        job.state = "error"
-        job.emit(t="phase", name="error",
-                 detail=f"This decree compiles, but the node it produces cannot do its "
-                        f"job: {why}. Your node has NOT been restarted — it is still "
-                        f"running the last binary that worked. Repent this decree, or "
-                        f"issue another that fixes it.")
-        return False
-
-    def build_blocking(self):
-        """First-run build, streamed straight to the terminal (no job/UI yet)."""
-        jobs = str(self.build_jobs())
-        if not (self.repo / "build" / "CMakeCache.txt").exists():
-            code = subprocess.call(["cmake", "-B", "build", "-DBUILD_TESTS=OFF",
-                                    "-DBUILD_BENCH=OFF", "-DBUILD_FUZZ_BINARY=OFF",
-                                    "-DBUILD_GUI=OFF"], cwd=self.repo)
-            if code != 0:
-                return False
-        return subprocess.call(["cmake", "--build", "build", "-j", jobs],
-                               cwd=self.repo) == 0
-
     def _stream(self, job, cmd):
         job.emit(t="log", line="$ " + " ".join(shlex.quote(c) for c in cmd))
+        if job.state != "running":
+            return 130
         proc = subprocess.Popen(cmd, cwd=self.repo, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, start_new_session=True)
         job.proc = proc
+        if job.state != "running":
+            proc.terminate()
         for line in proc.stdout:
             job.emit(t="log", line=line.rstrip()[:500])
         proc.wait()
@@ -1480,95 +1642,129 @@ class Console:
 
     # ----- node lifecycle --------------------------------------------------
 
-    def start_node(self, job=None):
-        if self.node_running():
-            return True
-        bitcoind = self.bin_path("bitcoind")
-        if not bitcoind:
-            if job:
-                job.emit(t="log", line="bitcoind not built yet — build first")
-            return False
+    def _launch_release(self, release, job=None):
+        executable = Path(release.get("path", "")) / "bitcoind" if release.get("path") else self.bin_path("bitcoind")
+        if not executable or not executable.exists():
+            raise RuntimeError("No node executable available. Build first.")
         if self.node_log:
-            try:
-                self.node_log.close()
-            except OSError:
-                pass
+            self.node_log.close()
         self.node_log = open(self.logs_dir / "bitcoind.log", "ab")
-        self.node_proc = subprocess.Popen(
-            [str(bitcoind), *self.chain_args(), "-server=1"],
-            stdout=self.node_log, stderr=self.node_log, start_new_session=True)
-
-        # Spawning is not starting. bitcoind exits early on a port already in
-        # use, a locked datadir or a full disk, and reporting success then
-        # leaves the operator staring at a node that is not there.
-        deadline = time.time() + 45
-        while time.time() < deadline:
-            if self.cli_json("uptime") is not None:
-                if job:
-                    job.emit(t="phase", name="node",
-                             detail=f"bitcoind started (pid {self.node_proc.pid})")
-                return True
+        self.node_proc = subprocess.Popen([str(executable), *self.chain_args(), "-server=1"],
+                                         stdout=self.node_log, stderr=self.node_log, start_new_session=True)
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if job and job.state != "running":
+                raise RuntimeError("Activation cancelled")
             if self.node_proc.poll() is not None:
-                break                       # it gave up before we did
-            time.sleep(0.5)
+                raise RuntimeError("Node exited during startup. Inspect node logs.")
+            if self.cli_json("getblockchaininfo") is not None:
+                self.running_state = {"sha": release.get("sha"), "pid": self.node_proc.pid,
+                                      "path": release.get("path"), "executable": str(executable),
+                                      "time": time.time()}
+                self._write_json(self.state_dir / "running.json", self.running_state)
+                return True
+            time.sleep(0.25)
+        self.node_proc.terminate()
+        self.node_proc.wait(timeout=10)
+        raise RuntimeError("Node did not become RPC-ready within 60 seconds. Inspect node logs.")
 
-        why = self._last_node_error() or "see .vibes/logs/bitcoind.log"
-        if job:
-            job.emit(t="log", line=f"bitcoind did not come up — {why}")
-        return False
-
-    def _last_node_error(self):
-        """The most recent complaint bitcoind made, for reporting upward."""
-        try:
-            lines = (self.logs_dir / "bitcoind.log").read_text(
-                errors="replace").splitlines()
-        except OSError:
-            return None
-        for line in reversed(lines[-60:]):
-            if "Error:" in line or "[error]" in line:
-                return line.split("Error:")[-1].split("[error]")[-1].strip()
-        return None
+    def start_node(self, job=None):
+        with self.lifecycle_lock:
+            if self.node_running():
+                return True
+            # Never start the mutable build output once a verified release exists.
+            return self._launch_release(self.build_state, job)
 
     def stop_node(self, job=None, timeout=30):
-        if not self.node_running():
+        with self.lifecycle_lock:
+            if not self.node_running():
+                return True
+            self.cli("stop")
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline and self.node_running():
+                time.sleep(0.3)
+            if self.node_running():
+                if self.node_proc is None:
+                    raise RuntimeError("Existing node did not stop. Activation aborted.")
+                self.node_proc.terminate()
+                try:
+                    self.node_proc.wait(10)
+                except subprocess.TimeoutExpired:
+                    self.node_proc.kill()
+                    self.node_proc.wait(5)
+            self.node_proc = None
+            self.running_state = {}
+            self._write_json(self.state_dir / "running.json", {})
+            if job:
+                job.emit(t="log", line="Node stopped")
             return True
-        self.cli("stop")
-        deadline = time.time() + timeout
-        while time.time() < deadline and self.node_running():
-            time.sleep(0.3)
-        if self.node_running() and self.node_proc is not None:
-            self.node_proc.terminate()
-            try:
-                self.node_proc.wait(10)
-            except subprocess.TimeoutExpired:
-                self.node_proc.kill()
-        self.node_proc = None
-        if job:
-            job.emit(t="log", line="bitcoind stopped")
-        return True
 
     def _restart_node(self, job):
-        job.emit(t="phase", name="restart", detail="restarting the node on the new code")
-        self.stop_node(job)
-        self.start_node(job)
+        with self.lifecycle_lock:
+            if job.state != "running":
+                return
+            if not self.build_state.get("verified"):
+                raise RuntimeError("Build and verify a candidate before activation")
+            previous = dict(self.running_state)
+            if self.node_running() and not previous.get("path"):
+                raise RuntimeError("Running executable is not tracked. Stop and start the node through this console before activation, so recovery has a known release.")
+            job.emit(t="phase", name="restart", detail="Activating verified release; waiting for RPC readiness")
+            self.stop_node(job)
+            try:
+                self._launch_release(self.build_state, job)
+                job.meta["activation"] = "active"
+                job.emit(t="result", detail="RPC ready. Verified revision is running.")
+            except Exception as error:
+                self.stop_node()
+                job.meta["activation"] = "failed"
+                if previous.get("path"):
+                    self._launch_release(previous)
+                    job.meta["activation"] = "rolled back"
+                    job.emit(t="warn", detail="Activation failed. Previous executable restored.",
+                             plain="Executable rollback does not undo chain data changes. " + str(error))
+                raise
+
+    def activate_runner(self):
+        return self._restart_node
+
+    def scenario_runner(self, scenario):
+        def go(job):
+            job.meta["scenario"] = scenario
+            release = self.running_state.get("path") or self.build_state.get("path")
+            if not release:
+                raise ValueError("Build a node executable first")
+            job.emit(t="phase", name="test", detail="Running scenario on a disposable regtest node")
+            job.meta["test_status"] = "running"
+            job.meta["evidence"] = self.verify_regtest(job, Path(release))
+            if job.state == "running":
+                job.meta["test_status"] = "passed"
+                job.emit(t="verification", evidence=job.meta["evidence"])
+        return go
+
+    def playground_runner(self, blocks):
+        def go(job):
+            if self.opts.chain != "regtest":
+                raise ValueError("Playground mining is only available on regtest")
+            before = self.cli_json("getblockchaininfo")
+            if not before:
+                raise ValueError("Start your regtest node first")
+            hashes = self.mine(blocks)
+            if not hashes:
+                raise RuntimeError("Block generation failed. Inspect node logs.")
+            after = self.cli_json("getblockchaininfo")
+            job.meta["evidence"] = [{"name": "Blocks generated", "status": "passed",
+                                      "expected": before["blocks"] + blocks, "actual": after["blocks"]}]
+            job.emit(t="verification", evidence=job.meta["evidence"])
+        return go
 
     def mine(self, n=1):
         if self.opts.chain != "regtest" or not self.node_running():
             return None
-        wallets = self.cli_json("listwallets")
-        if wallets is not None and "vibes" not in wallets:
-            if self.cli_json("loadwallet", "vibes") is None:
-                self.cli_json("createwallet", "vibes")
-        addr = None
-        code, out, _ = self.cli("-rpcwallet=vibes", "getnewaddress")
-        if code == 0:
-            addr = out.strip()
-        if not addr:
-            return None
-        return self.cli_json("generatetoaddress", str(n), addr)
+        return self.cli_json("generatetoaddress", str(n), "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn")
 
     def revert_runner(self, sha, autobuild, autorestart):
         def go(job):
+            self._require_clean()
             code, subject, _ = self.git("log", "-1", "--format=%s", sha)
             if code != 0 or not subject.strip().startswith("vibe:"):
                 raise RuntimeError("refusing to revert: not a vibe commit")
@@ -1577,7 +1773,10 @@ class Console:
             if code != 0:
                 self.git("revert", "--abort")
                 raise RuntimeError(f"git revert failed (conflict?): {err.strip()[:300]}")
-            job.emit(t="log", line=f"reverted {sha[:10]}")
+            job.meta["reverts"] = sha
+            _, new_sha, _ = self.git("rev-parse", "HEAD")
+            job.meta["sha"] = new_sha.strip()
+            job.emit(t="log", line=f"Reverted {sha[:10]}")
             if autobuild:
                 ok = self._build(job)
                 if ok and autorestart:
@@ -1784,11 +1983,12 @@ class Handler(BaseHTTPRequestHandler):
         # Loopback only, even when bound to 0.0.0.0 in a container: the
         # published port maps to the host's loopback, so a real browser
         # always sends a loopback Host header.
-        if not host.startswith(("127.0.0.1", "localhost", "[::1]")):
+        host_url = urlparse("http://" + host)
+        if host_url.hostname not in ("127.0.0.1", "localhost", "::1"):
             return False
         if origin:
             o = urlparse(origin)
-            if o.hostname not in ("127.0.0.1", "localhost"):
+            if o.scheme != "http" or o.netloc != host:
                 return False
         return True
 
@@ -1811,12 +2011,16 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _body(self):
-        n = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            return {}
         if n <= 0 or n > 1_000_000:
             return {}
         try:
-            return json.loads(self.rfile.read(n))
-        except json.JSONDecodeError:
+            value = json.loads(self.rfile.read(n))
+            return value if isinstance(value, dict) else {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
 
     # -- routes -------------------------------------------------------------
@@ -1847,18 +2051,43 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._send(200, self.console.status())
+        elif path in ("/web/app.js", "/web/demo.js", "/web/ui.css"):
+            asset = self.html_path.parent / path.lstrip("/")
+            self._send(200, asset.read_bytes(), "text/css" if path.endswith(".css") else "text/javascript")
+        elif path == "/api/settings":
+            self._send(200, {"schema": self.console.all_specs(), "groups": self.console.all_groups(),
+                             "values": self.console.read_settings()})
         elif path == "/api/decree":
             sha = parse_qs(urlparse(self.path).query).get("sha", [""])[0]
-            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
-                self._send(400, {"error": "bad sha"})
+            decree = self.console.decree(sha)
+            self._send(200, decree) if decree else self._send(404, {"error": "Not a decree"})
+        elif path == "/api/experiment":
+            try:
+                job_id = parse_qs(urlparse(self.path).query).get("id", [""])[0]
+                self._send(200, self.console.experiment(job_id))
+            except ValueError as e:
+                self._send(404, {"error": str(e)})
+        elif path == "/api/diff":
+            query = parse_qs(urlparse(self.path).query)
+            sha = query.get("sha", ["HEAD"])[0]
+            base = query.get("base", [""])[0]
+            if not (sha == "HEAD" or re.fullmatch(r"[a-f0-9]{7,40}", sha)):
+                self._send(400, {"error": "Invalid revision"})
                 return
-            d = self.console.decree(sha)
-            self._send(200, d) if d else self._send(404, {"error": "not a decree"})
-        elif path == "/api/settings":
-            self._send(200, {"schema": self.console.all_specs(),
-                             "groups": self.console.all_groups(),
-                             "values": self.console.read_settings(),
-                             "conf": str(self.console.conf_path)})
+            if base == "baseline":
+                code, patch, err = self.console.git("diff", self.console.baseline["sha"], sha, "--")
+            else:
+                code, patch, err = self.console.git("show", "--format=fuller", sha, "--")
+            self._send(200 if code == 0 else 400, {"patch": patch, "error": err})
+        elif path == "/api/node-log":
+            logfile = self.console.logs_dir / "bitcoind.log"
+            if not logfile.exists():
+                self._send(200, {"log": "No node log entries yet."})
+                return
+            with open(logfile, "rb") as f:
+                f.seek(max(0, logfile.stat().st_size - 16000))
+                tail = f.read().decode(errors="replace")
+            self._send(200, {"log": tail})
         elif path == "/api/stream":
             self._stream_events()
         else:
@@ -1871,66 +2100,82 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         body = self._body()
         c = self.console
-        if path == "/api/vibe":
-            prompt = (body.get("prompt") or "").strip()
-            if not prompt:
-                self._send(400, {"error": "an empty decree — even your silence is profound, "
-                                          "but the compiler requires words"})
+        try:
+            active = c.job and c.job.state in ("running", "cancelling", "review")
+            if active and path not in ("/api/cancel", "/api/apply"):
+                self._send(409, {"error": "Finish or discard the current experiment first"})
                 return
-            if len(prompt) > 20000:
-                self._send(400, {"error": "a decree of this magnificence should be a BIP — "
-                                          "or scripture"})
-                return
-            job = c.start_job("vibe", prompt, c.vibe_runner(
-                prompt, bool(body.get("yolo")), body.get("autobuild", True),
-                body.get("autorestart", True)))
-            self._job_reply(job)
-        elif path == "/api/build":
-            job = c.start_job("build", "", c.build_runner(body.get("autorestart", True)))
-            self._job_reply(job)
-        elif path == "/api/revert":
-            sha = str(body.get("sha", ""))
-            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
-                self._send(400, {"error": "bad sha"})
-                return
-            job = c.start_job("revert", sha, c.revert_runner(
-                sha, body.get("autobuild", True), body.get("autorestart", True)))
-            self._job_reply(job)
-        elif path == "/api/update":
-            job = c.start_job("update", "", c.update_runner(
-                body.get("autobuild", True), body.get("autorestart", True)))
-            self._job_reply(job)
-        elif path == "/api/settings":
-            problems, clean = c.validate_settings(body.get("values") or {})
-            if problems:
-                self._send(400, {"error": " ".join(problems), "problems": problems})
-                return
-            c.write_settings(clean)
-            restarted = False
-            if body.get("restart", True) and c.node_running():
-                c.stop_node()
-                restarted = c.start_node()
-            self._send(200, {"ok": True, "restarted": restarted,
-                             "values": c.read_settings()})
-        elif path == "/api/cancel":
-            self._send(200, {"cancelled": c.cancel_job()})
-        elif path == "/api/node":
-            action = body.get("action")
-            if action == "start":
-                ok = c.start_node()
-            elif action == "stop":
-                ok = c.stop_node()
-            elif action == "restart":
-                c.stop_node()
-                ok = c.start_node()
-            elif action == "mine":
-                ok = bool(c.mine(int(body.get("blocks", 1))))
+            if path == "/api/vibe":
+                prompt = body.get("prompt", "")
+                if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20000:
+                    raise ValueError("Enter a request of 1–20,000 characters")
+                self._job_reply(c.start_job("vibe", prompt.strip(), c.vibe_runner(
+                    prompt.strip(), bool(body.get("yolo")), bool(body.get("autobuild", True)),
+                    bool(body.get("autorestart", False)), bool(body.get("review", True)))))
+            elif path == "/api/apply":
+                self._job_reply(c.resume_review(str(body.get("id", ""))))
+            elif path == "/api/build":
+                acceptance = {}
+                _, head, _ = c.git("rev-parse", "HEAD")
+                for experiment in c.experiments():
+                    if experiment.get("sha") == head.strip() and experiment.get("acceptance"):
+                        acceptance = experiment["acceptance"]
+                        break
+                runner = c.build_runner(bool(body.get("autorestart", False)))
+                def retry(job):
+                    job.meta["acceptance"] = acceptance
+                    runner(job)
+                self._job_reply(c.start_job("build", "Build and verify current source", retry))
+            elif path == "/api/playground":
+                scenario = body.get("scenario")
+                if scenario not in ("maturity", "transaction"):
+                    raise ValueError("Unknown playground scenario")
+                self._job_reply(c.start_job("playground", "Verify " + scenario + " on disposable regtest", c.scenario_runner(scenario)))
+            elif path == "/api/settings":
+                values = body.get("values", {})
+                if not isinstance(values, dict):
+                    raise ValueError("Settings must be an object")
+                problems, clean = c.validate_settings({**c.read_settings(), **values})
+                if problems:
+                    raise ValueError(" ".join(problems))
+                c.write_settings(clean)
+                self._send(200, {"ok": True, "values": c.read_settings(), "restart_required": c.node_running()})
+            elif path == "/api/update":
+                self._job_reply(c.start_job("update", "Update Bitcoin Vibes", c.update_runner(
+                    bool(body.get("autobuild", True)), bool(body.get("autorestart", False)))))
+            elif path == "/api/activate":
+                self._job_reply(c.start_job("activate", "Activate verified build", c.activate_runner()))
+            elif path == "/api/revert":
+                sha = str(body.get("sha", ""))
+                if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+                    raise ValueError("Invalid revision")
+                self._job_reply(c.start_job("revert", "Revert " + sha[:10], c.revert_runner(
+                    sha, bool(body.get("autobuild", True)), bool(body.get("autorestart", False)))))
+            elif path == "/api/cancel":
+                self._send(200, {"cancelled": c.cancel_job()})
+            elif path == "/api/node":
+                action = body.get("action")
+                if action == "mine":
+                    blocks = int(body.get("blocks", 1))
+                    if not 1 <= blocks <= 150:
+                        raise ValueError("Choose 1–150 blocks")
+                    self._job_reply(c.start_job("playground", f"Generate {blocks} regtest blocks", c.playground_runner(blocks)))
+                elif action == "restart":
+                    self._job_reply(c.start_job("activate", "Restart verified build", c.activate_runner()))
+                elif action in ("start", "stop"):
+                    def lifecycle(job):
+                        job.emit(t="phase", name="node", detail="Starting node" if action == "start" else "Stopping node")
+                        if action == "start":
+                            c.start_node(job)
+                        else:
+                            c.stop_node(job)
+                    self._job_reply(c.start_job("node", action.title() + " node", lifecycle))
+                else:
+                    raise ValueError("Unknown node action")
             else:
-                self._send(400, {"error": "unknown action"})
-                return
-            self._send(200, {"ok": bool(ok)})
-        else:
-            self._send(404, {"error": "not found"})
+                self._send(404, {"error": "Not found"})
+        except (ValueError, RuntimeError, TypeError) as e:
+            self._send(400, {"error": str(e)})
 
     def _job_reply(self, job):
         if job is None:
@@ -1941,32 +2186,41 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream_events(self):
         job = self.console.job
+        query = parse_qs(urlparse(self.path).query)
+        requested = query.get("id", [""])[0]
+        if requested and (not job or job.id != requested):
+            self._send(409, {"error": "Experiment changed"})
+            return
+        try:
+            cursor = int(self.headers.get("Last-Event-ID", "0") or "0")
+        except ValueError:
+            cursor = 0
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if job is None:
-            try:
-                self.wfile.write(b"data: {\"t\": \"idle\"}\n\n")
-                self.wfile.flush()
-            except BrokenPipeError:
-                pass
-            # Without this, keep-alive leaves the EventSource half-open forever
-            # and the client never opens a fresh stream for the next job.
+            self.wfile.write(b'data: {"t":"idle"}\n\n')
+            self.wfile.flush()
             self.close_connection = True
             return
         backlog, q = job.subscribe()
+        def send(ev):
+            self.wfile.write(f"id: {ev.get('seq', 0)}\ndata: {json.dumps(ev)}\n\n".encode())
         try:
             for ev in backlog:
-                self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode())
+                if ev.get("seq", 0) > cursor:
+                    send(ev)
             self.wfile.flush()
-            while job.state == "running":
+            while job.state in ("running", "cancelling"):
                 try:
-                    ev = q.get(timeout=15)
-                    self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode())
+                    send(q.get(timeout=5))
                 except queue.Empty:
                     self.wfile.write(b": ping\n\n")
                 self.wfile.flush()
+            # Drain queued terminal events before closing the stream.
+            while not q.empty():
+                send(q.get_nowait())
             self.wfile.write(f"data: {json.dumps({'t': 'state', 'state': job.state})}\n\n".encode())
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
@@ -2068,27 +2322,12 @@ def main():
     # the node, so the browser opens onto something alive.
     if opts.autostart:
         if not console.bin_path("bitcoind"):
-            if opts.app:
-                # Launched by double-click: there is no terminal to watch, so
-                # preparation streams into the browser instead.
-                print("  no node binary yet — preparing it in the console.")
-                console.start_job("setup", "", console.setup_runner())
-            else:
-                bjobs = console.build_jobs()
-                low, high = console.build_estimate(bjobs)
-                print(f"  no node binary yet — building it now, once, with {bjobs} "
-                      f"parallel job(s).")
-                print(f"  on this machine expect roughly {low}-{high} minutes. "
-                      f"It is the last slow thing that will ever happen.")
-                print()
-                if console.build_blocking():
-                    print("\n  build complete.\n")
-                else:
-                    print("\n  ⚠  build failed — see the output above. The console "
-                          "will still start.\n")
-        if console.bin_path("bitcoind") and not console.node_running():
-            if console.start_node():
-                print(f"  node   : awake on {opts.chain}")
+            console.start_job("setup", "Prepare the local node", console.setup_runner())
+        elif not console.node_running():
+            def wake(job):
+                job.emit(t="phase", name="node", detail="Starting node and waiting for RPC readiness")
+                console.start_node(job)
+            console.start_job("node", "Start local node", wake)
 
     print("  You are a Bitcoin God.")
     print()

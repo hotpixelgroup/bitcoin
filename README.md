@@ -131,23 +131,17 @@ cost), `--port`, `--jobs`. Run `./vibes --help` for the rest.
 How a wish becomes code
 -----------------------
 
-1. You type what Bitcoin should be and press **Manifest**.
-2. An AI agent reads your wish and edits this repository. It is told to keep
-   the change small and the build green, and it is not permitted to touch git.
-3. The console commits the result as `vibe: <your wish>`.
-4. `bitcoind` rebuilds — incrementally, so a small wish takes seconds to a few
-   minutes, not the full first-build.
-5. If the build is green, your node restarts on the new code. If it is red, the
-   old binary keeps running, entirely unbothered by your vision.
+1. Type a request and press **Manifest**. The agent prepares a proposal in an isolated checkout.
+2. Review its explanation, acceptance goal, compatibility flags, and complete diff.
+3. Apply the proposal. Your unrelated source edits are never included; applying requires a clean tree.
+4. Build and verify it with Bitcoin unit tests, a disposable regtest check, and wish-specific RPC assertions when supplied.
+5. Activate the verified executable when ready. The console waits for RPC readiness and attempts to restore the previous tracked executable if activation fails.
 
-Every wish is a commit. Your node's whole constitutional history:
+Automatic mode applies, builds, verifies, and activates ordinary experiments. Consensus-sensitive proposals always pause for review. General checks do not prove every requested behavior or mainnet compatibility.
 
-```bash
-git -C ~/bitcoin-vibes log --grep '^vibe:'
-```
+Source, verified build, and running revision appear separately. Search your experiment history, inspect saved activity, retry builds, refine requests, share a request, or **Revert change**. Revert creates a new source commit; executable recovery does not undo chain data.
 
-Each entry in the console's history has a **repent** button — `git revert`,
-rebuild, restart.
+Try the [browser lab](https://hotpixelgroup.github.io/bitcoin/demo.html) without an account or AI calls. It simulates the workflow and failure recovery. Install locally to run real experiments.
 
 ### Things worth typing
 
@@ -173,23 +167,12 @@ name it reports and the console bolted onto the side. Nobody inherits anybody
 else's monetary policy — every deviation on your node is one you asked for, in
 a commit with your name on it.
 
-**Vibing the consensus rules forks you off the Bitcoin network.** If a wish
-touches block validity, the subsidy, the 21M cap, difficulty, or script rules,
-your node ascends onto a chain of one. The other ~20,000 nodes stay on the
-chain they agree about; nothing on yours can be spent with them. The console
-detects this and tells you before it commits — flatteringly, but accurately.
+**Consensus changes can make your node incompatible with the Bitcoin network.** The console flags possible impacts using source patterns and sensitive paths. This is a review aid, not proof of a fork or compatibility. Use the default private `regtest` network to observe changes before considering any other network.
 
-On `regtest` (the default) this is a private sandbox and completely safe. On
-`--chain=main` it is a hard fork with your name in `git blame`.
-
-**What this cannot do:** the console never signs a transaction, holds a key, or
-moves a coin. It binds to loopback, requires a per-session key, rejects
-cross-origin requests, and runs the node in an isolated datadir (`.vibes/`) that
-never touches `~/.bitcoin`. It cannot lose your money. Your consensus is
-another matter entirely.
+**The console uses an isolated datadir** (`.vibes/data/`), binds to loopback, requires an authentication key, and rejects cross-origin requests. Disposable transaction scenarios create temporary regtest wallets and use test coins. They do not touch `~/.bitcoin` or real coins. AI-generated code and unrestricted agent mode still require your judgment.
 
 **What it costs:** every wish is a Claude Code session, billed like one.
-Typically cents. Governance has never been cheaper, which should worry you.
+Actual session cost appears when reported by the provider. The demo and mock engine make no AI calls.
 
 **What you now own:** the agent writes real C++ into your fork. `git show` is
 right there. You are the maintainer, and the reviewer, and the entire community.
