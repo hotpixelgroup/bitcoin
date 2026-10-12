@@ -1,33 +1,399 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Experiment Lab · Bitcoin Vibes</title>
-<meta name="description" content="Turn an idea into a reviewable Bitcoin experiment. Understand the diff, verify the behavior, and see what your node is running.">
+<meta name="description" content="Change a Bitcoin node in plain words, then see what an unmodified node makes of the change.">
 <meta name="theme-color" content="#f7f5ef">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2726%27 font-size=%2730%27 fill=%27%23765d24%27%3E%E2%9C%A6%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="web/ui.css">
-<script defer src="web/demo.js"></script><script defer src="web/app.js"></script>
+<script defer src="web/lessons.js"></script>
+<script defer src="web/demo-data.js"></script>
+<script defer src="web/demo.js"></script>
+<script defer src="web/app.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to experiment</a>
-<header class="topbar"><a class="brand" href="https://hotpixelgroup.github.io/bitcoin/"><span aria-hidden="true">✦</span> BITCOIN VIBES</a><span class="pill" id="environment">Connecting…</span><span class="connection" id="connection" role="status">Connecting to console…</span><a class="quiet" href="https://github.com/hotpixelgroup/bitcoin/tree/vibes">Source ↗</a></header>
-<div id="demo-banner" class="demo-banner" hidden><b>Browser demo.</b> Everything here is simulated. No AI calls, node changes, or charges. <a href="./#install">Install the real node ↗</a><label class="sr-only" for="demo-scenario">Demo scenario</label><select id="demo-scenario" aria-label="Demo scenario"><option value="success">Successful experiment</option><option value="build-failure">Build failure</option><option value="activation-failure">Activation failure & recovery</option></select><button id="reset-demo" class="text-button">Reset demo</button></div>
+
+<header class="topbar">
+  <a class="brand" href="https://hotpixelgroup.github.io/bitcoin/"><span aria-hidden="true">✦</span> BITCOIN VIBES</a>
+  <span class="pill" id="environment">Connecting…</span>
+  <span class="connection" id="connection" role="status">Connecting to console…</span>
+  <a class="quiet" href="https://github.com/hotpixelgroup/bitcoin">Source ↗</a>
+</header>
+
+<div id="demo-banner" class="demo-banner" hidden>
+  <b>Browser demo.</b> No AI and no node run here. The ready-made experiments show results recorded from real runs.
+  <a href="./#install">Install the real lab ↗</a>
+  <button id="reset-demo" class="text-button">Reset demo</button>
+</div>
+
 <div class="layout">
-<aside class="sidebar"><div class="eyebrow">YOUR PRIVATE UNIVERSE</div><h2>Experiment lab</h2><p>Core has rules.<br>Knots has opinions.<br>Vibes has you.</p><nav aria-label="Lab sections"><a href="#main">✦ Create an experiment</a><a href="#current">↳ Current experiment</a><a href="#playground">◈ Regtest playground</a><a href="#history-section">⎌ Experiment history</a><a href="#settings-section">⚙ Node settings</a><a href="#setup">? Setup & help</a></nav><div class="sidebar-foot">Speak, and it shall compile.<br><span>Then check that it works.</span></div></aside>
+<aside class="sidebar">
+  <div class="eyebrow">EXPERIMENT LAB</div>
+  <h2>Bitcoin Vibes</h2>
+  <p>Core has rules.<br>Knots has opinions.<br>Vibes has you.</p>
+  <nav aria-label="Lab sections">
+    <a href="#curated">◈ Ready-made experiments</a>
+    <a href="#beliefs">✓ Check your thinking</a>
+    <a href="#composer">✦ Your own experiment</a>
+    <a href="#current">↳ Current experiment</a>
+    <a href="#playground">⛏ Private chain</a>
+    <a href="#history-section">⎌ Experiment history</a>
+    <a href="#settings-section">⚙ Node settings</a>
+    <a href="#setup">? Setup &amp; help</a>
+  </nav>
+  <div class="sidebar-foot">Change one node.<br><span>Then ask a second one.</span></div>
+</aside>
+
 <main id="main">
-<section class="node-card" aria-labelledby="node-heading"><div class="section-line"><h2 id="node-heading">Your node</h2><span class="pill" id="node-health">Unknown</span></div><div class="node-grid"><div><span class="metric-label">SOURCE REVISION</span><strong id="source">Unknown</strong><small id="source-note">Checking working tree</small></div><div><span class="metric-label">VERIFIED BUILD</span><strong id="built">Not verified</strong><small id="build-note">Build and run checks first</small></div><div><span class="metric-label">RUNNING REVISION</span><strong id="running">Unknown</strong><small id="node-summary">Waiting for node status</small></div></div><div class="toolbar"><button id="node-start">Start node</button><button id="build">Build & verify</button><button id="activate">Activate verified build</button><button id="restart">Restart node</button><button id="node-log" class="text-button">Node logs</button></div><details id="node-log-detail" hidden><summary>Recent node logs</summary><pre id="node-log-content" tabindex="0"></pre></details></section>
-<div class="intro"><div class="eyebrow">A SENTENCE IS A STARTING POINT</div><h1>What shall Bitcoin become?</h1><p>Describe a change. Review the code. Observe the result.<br>Your convictions deserve evidence.</p></div>
+
+<section class="node-card" aria-labelledby="node-heading">
+  <div class="section-line">
+    <h2 id="node-heading">Your node</h2>
+    <span class="pill" id="node-health">Unknown</span>
+  </div>
+  <div id="node-alerts" role="alert" aria-live="assertive"></div>
+  <div class="node-grid">
+    <div><span class="metric-label">SOURCE REVISION</span><strong id="source">Unknown</strong><small id="source-note">Checking working tree</small></div>
+    <div><span class="metric-label">CHECKED BUILD</span><strong id="built">None yet</strong><small id="build-note">Build and check first</small></div>
+    <div><span class="metric-label">RUNNING REVISION</span><strong id="running">Unknown</strong><small id="node-summary">Waiting for node status</small></div>
+  </div>
+  <p id="chain-note" class="subtle"></p>
+  <div class="facts">
+    <div><span class="metric-label">CONFINEMENT</span><span id="sandbox-label">Checking…</span><small id="sandbox-detail"></small></div>
+    <div><span class="metric-label">UNMODIFIED REFERENCE NODE</span><span id="reference-label">Checking…</span><small id="reference-detail"></small></div>
+  </div>
+  <div class="toolbar">
+    <button id="node-start">Start node</button>
+    <button id="build">Build &amp; check</button>
+    <button id="activate">Start checked build</button>
+    <button id="restart">Restart node</button>
+    <button id="reference" hidden>Prepare reference node</button>
+    <button id="node-log" class="text-button">Node logs</button>
+  </div>
+  <p id="activation-block" class="notice danger" hidden></p>
+  <details id="node-log-detail" hidden>
+    <summary>Recent node logs</summary>
+    <pre id="node-log-content" tabindex="0"></pre>
+  </details>
+</section>
+
+<div class="intro">
+  <div class="eyebrow">ONE NODE ALONE PROVES NOTHING</div>
+  <h1>What shall Bitcoin become?</h1>
+  <p>Describe a change. The lab builds it and runs it beside an unmodified node.<br>You see what each one does with the other's blocks.</p>
+</div>
+
 <div id="blocker" class="notice" role="status" hidden></div>
-<section class="composer panel" aria-labelledby="composer-heading"><div class="section-line"><h2 id="composer-heading">Create an experiment</h2><span class="subtle" id="engine-label">AI engine</span></div><label class="wish-label" for="wish">What would you like to change?</label><textarea id="wish" maxlength="20000" rows="4" placeholder="e.g. Log a short haiku whenever a new block is accepted." aria-describedby="wish-help"></textarea><div class="section-line"><small id="wish-help">Be specific about the behavior you want to observe.</small><small id="draft-status" role="status"></small></div><details class="examples" open><summary>Start with an example</summary><div class="tabs" role="group" aria-label="Example category"><button class="selected" data-category="Learn" aria-pressed="true">Learn</button><button data-category="Customize" aria-pressed="false">Customize</button><button data-category="Experiment" aria-pressed="false">Experiment</button><button data-category="Consensus" aria-pressed="false">Consensus</button></div><div id="examples" class="example-grid"></div></details><div class="composer-bottom"><div><label for="mode" class="small-label">ACTIVATION MODE</label><select id="mode"><option value="review">Review before applying</option><option value="auto">Automatic activation</option></select><small id="mode-help">Inspect the proposal before it changes your source.</small></div><button id="manifest" class="primary">Manifest ✦</button></div><details class="advanced"><summary>Build & agent preferences</summary><div class="checks"><label><input id="autobuild" type="checkbox" checked> Build and verify after applying</label><label><input id="autorestart" type="checkbox"> Activate after verification</label><label><input id="yolo" type="checkbox"> Unrestricted agent (YOLO)</label></div><p class="subtle">YOLO permits unrestricted commands on your machine. Consensus-sensitive proposals always pause for review. AI sessions are billed by your provider; actual cost appears when reported.</p></details></section>
-<section id="current" class="panel" aria-labelledby="current-heading"><div class="section-line"><h2 id="current-heading">Current experiment</h2><span id="job-state" class="pill">No experiment yet</span></div><ol class="pipeline" aria-label="Experiment progress"><li data-step="agent">Generate</li><li data-step="review">Review</li><li data-step="build">Build</li><li data-step="test">Test</li><li data-step="restart">Activate</li></ol><div id="empty-current" class="empty"><span aria-hidden="true">✦</span><h3>A little less prophecy. A little more proof.</h3><p>Your request, changes, and verification results will appear here.</p></div><div id="job-content" hidden><div class="request"><span class="metric-label">YOUR REQUEST</span><p id="job-prompt"></p><small id="job-meta"></small></div><div class="outcomes"><div><span class="metric-label">BUILD</span><strong id="outcome-build">Not run</strong></div><div><span class="metric-label">VERIFICATION</span><strong id="outcome-test">Not run</strong></div><div><span class="metric-label">ACTIVATION</span><strong id="outcome-active">Not activated</strong></div></div><div id="job-error" class="notice danger" role="alert" hidden></div><div id="risk" class="notice" hidden></div><h3>What changed</h3><p id="explanation" class="explanation"></p><div id="acceptance" class="subtle"></div><div id="evidence" class="evidence"></div><details id="diff-details"><summary id="diff-summary">Source changes</summary><div class="diff-toolbar"><button id="download-diff">Download complete diff</button><button id="compare-baseline">Compare source with baseline</button></div><pre id="diff" class="diff" tabindex="0" aria-label="Source diff"></pre></details><div class="toolbar"><button id="apply" class="primary" hidden>Apply & verify proposal</button><button id="cancel" hidden>Cancel experiment</button><button id="refine">Refine request</button><button id="retry" hidden>Retry build</button><button id="share" hidden>Share request</button></div></div><details class="logs"><summary>Technical activity <span id="log-count"></span></summary><div class="section-line"><small>Logs stay in place while you read.</small><button id="jump" class="text-button">Jump to latest ↓</button></div><pre id="feed" tabindex="0" aria-label="Technical activity log"></pre></details><p id="progress-message" class="subtle" role="status" aria-live="polite"></p></section>
-<section id="playground" class="panel" aria-labelledby="playground-heading"><div class="section-line"><h2 id="playground-heading">Regtest playground</h2><span class="pill">ISOLATED NETWORK</span></div><p>Generate blocks on your private chain and observe the height change. Candidate verification also mines a block on a separate disposable node.</p><div class="toolbar"><label for="scenario">Scenario</label><select id="scenario"><option value="blocks">Generate blocks on my node</option><option value="maturity">Coinbase maturity (disposable node)</option><option value="transaction">Transaction lifecycle (disposable node)</option></select><label for="blocks">Blocks</label><input id="blocks" type="number" min="1" max="150" value="1"><button id="mine">Generate blocks</button><button id="mine-101" class="text-button">Generate 101 blocks</button></div><small id="playground-help">Available when a regtest node is RPC-ready. This scenario does not send transactions or use a wallet.</small></section>
-<section id="history-section" class="panel" aria-labelledby="history-heading"><div class="section-line"><h2 id="history-heading">The book of experiments</h2><span id="history-count" class="subtle"></span></div><label for="search" class="sr-only">Search experiment history</label><input id="search" type="search" placeholder="Search requests, revisions, or outcomes…"><div id="history" class="history"></div></section>
-<section id="settings-section" class="panel" aria-labelledby="settings-heading"><div class="section-line"><h2 id="settings-heading">Node settings</h2><button id="load-settings">Load settings</button></div><p class="subtle">Configure supported options without an AI session. Changes are validated and saved to your isolated node configuration. Restart to apply them.</p><label for="setting-search" class="sr-only">Filter node settings</label><input id="setting-search" type="search" placeholder="Filter settings…" hidden><div id="settings-fields"></div><button id="save-settings" hidden>Save settings</button><p id="settings-status" role="status" class="subtle"></p></section>
-<section id="setup" class="panel help" aria-labelledby="setup-heading"><h2 id="setup-heading">Setup & help</h2><div class="toolbar"><button id="update">Update from origin</button><span id="update-status" class="subtle">Checking local upstream reference</span></div><details><summary>Import or share a request</summary><p>A shared decree carries words, not executable code. Imported requests are displayed for your review and never run automatically.</p><label for="import-token">Paste a vibe1 token or sharing link</label><textarea id="import-token" rows="2" maxlength="20000"></textarea><button id="import">Review imported request</button><pre id="share-output" tabindex="0" hidden></pre></details><details><summary>How does an experiment work?</summary><p>The agent works in an isolated checkout. Review the proposal, then apply it to your source. Builds run unit tests and a disposable regtest scenario before activation. Wish-specific checks appear separately; general checks do not prove every requested behavior.</p></details><details><summary>What if an experiment fails?</summary><p>Your running release stays separate from the build output. Inspect the error and logs, refine the request, retry the build, or revert its source commit. Failed activation attempts restore the previous executable when available. Executable rollback does not undo changes to chain data.</p></details><details><summary>What does compatibility impact mean?</summary><p>Source patterns and sensitive file paths flag possible changes to Bitcoin rules. They can miss changes or flag harmless edits. Neither a passing test nor an empty warning proves mainnet compatibility.</p></details><details><summary>Try the workflow without an AI account</summary><p><a href="?demo=1">Open the browser demo</a> for a simulated walkthrough. For a real local rehearsal, run <code>./vibes --engine mock</code>; it creates a harmless documentation edit.</p></details><details><summary>Install or update the local console</summary><p>Install instructions and supported platforms are on the <a href="https://hotpixelgroup.github.io/bitcoin/#install">project site</a>. Existing clones: <code>git pull --ff-only origin vibes</code>, then restart <code>./vibes</code>. Commit your own source changes before updating.</p></details></section>
-<footer>Built by Harry Beckwith & Jones Beckwith · <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>Built on Bitcoin Core. Every conviction gets a diff.</footer>
-</main></div>
-<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm action</h2><p id="confirm-copy"></p><form method="dialog" class="toolbar"><button value="cancel">Cancel</button><button value="confirm" class="primary" id="confirm-action">Continue</button></form></dialog>
+
+<section id="curated" class="panel" aria-labelledby="curated-heading">
+  <div class="section-line">
+    <h2 id="curated-heading">Start with a ready-made experiment</h2>
+    <span class="subtle">No AI needed</span>
+  </div>
+  <p class="subtle">Each one has a known outcome. You make a prediction first, then watch two real nodes on a private chain, then read why it went the way it did.</p>
+  <div id="curated-grid"></div>
+  <p id="learning-summary" class="subtle"></p>
+</section>
+
+<section id="beliefs" class="panel" aria-labelledby="beliefs-heading">
+  <div class="section-line">
+    <h2 id="beliefs-heading">Check your thinking</h2>
+    <span id="beliefs-stage" class="subtle"></span>
+  </div>
+  <p id="beliefs-intro" class="subtle"></p>
+  <details id="beliefs-details">
+    <summary id="beliefs-summary">Ten statements: true or false?</summary>
+    <div id="beliefs-list"></div>
+    <div class="toolbar">
+      <button id="beliefs-save">Save my answers</button>
+      <button id="learning-export" class="text-button">Download my record</button>
+    </div>
+    <p id="beliefs-status" class="subtle" role="status"></p>
+  </details>
+</section>
+
+<section id="composer" class="composer panel" aria-labelledby="composer-heading">
+  <div class="section-line">
+    <h2 id="composer-heading">Your own experiment</h2>
+    <span class="subtle" id="engine-label">AI engine</span>
+  </div>
+  <div id="imported-note" class="notice" hidden></div>
+  <label class="wish-label" for="wish">What would you like to change?</label>
+  <textarea id="wish" maxlength="20000" rows="4" placeholder="e.g. Log a short haiku whenever a new block is accepted." aria-describedby="wish-help"></textarea>
+  <div class="section-line">
+    <small id="wish-help">Say what the node should do differently. An AI agent writes the change; it can edit files and nothing else.</small>
+    <small id="draft-status" role="status"></small>
+  </div>
+  <details class="examples">
+    <summary>Example requests</summary>
+    <div class="tabs" role="group" aria-label="Example category">
+      <button class="selected" data-category="Customize" aria-pressed="true">Customize</button>
+      <button data-category="Policy" aria-pressed="false">Policy</button>
+      <button data-category="Consensus" aria-pressed="false">Consensus</button>
+    </div>
+    <div id="examples" class="example-grid"></div>
+  </details>
+  <div class="composer-bottom">
+    <div>
+      <label for="mode" class="small-label">AFTER THE PROPOSAL IS BUILT AND COMPARED</label>
+      <select id="mode">
+        <option value="review">Wait for my review</option>
+        <option value="auto">Apply it if nothing is flagged</option>
+      </select>
+      <small id="mode-help"></small>
+    </div>
+    <button id="manifest" class="primary">Manifest ✦</button>
+  </div>
+  <details class="advanced">
+    <summary>Build preferences and agent limits</summary>
+    <div class="checks">
+      <label><input id="autobuild" type="checkbox" checked> Build and compare the proposal before I review it</label>
+      <label><input id="autorestart" type="checkbox"> Start the new build once it is applied</label>
+    </div>
+    <p class="subtle" id="agent-note"></p>
+  </details>
+</section>
+
+<section id="current" class="panel" aria-labelledby="current-heading">
+  <div class="section-line">
+    <h2 id="current-heading">Current experiment</h2>
+    <span id="job-state" class="pill">No experiment yet</span>
+  </div>
+  <ol class="pipeline" aria-label="Experiment progress">
+    <li data-step="agent">Propose</li>
+    <li data-step="build">Build</li>
+    <li data-step="test">Test</li>
+    <li data-step="compare">Compare</li>
+    <li data-step="review">Review</li>
+    <li data-step="restart">Run</li>
+  </ol>
+  <div id="empty-current" class="empty">
+    <span aria-hidden="true">✦</span>
+    <h3>A little less prophecy. A little more proof.</h3>
+    <p>Your request, the proposed change and what two nodes made of it will appear here.</p>
+  </div>
+  <div id="job-content" hidden>
+    <div class="request">
+      <span class="metric-label">THE REQUEST</span>
+      <p id="job-prompt"></p>
+      <small id="job-meta"></small>
+    </div>
+    <div class="outcomes">
+      <div><span class="metric-label">BUILD</span><strong id="outcome-build">Not run</strong></div>
+      <div><span class="metric-label">UNIT TESTS</span><strong id="outcome-test">Not run</strong></div>
+      <div><span class="metric-label">COMPARISON</span><strong id="outcome-compare">Not run</strong></div>
+      <div><span class="metric-label">RUNNING</span><strong id="outcome-active">Not started</strong></div>
+    </div>
+    <div id="job-error" class="notice danger" role="alert" hidden></div>
+    <div id="review-reason" class="notice" hidden></div>
+    <div id="risk" class="notice" hidden></div>
+    <div id="tests-touched" class="notice" hidden></div>
+
+    <div id="comparison" hidden>
+      <h3 id="verdict-title"></h3>
+      <p id="verdict-meaning"></p>
+      <p id="prediction-result" class="notice" hidden></p>
+      <p id="ready-note" class="subtle" hidden>This ran a ready-made node built from exactly the change shown below. Bitcoin Core's unit tests were not run on it; run the experiment again with "Compile it myself" to see which of them the change breaks.</p>
+      <div id="chain-picture" class="chain-picture" hidden></div>
+      <div id="comparison-rows" class="comparison"></div>
+      <h3 id="mainnet-heading">What this would mean on a real network</h3>
+      <p id="verdict-mainnet"></p>
+      <div id="lesson" hidden>
+        <h3>Why it went this way</h3>
+        <p id="lesson-belief" class="belief"></p>
+        <p id="lesson-text"></p>
+        <fieldset id="followup" class="question" hidden>
+          <legend id="followup-question"></legend>
+          <div id="followup-options"></div>
+          <button id="followup-check">Check my answer</button>
+          <p id="followup-result" role="status"></p>
+        </fieldset>
+        <div id="lesson-sources" class="subtle"></div>
+        <button id="try-again" hidden>Try a different share</button>
+      </div>
+    </div>
+
+    <h3 id="explanation-heading">What the agent says it changed</h3>
+    <p id="explanation-note" class="subtle">This is the agent's own description. It has not been checked; the evidence above and the change below have.</p>
+    <p id="explanation" class="explanation"></p>
+    <div id="evidence" class="evidence"></div>
+
+    <details id="diff-details">
+      <summary id="diff-summary">The change</summary>
+      <div id="diff-files" class="diff-files"></div>
+      <div class="diff-toolbar">
+        <button id="download-diff">Download complete diff</button>
+        <button id="compare-baseline">Compare source with baseline</button>
+      </div>
+      <pre id="diff" class="diff" tabindex="0" aria-label="Source diff"></pre>
+    </details>
+
+    <div class="toolbar">
+      <button id="apply" class="primary" hidden>Apply proposal</button>
+      <button id="cancel" hidden>Cancel experiment</button>
+      <button id="refine">Refine request</button>
+      <button id="repair" hidden>Ask the agent to fix the build error</button>
+      <button id="retry" hidden>Retry build</button>
+      <button id="share" hidden>Share request</button>
+    </div>
+  </div>
+  <details class="logs">
+    <summary>Technical activity <span id="log-count"></span></summary>
+    <div class="section-line">
+      <small>Logs stay in place while you read.</small>
+      <button id="jump" class="text-button">Jump to latest ↓</button>
+    </div>
+    <pre id="feed" tabindex="0" aria-label="Technical activity log"></pre>
+  </details>
+  <p id="progress-message" class="subtle" role="status" aria-live="polite"></p>
+</section>
+
+<section id="playground" class="panel" aria-labelledby="playground-heading">
+  <div class="section-line">
+    <h2 id="playground-heading">Your private chain</h2>
+    <span class="pill">REGTEST ONLY</span>
+  </div>
+  <p>Produce blocks on demand on your own node's private chain. Producing a block here takes no real work, which is why its coins are worth nothing.</p>
+  <div class="toolbar">
+    <label for="blocks">Blocks</label>
+    <input id="blocks" type="number" min="1" max="150" value="1">
+    <button id="mine">Produce blocks</button>
+    <button id="mine-101" class="text-button">Produce 101 blocks</button>
+    <button id="maturity" class="text-button">When can new coins be spent?</button>
+  </div>
+  <small id="playground-help"></small>
+</section>
+
+<section id="history-section" class="panel" aria-labelledby="history-heading">
+  <div class="section-line">
+    <h2 id="history-heading">Experiment history</h2>
+    <span id="history-count" class="subtle"></span>
+  </div>
+  <label for="search" class="sr-only">Search experiment history</label>
+  <input id="search" type="search" placeholder="Search requests, revisions, or outcomes…">
+  <div id="history" class="history"></div>
+</section>
+
+<section id="settings-section" class="panel" aria-labelledby="settings-heading">
+  <div class="section-line">
+    <h2 id="settings-heading">Node settings</h2>
+    <button id="load-settings">Load settings</button>
+  </div>
+  <p class="subtle">Settings are local choices about how your node runs: none of them changes which blocks are valid, and no other node is bound by them. They are saved to your node's own configuration and take effect when it restarts. No AI is involved.</p>
+  <label for="setting-search" class="sr-only">Filter node settings</label>
+  <input id="setting-search" type="search" placeholder="Filter settings…" hidden>
+  <div id="settings-fields"></div>
+  <button id="save-settings" hidden>Save settings</button>
+  <p id="settings-status" role="status" class="subtle"></p>
+</section>
+
+<section id="setup" class="panel help" aria-labelledby="setup-heading">
+  <h2 id="setup-heading">Setup &amp; help</h2>
+
+  <h3>Undo and reset</h3>
+  <div class="toolbar">
+    <button id="restore">Restore the baseline source</button>
+    <button id="reset-chain">Reset my private chain</button>
+  </div>
+  <p class="subtle">Undoing a change to the source does not undo what the node did under it: blocks it accepted or refused stay in its database. On the private chain the remedy is a clean start, which Reset gives you and which every Revert performs for you.</p>
+
+  <h3>Updates</h3>
+  <div class="toolbar">
+    <button id="update">Check for and take updates</button>
+    <span id="update-status" class="subtle">Nothing is fetched until you ask</span>
+  </div>
+  <div class="toolbar">
+    <button id="check-upstream">How far behind Bitcoin Core is this?</button>
+    <span id="upstream-status" class="subtle"></span>
+  </div>
+  <p class="subtle">Like Bitcoin Core, this lab never updates by itself. Both buttons contact GitHub; nothing else does.</p>
+
+  <details>
+    <summary>Compare with another node program</summary>
+    <p>Run the unmodified node beside any other node program on this machine: another release, Bitcoin Knots, or a build of a proposed change. The lab gives both the same blocks and transactions and reports what each did. The program runs inside the sandbox, on a throwaway private chain. The lab never downloads one for you: get it from a source you trust and check its signature first.</p>
+    <label for="external-path">Full path to its <code>bitcoind</code></label>
+    <input id="external-path" type="text" placeholder="/Users/you/bitcoin-knots/bin/bitcoind">
+    <button id="external-run">Compare</button>
+  </details>
+  <details>
+    <summary>Import or share a request</summary>
+    <p>A shared request is the sender's words, never their code. Words are still instructions to an AI agent, so an imported request is treated as untrusted: it is shown to you first, it always stops for your review, it is never applied or started automatically, and the agent that reads it can edit files and nothing else.</p>
+    <label for="import-token">Paste a vibe1 token or sharing link</label>
+    <textarea id="import-token" rows="2" maxlength="20000"></textarea>
+    <button id="import">Review imported request</button>
+    <pre id="share-output" tabindex="0" hidden></pre>
+  </details>
+  <details>
+    <summary>How does an experiment work?</summary>
+    <p>The agent writes a proposal in an isolated copy of the source. It can read and edit files there; it cannot run commands or use the network. The lab then compiles the proposal inside an operating-system sandbox, runs Bitcoin Core's unit tests on it, and starts it beside an unmodified node on a throwaway private chain. Each node is handed the other's blocks and a few test transactions, and the lab reports what each one did. Only then are you asked whether to keep the change. Applying it saves exactly the revision that was built.</p>
+  </details>
+  <details>
+    <summary>Consensus rules, policy, and the two kinds of fork</summary>
+    <p><b>Consensus rules</b> decide whether a block is valid at all. Every node checks them for itself, and a block that breaks them is refused however much mining power produced it. <b>Policy</b> is a node's local choice about which unconfirmed transactions to keep and pass on; it never applies to transactions already in a block.</p>
+    <p>Change a consensus rule and one of two things happens. <b>Tighten</b> it, and your node refuses blocks everyone else accepts: it stops following the network at the first such block. That shape of change is called a soft fork, and others follow it only if most mining power enforces it. <b>Loosen</b> it, and nothing visible happens until a block uses the looser rule, which every unmodified node then refuses. That shape is called a hard fork.</p>
+  </details>
+  <details>
+    <summary>Which network am I on?</summary>
+    <p id="networks-help"></p>
+  </details>
+  <details>
+    <summary>What do the checks prove?</summary>
+    <p>Compiled: the change builds. Unit tests: which of Bitcoin Core's own tests still pass; when a change alters a rule on purpose, the tests that pin that rule fail, and their names tell you what changed. Comparison: what an unmodified node did with this build's blocks and transactions, and the reverse. The comparison covers block rewards, one reward halving, two kinds of transaction and block exchange in both directions. A change to something it never exercises will show no difference. None of this proves a change is safe on a real network.</p>
+  </details>
+  <details>
+    <summary>What if an experiment fails?</summary>
+    <p>If the proposal does not compile, nothing has changed: read the compiler's output under Technical activity, then refine the request or ask the agent to fix the error. If a new build will not start, the previous build is started again. To undo a saved change, use Revert in the history, or Restore the baseline source above.</p>
+  </details>
+  <details>
+    <summary>Where to go next</summary>
+    <p>Everything here happens on your own machine. The same questions are worked on in the open:</p>
+    <p><a href="https://github.com/hotpixelgroup/bitcoin4plebs">bitcoin4plebs</a> is a companion project that walks you through Bitcoin Core's real source, with no coding required. <a href="https://github.com/bitcoin-inquisition/bitcoin">Bitcoin Inquisition</a> is where proposed consensus changes are switched on for real on signet, a shared test network. <a href="https://bitcoinops.org/en/topics/">Bitcoin Optech</a> explains the proposals themselves. Nothing made in this lab is offered to Bitcoin Core.</p>
+  </details>
+  <details>
+    <summary>Try it without an AI account</summary>
+    <p>The ready-made experiments need no AI. To rehearse the request workflow, run <code>./vibes --engine mock</code>: a stand-in agent makes one harmless edit to the manual.</p>
+  </details>
+</section>
+
+<footer>Built by Harry Beckwith &amp; Jones Beckwith · <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>Built on Bitcoin Core. Nothing made here is offered to Bitcoin Core: every change stays on your machine.</footer>
+</main>
+</div>
+
+<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <h2 id="confirm-title">Confirm action</h2>
+  <p id="confirm-copy"></p>
+  <form method="dialog" class="toolbar">
+    <button value="cancel">Cancel</button>
+    <button value="confirm" class="primary" id="confirm-action">Continue</button>
+  </form>
+</dialog>
+
+<dialog id="predict-dialog" aria-labelledby="predict-title">
+  <h2 id="predict-title">Make a prediction first</h2>
+  <p id="predict-summary" class="subtle"></p>
+  <form method="dialog">
+    <div id="predict-slider" class="slider" hidden>
+      <label for="predict-share" id="predict-share-label"></label>
+      <input id="predict-share" type="range">
+      <output id="predict-share-value" for="predict-share"></output>
+    </div>
+    <fieldset class="question">
+      <legend id="predict-question"></legend>
+      <div id="predict-options"></div>
+    </fieldset>
+    <label id="predict-compile-row" class="choice" hidden><input id="predict-compile" type="checkbox"> <span id="predict-compile-text"></span></label>
+    <p class="subtle">People who commit to a prediction before watching learn more from what they see. Your answers stay on this machine.</p>
+    <div class="toolbar">
+      <button value="cancel">Cancel</button>
+      <button value="confirm" class="primary" id="predict-run">Run the experiment</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<noscript><p class="notice">JavaScript is required for the interactive console. <a href="https://github.com/hotpixelgroup/bitcoin/blob/vibes/doc/vibes.md">Read the manual</a>.</p></noscript>
-</body></html>
+<noscript><p class="notice">JavaScript is required for the interactive console. <a href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the manual</a>.</p></noscript>
+</body>
+</html>
