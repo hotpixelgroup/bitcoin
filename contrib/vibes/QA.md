@@ -69,7 +69,7 @@ checked.
 
 ## Automated suites
 
-- 106 console tests and 17 installer tests (`python3 -m unittest discover -s
+- 108 console tests and 17 installer tests (`python3 -m unittest discover -s
   contrib/vibes/tests`), all passing, including the tests that need a real
   node. See `tests/README.md` for what each group covers.
 - Browser checks of the landing page and demo in Chrome via Playwright: the
@@ -189,6 +189,37 @@ own rules; tools from Homebrew on Linux may not run inside the sandbox; a
 shared request that needs invisible joiners (some scripts, some emoji) is
 refused and has to be retyped.
 
+## The release, tried as a new install would use it
+
+The release workflow ran for the first time on `v31.99-7`. All three platforms
+(macOS on Apple silicon, Linux on x86_64 and on ARM64) compiled the node,
+passed Bitcoin Core's unit tests and passed this project's tests against the
+node just built; on the Mac that includes the tests that probe the sandbox
+from inside. It built the three changed nodes, checked that each disagrees
+with the unmodified node in the documented direction, and published the
+release only after every file was attached.
+
+The published files were then used on an Apple silicon Mac the way a new
+install uses them: the installer's ready-made node step, and the console's
+download of the node and of the three changed nodes. That found two faults
+that no test had caught, because both need a real release to show:
+
+- The console did not recognise the release's node as its unmodified
+  reference. A release build names itself by its tag, and the console only
+  understood a commit. With no reference, every ready-made experiment asked
+  for a compile first. The console now understands both, and the installer
+  leaves a note of the commit beside the node.
+- Installing a ready-made node over an earlier one overwrote the program in
+  place, and macOS on Apple silicon silently refuses to run a program changed
+  that way. Programs are now put in place as new files.
+
+`v31.99-7` was marked a pre-release so that it is not offered as the latest.
+With both faults fixed, the same check against the same published files
+passed: the checksum and commit matched, the node was adopted as the
+reference, and the doubled-reward, halved-reward and earlier-halving nodes
+gave "loosened", "tightened" and "tightened", with the rule-breaking-miner
+scene refusing all thirty blocks.
+
 ## Not checked
 
 - **A live AI session.** The agent's command line was accepted by Claude Code
@@ -205,10 +236,13 @@ refused and has to be retyped.
   routes are closed. They are not an attempt by a specialist to find others.
 - **Docker.** CI builds the image and checks that the console answers. The
   review-first behaviour inside it is covered by a unit test only.
-- **The Mac app**, the release workflow, signing and notarisation. None can run
-  outside GitHub Actions or without credentials. That includes the new step
-  that builds and ships the three changed nodes, and the console's download of
-  them, which is covered by tests against a local folder only.
+- **The Mac app**, signing and notarisation. The release workflow builds the
+  app, but nobody has opened the one it built, and signing and notarisation
+  need credentials the project does not have yet.
+- **A complete install from nothing.** The installer's ready-made node step
+  and the console's downloads were run against a real release. The rest of
+  the installer (installing build tools, fetching the source) was not run on
+  a clean machine, and the ready-made files were tried on a Mac only.
 - **Whether any of this teaches.** No learner has used it. The lessons have
   not been reviewed by a Bitcoin Core contributor or an educator. Both are
   things only people can do; `doc/vibes-study.md` and the "Reviewing the

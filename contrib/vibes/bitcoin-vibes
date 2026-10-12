@@ -404,6 +404,18 @@ SETTINGS = (
 )
 
 
+def install_program(source, target):
+    """Copy a program into place as a new file, never over the old one.
+
+    macOS on Apple silicon remembers the signature of a program it has run.
+    One that is overwritten in place no longer matches what was remembered
+    and is killed the moment it is started, with no message."""
+    target = Path(target)
+    fresh = target.with_name(f".{target.name}.{os.getpid()}.new")
+    shutil.copy2(source, fresh)
+    os.replace(fresh, target)
+
+
 def run(cmd, cwd=None, timeout=60, env=None):
     """Run a command, return (returncode, stdout, stderr)."""
     try:
@@ -577,7 +589,7 @@ class Console:
         for name in ("bitcoind", "bitcoin-cli"):
             binary = self.bin_path(name)
             if binary:
-                shutil.copy2(binary, bootstrap / name)
+                install_program(binary, bootstrap / name)
         self.build_state = {"path": str(bootstrap), "sha": None, "verified": False}
         self._write_json(self.state_dir / "build.json", self.build_state)
 
@@ -1645,7 +1657,7 @@ class Console:
         if current.get("tree") == tree and (self.reference_dir / "bitcoind").exists():
             return True
         self.reference_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(Path(release_dir) / "bitcoind", self.reference_dir / "bitcoind")
+        install_program(Path(release_dir) / "bitcoind", self.reference_dir / "bitcoind")
         self._write_json(self.reference_dir / "reference.json",
                          {"tree": tree, "sha": sha, "time": time.time()})
         if job:
@@ -1653,18 +1665,35 @@ class Console:
         return True
 
     def _adopt_installed_reference(self):
-        """On first start, accept the installer's build as the reference if the
-        program itself reports that it was built from unmodified source."""
+        """On first start, accept the installed node program as the reference
+        if it was built from unmodified source.
+
+        Which source it was built from is read from the note a ready-made
+        node is installed with (the commit its release recorded, already
+        checked against this source when it was installed), or else from what
+        the program says about itself: a commit, or the release tag it was
+        built at. Either is believed only while the build folder has never
+        been shared with a build of changed source."""
         if self.reference_state()["ready"] or self._build_folder_was_shared():
             return
         bitcoind = self.bin_path("bitcoind")
         if not bitcoind:
             return
-        code, out, _ = self.ask_node_program(bitcoind, "-version")
-        found = re.search(r"version v[0-9][^\s-]*-([0-9a-f]{7,40})(-dirty)?\b", out) if code == 0 else None
-        if not found or found.group(2):
-            return
-        code, sha, _ = self.git("rev-parse", "--verify", "--quiet", found.group(1) + "^{commit}")
+        note, name = bitcoind.parent / "COMMIT", ""
+        try:
+            if note.is_file() and not note.is_symlink():
+                name = note.read_text()[:100].strip()
+        except OSError:
+            name = ""
+        if not re.fullmatch(r"[0-9a-f]{40}", name):
+            code, out, _ = self.ask_node_program(bitcoind, "-version")
+            found = re.search(r"version (v[0-9][0-9A-Za-z._-]*)", out) if code == 0 else None
+            if not found or found.group(1).endswith("-dirty"):
+                return
+            # "v31.99.0-1a2b3c4d5e" names a commit; "v31.99-7" is a release tag.
+            commit = re.search(r"-([0-9a-f]{7,40})$", found.group(1))
+            name = commit.group(1) if commit else "refs/tags/" + found.group(1)
+        code, sha, _ = self.git("rev-parse", "--verify", "--quiet", name + "^{commit}")
         if code == 0:
             self._capture_reference(sha.strip(), bitcoind.parent)
 
@@ -2437,6 +2466,12 @@ class Console:
             raise RuntimeError("Your build folder is not an ordinary folder (it is a link or a file), so "
                                "nothing is compiled there. If you did not put it there, a program built "
                                "from changed source did. Remove it, then build again.")
+        # The note a ready-made node came with says nothing about what is
+        # compiled here from now on.
+        try:
+            (build_dir / "bin" / "COMMIT").unlink()
+        except OSError:
+            pass
         code = self._stream(job, ["cmake", "-B", "build", "-DBUILD_TESTS=ON", "-DBUILD_BENCH=OFF",
                                   "-DBUILD_FUZZ_BINARY=OFF", "-DBUILD_GUI=OFF"],
                             write=[build_dir], on_line=on_line)
@@ -2495,7 +2530,7 @@ class Console:
         release = self.state_dir / "releases" / (sha + "-" + job.id)
         release.mkdir(parents=True, exist_ok=True)
         for name in ("bitcoind", "bitcoin-cli"):
-            shutil.copy2(self.bin_path(name), release / name)
+            install_program(self.bin_path(name), release / name)
         if identical and self._build_folder_was_shared():
             # Unmodified source, but compiled where builds of changed source
             # have been able to write. The unmodified node is never taken
@@ -2508,7 +2543,7 @@ class Console:
                     job.meta["test_status"] = "cancelled"
                     return None
             if self.reference_state()["ready"]:
-                shutil.copy2(self.reference_dir / "bitcoind", release / "bitcoind")
+                install_program(self.reference_dir / "bitcoind", release / "bitcoind")
                 job.emit(t="log", line="Source is unmodified: the node kept for it is the reference node itself")
 
         item = lessons.curated(job.meta.get("curated", ""))
@@ -2833,7 +2868,7 @@ class Console:
     def _keep_variant(self, item, release_dir, source):
         folder = self.variant_dir(item["id"])
         folder.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(Path(release_dir) / "bitcoind", folder / "bitcoind")
+        install_program(Path(release_dir) / "bitcoind", folder / "bitcoind")
         self._write_json(folder / "variant.json",
                          {"tree": self.node_key(self.stock_rev()), "patch": self._patch_digest(item),
                           "source": source, "time": time.time()})
@@ -3194,8 +3229,11 @@ class Console:
             dest = self.repo / "build" / "bin"
             dest.mkdir(parents=True, exist_ok=True)
             for name in ("bitcoind", "bitcoin-cli"):
-                shutil.copy2(src / name, dest / name)
+                install_program(src / name, dest / name)
                 (dest / name).chmod(0o755)
+            # A note of the commit this program was built from, for adopting
+            # it as the unmodified reference node.
+            (dest / "COMMIT").write_text(built_from + "\n")
             if self.ask_node_program(dest / "bitcoind", "-version")[0] != 0:
                 job.emit(t="log", line="It would not run on this machine; compiling instead")
                 return False

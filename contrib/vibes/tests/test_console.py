@@ -824,6 +824,67 @@ class ReferenceRuleTests(ConsoleCase):
         self.assertEqual(record['compare']['verdict'], 'identical')
         self.assertEqual((Path(record['path']) / 'bitcoind').read_text(), 'compiled apart')
 
+    def test_programs_are_put_in_place_as_new_files(self):
+        """Overwriting a program that has been run gets it killed on Apple
+        silicon. Replacing it gives the new program a file of its own."""
+        folder = self.repo / 'build/bin'
+        folder.mkdir(parents=True)
+        (folder / 'new').write_text('new program')
+        target = folder / 'bitcoind'
+        target.write_text('old program')
+        before = target.stat().st_ino
+        held = open(target)                       # as if the old program were still running
+        self.addCleanup(held.close)
+        vibes.install_program(folder / 'new', target)
+        self.assertEqual(target.read_text(), 'new program')
+        self.assertNotEqual(target.stat().st_ino, before)
+        self.assertEqual(held.read(), 'old program')
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ['bitcoind', 'new'])
+        self.programs('from a build')
+        self.console._capture_reference(self.console.stock_rev(), folder)
+        first = (self.console.reference_dir / 'bitcoind').stat().st_ino
+        (self.console.reference_dir / 'reference.json').unlink()
+        self.console._capture_reference(self.console.stock_rev(), folder)
+        self.assertNotEqual((self.console.reference_dir / 'bitcoind').stat().st_ino, first)
+
+    def test_a_release_node_is_adopted_as_the_reference(self):
+        """A node installed from a release says "v31.99-7", a tag, where a
+        local build says "v31.99.0-<commit>". Both, and the note a ready-made
+        node is installed with, must be recognised: otherwise a new install
+        has no reference and every ready-made experiment asks for a compile."""
+        head = self.git('rev-parse', 'HEAD')
+        self.git('tag', 'v31.99-7')
+        says = {'version': ''}
+
+        def program(bitcoind, flag, timeout=30):
+            return 0, f"Bitcoin Vibes daemon version {says['version']} bitcoind\nCopyright\n", ''
+
+        def adopted(version, note=None):
+            shutil.rmtree(self.console.reference_dir, ignore_errors=True)
+            self.programs('from the release')
+            if note:
+                (self.repo / 'build/bin/COMMIT').write_text(note + '\n')
+            elif (self.repo / 'build/bin/COMMIT').exists():
+                (self.repo / 'build/bin/COMMIT').unlink()
+            says['version'] = version
+            with patch.object(self.console, 'ask_node_program', program):
+                self.console._adopt_installed_reference()
+            return self.reference() == 'from the release'
+        self.assertTrue(adopted('v31.99-7'))                       # a release tag
+        self.assertTrue(adopted('v31.99.0-' + head[:12]))          # a commit
+        self.assertTrue(adopted('nonsense', note=head))            # the installer's note
+        self.assertFalse(adopted('v31.99-8'))                      # a tag this source does not have
+        self.assertFalse(adopted('v31.99.0-' + head[:12] + '-dirty'))
+        self.assertFalse(adopted('v31.99-7', note='0' * 40))       # a note naming no commit here
+        # Compiling here ends what the note says.
+        (self.repo / 'build/bin/COMMIT').write_text(head + '\n')
+        with self.compiling():
+            self.console._compile(vibes.Job('build'))
+        self.assertFalse((self.repo / 'build/bin/COMMIT').exists())
+        # And nothing in a shared folder is believed.
+        self.console._note_build_folder_shared('abc')
+        self.assertFalse(adopted('v31.99-7', note=head))
+
     def test_current_source_is_kept_as_the_reference_before_a_first_proposal(self):
         self.programs()
 

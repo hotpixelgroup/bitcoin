@@ -198,6 +198,9 @@ class PrebuiltTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertTrue((self.dest / 'build/bin/bitcoind').is_file())
         self.assertIn('not an independent signature', out)
+        # The commit it was built from goes along, so the console can adopt it
+        # as the unmodified reference node.
+        self.assertEqual((self.dest / 'build/bin/COMMIT').read_text().strip(), self.commit)
 
     def test_tampered_archive_is_refused(self):
         self.publish(checksum='0' * 64)
