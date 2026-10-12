@@ -8,6 +8,9 @@
 build
 build_*
 .vibes
+dist
+reports
+research_notes
 depends/work
 depends/built
 depends/sources
