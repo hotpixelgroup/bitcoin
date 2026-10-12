@@ -1,18 +1,21 @@
-# Experiment lab QA
+# Testing the lab
 
-Run the Python workflow/integration suite (temporary git repositories and HTTP servers):
+Console workflows, safety rules, the installer and the update path. Hermetic:
+temporary git repositories, a stand-in agent, no network, no node.
 
 ```sh
 python3 -m unittest discover -s contrib/vibes/tests -v
 ```
 
-Include real disposable regtest subsidy and transaction checks:
+The same suite plus the checks that need a real node: the two-node lab scenes,
+starting the node inside the sandbox, recovery from a build that will not
+start, and resetting the private chain.
 
 ```sh
 VIBES_QA_BIN="$PWD/build/bin" python3 -m unittest discover -s contrib/vibes/tests -v
 ```
 
-Build and serve the Pages site, then run browser and accessibility checks:
+The static site and the browser demo:
 
 ```sh
 python3 contrib/vibes/build_site.py --out /tmp/vibes-site
@@ -22,6 +25,50 @@ node contrib/vibes/tests/browser_qa.cjs
 node contrib/vibes/tests/accessibility_qa.cjs
 ```
 
-`VIBES_QA_URL` overrides the test server. `VIBES_BROWSER_CHANNEL=chrome` uses installed Chrome. `PLAYWRIGHT_MODULE` and `AXE_MODULE` can point at existing installations. Tests cover desktop, tablet, 390px and 320px layouts, review/reload, draft persistence, build/activation, failure/recovery, history, settings, sharing/imports, reduced motion, form labels, no browser demo API calls, and WCAG audits. The CI workflow runs these checks on source changes.
+`VIBES_QA_URL` overrides the test server. `VIBES_BROWSER_CHANNEL=chrome` uses
+installed Chrome. `PLAYWRIGHT_MODULE` and `AXE_MODULE` can point at existing
+installations.
 
-The browser demo is simulated. Python integration tests execute the real console workflows in temporary repositories; the optional regtest tests launch real executables in disposable data directories. Provider-specific AI generation is not called by automated QA.
+## What is covered
+
+| Area | Where | Needs a node |
+|---|---|---|
+| Propose, review, apply, revert, restore the baseline, restart recovery | `test_console.py` WorkflowTests | no |
+| What must wait for review: no sandbox, consensus-looking code, test edits, imported requests, observed differences | SafetyTests | no |
+| Proposals that edit the lab itself are refused | SafetyTests | no |
+| The agent's command line: file tools only, no bypass flag, deny rules | SafetyTests | no |
+| The real agent path, driven by a stand-in for the `claude` program, and its time limit | SafetyTests | no |
+| Which builds may start on a shared network; the mainnet confirmation; wallet and listening defaults | SharedNetworkTests | no |
+| Unit test suites run apart, with crashes and hangs reported by name | RegtestRulesTests | no |
+| Settings: defaults read from the build, pruning rules, hand edits preserved | SettingsTests | no |
+| Every ready-made experiment is complete, and its patch still applies to this source | LessonTests | no |
+| Plain-language alerts when a node refuses a block | HealthTests | no |
+| Sandbox profiles and the environment given to confined code | SandboxProfileTests | no |
+| HTTP: key handling, content security policy, cross-origin refusal, learning record | HttpTests | no |
+| Two real nodes: identical, policy-only, filter scene, reorganisation scene | RealNodeTests | yes |
+| Keys scene (restore from a backup on another node), fees scene, replay of the 2015 soft fork | RealNodeTests | yes |
+| Ready-made changed nodes: kept after a build, stale when the change or the base moves, published ones refused unless they match | ReadyMadeTests | no |
+| Scenes that need a changed node or the reference say how to get one; an outside program must be a named executable | ReadyMadeTests | no |
+| Before-and-after statements scored per statement; the slider scene's answer depends on the share | HttpTests, LessonTests | no |
+| Node start inside the sandbox, bad-build recovery, private chain reset | RealNodeTests | yes |
+| Installer: shallow-clone update, truthful messages, release tag installs | `test_install.py` UpdateTests | no |
+| Ready-made node: checksum, commit match, archive safety | `test_install.py` PrebuiltTests | no |
+| Browser demo: recorded results, predictions, lessons, safe rendering of shared text, narrow screens | `browser_qa.cjs` | no |
+| Accessibility audit at three widths | `accessibility_qa.cjs` | no |
+
+CI additionally builds the node and Bitcoin Core's unit tests from source,
+checks that `src/` differs from the upstream base in one file only, applies
+each ready-made source change to confirm an unmodified node disagrees in the
+documented direction, and runs the rule-breaking-miner scene and the
+mining-power scene (at 30% and 70%) with the nodes it has just built.
+
+## What is not covered by automated tests
+
+- A live AI session. The agent path is exercised with a stand-in program, never
+  with a real model.
+- The Linux sandbox (`bubblewrap`) on real hardware, beyond the CI job that
+  tries to enable it on a hosted runner.
+- The Mac app, notarisation, and the Docker image beyond "it builds and the
+  console answers".
+- The real console page in a browser. The browser tests drive the static demo,
+  which shares the page and script but not the server.
