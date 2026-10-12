@@ -119,7 +119,10 @@ install_deps() {
           git gcc-c++ cmake ninja-build python3 boost-devel sqlite-devel \
           capnproto-devel ;;
       pacman)
-        sudo_if_needed pacman -Sy --needed --noconfirm \
+        # No -y: refreshing the package list without upgrading the system
+        # leaves Arch half upgraded. If a package is "not found", the list is
+        # out of date; run "sudo pacman -Syu" yourself, then run this again.
+        sudo_if_needed pacman -S --needed --noconfirm \
           git base-devel cmake ninja python boost sqlite capnproto ;;
       zypper)
         sudo_if_needed zypper install -y \
@@ -495,66 +498,73 @@ install_claude() {
 
 # --- go ----------------------------------------------------------------------
 
-NEEDS_LOGIN=0
-CLAUDE_BIN="claude"
-CLAUDE_MISSING=0
-PATH_HINT=0
-UPDATED=0
+# Everything that acts is inside main, and main is called on the last line. A
+# download cut off part way therefore runs nothing at all, instead of running
+# the first half of the steps.
+main() {
+  NEEDS_LOGIN=0
+  CLAUDE_BIN="claude"
+  CLAUDE_MISSING=0
+  PATH_HINT=0
+  UPDATED=0
 
-# VIBES_INSTALL_ONLY runs one step by itself and stops. The tests drive the
-# real functions this way; it is not part of a normal install.
-case "${VIBES_INSTALL_ONLY:-}" in
-  '')       ;;
-  fetch)    fetch_source; exit 0 ;;
-  prebuilt) if try_prebuilt; then exit 0; else exit 1; fi ;;
-  claude)   install_claude; exit 0 ;;
-  *)        die "VIBES_INSTALL_ONLY must be fetch, prebuilt or claude" ;;
-esac
-
-banner
-detect_platform
-command -v git >/dev/null 2>&1 || [ "$PLATFORM" != "macos" ] || die "git not found. Run: xcode-select --install"
-install_deps
-fetch_source
-build_node
-install_claude
-
-printf '\n'
-step "Installed"
-note "$DEST"
-printf '\n'
-
-if [ "$CLAUDE_MISSING" = "1" ]; then
-  printf '  %sTwo things left, and only you can do them:%s\n' "$BOLD" "$OFF"
-  printf '    %s%s%s\n' "$GOLD" "$CLAUDE_INSTALL" "$OFF"
-  printf '    %sclaude auth login%s   %s(sign in; it opens your browser)%s\n' \
-         "$GOLD" "$OFF" "$DIM" "$OFF"
-  printf '\n'
-elif [ "$NEEDS_LOGIN" = "1" ]; then
-  printf '  %sOne thing left, and only you can do it:%s\n' "$BOLD" "$OFF"
-  printf '    %s%s auth login%s   %s(sign in; it opens your browser)%s\n' \
-         "$GOLD" "$CLAUDE_BIN" "$OFF" "$DIM" "$OFF"
-  printf '\n'
-  if [ "$PATH_HINT" = "1" ]; then
-    printf '  %sClaude landed in ~/.local/bin, which is not on your PATH. The console\n' "$DIM"
-    printf '  finds it regardless; to type "claude" yourself, add it:%s\n' "$OFF"
-    printf '    %secho '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.profile%s\n' "$GOLD" "$OFF"
-    printf '\n'
-  fi
-fi
-
-printf '  %sTo begin:%s\n' "$BOLD" "$OFF"
-printf '    %s%s/vibes%s\n' "$GOLD" "$DEST" "$OFF"
-printf '\n'
-printf '  %sIt builds nothing further, wakes the node, and opens the console.%s\n' "$DIM" "$OFF"
-printf '\n'
-
-# Read from the terminal, not stdin: under `curl | sh` stdin is the script
-# itself, so a plain `read` would eat the rest of this file.
-if [ "$DRY_RUN" != "1" ] && [ "$NEEDS_LOGIN" != "1" ] && [ -r /dev/tty ]; then
-  printf '  %sStart it now?%s [Y/n] ' "$BOLD" "$OFF"
-  read -r reply < /dev/tty || reply=n
-  case "$reply" in
-    ''|y|Y|yes|YES) exec "$DEST/vibes" ;;
+  # VIBES_INSTALL_ONLY runs one step by itself and stops. The tests drive the
+  # real functions this way; it is not part of a normal install.
+  case "${VIBES_INSTALL_ONLY:-}" in
+    '')       ;;
+    fetch)    fetch_source; exit 0 ;;
+    prebuilt) if try_prebuilt; then exit 0; else exit 1; fi ;;
+    claude)   install_claude; exit 0 ;;
+    *)        die "VIBES_INSTALL_ONLY must be fetch, prebuilt or claude" ;;
   esac
-fi
+
+  banner
+  detect_platform
+  command -v git >/dev/null 2>&1 || [ "$PLATFORM" != "macos" ] || die "git not found. Run: xcode-select --install"
+  install_deps
+  fetch_source
+  build_node
+  install_claude
+
+  printf '\n'
+  step "Installed"
+  note "$DEST"
+  printf '\n'
+
+  if [ "$CLAUDE_MISSING" = "1" ]; then
+    printf '  %sTwo things left, and only you can do them:%s\n' "$BOLD" "$OFF"
+    printf '    %s%s%s\n' "$GOLD" "$CLAUDE_INSTALL" "$OFF"
+    printf '    %sclaude auth login%s   %s(sign in; it opens your browser)%s\n' \
+           "$GOLD" "$OFF" "$DIM" "$OFF"
+    printf '\n'
+  elif [ "$NEEDS_LOGIN" = "1" ]; then
+    printf '  %sOne thing left, and only you can do it:%s\n' "$BOLD" "$OFF"
+    printf '    %s%s auth login%s   %s(sign in; it opens your browser)%s\n' \
+           "$GOLD" "$CLAUDE_BIN" "$OFF" "$DIM" "$OFF"
+    printf '\n'
+    if [ "$PATH_HINT" = "1" ]; then
+      printf '  %sClaude landed in ~/.local/bin, which is not on your PATH. The console\n' "$DIM"
+      printf '  finds it regardless; to type "claude" yourself, add it:%s\n' "$OFF"
+      printf '    %secho '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.profile%s\n' "$GOLD" "$OFF"
+      printf '\n'
+    fi
+  fi
+
+  printf '  %sTo begin:%s\n' "$BOLD" "$OFF"
+  printf '    %s%s/vibes%s\n' "$GOLD" "$DEST" "$OFF"
+  printf '\n'
+  printf '  %sIt builds nothing further, wakes the node, and opens the console.%s\n' "$DIM" "$OFF"
+  printf '\n'
+
+  # Read from the terminal, not stdin: under `curl | sh` stdin is the script
+  # itself, so a plain `read` would eat the rest of this file.
+  if [ "$DRY_RUN" != "1" ] && [ "$NEEDS_LOGIN" != "1" ] && [ -r /dev/tty ]; then
+    printf '  %sStart it now?%s [Y/n] ' "$BOLD" "$OFF"
+    read -r reply < /dev/tty || reply=n
+    case "$reply" in
+      ''|y|Y|yes|YES) exec "$DEST/vibes" ;;
+    esac
+  fi
+}
+
+main "$@"

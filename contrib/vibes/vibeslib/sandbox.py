@@ -5,18 +5,20 @@
 
 A proposal is AI-written source. Compiling it runs build scripts the agent may
 have edited; testing it and starting it run the result. None of that should be
-able to read the operator's files, write outside the lab, or reach the network.
+able to read the operator's files, write outside the lab, reach the network,
+or ask another program on the machine to act for it.
 
 This module wraps a command so the operating system enforces that:
 
   macOS   sandbox-exec (Seatbelt) with a generated profile
   Linux   bubblewrap (bwrap) with a private view of the filesystem
-  Docker  the container is the enclosure (VIBES_SANDBOX=container)
 
 It is confinement, not a virtual machine: it narrows what a process can read,
-write and connect to, and relies on the operating system to hold that line.
-When no mechanism is available the console says so and falls back to review
-before anything is compiled.
+write, connect to and talk to, and relies on the operating system to hold that
+line. Where neither mechanism is available (including inside a container,
+which is an enclosure of its own but one with a network and the operator's AI
+login in it) the console says so and compiles nothing until the operator has
+reviewed it.
 """
 
 import glob
@@ -39,6 +41,32 @@ MAC_DEVICE_WRITES = ('(literal "/dev/null") (literal "/dev/zero") (literal "/dev
                      '(literal "/dev/dtracehelper") (regex #"^/dev/fd/[0-9]+$") '
                      '(regex #"^/dev/ttys[0-9]+$")')
 
+# macOS: the profile starts from "allow" because a compiler toolchain touches
+# too much of the system to enumerate, then closes the doors that lead out.
+# Without these, confined code could ask LaunchServices or launchd to start a
+# program outside the sandbox, drive other applications with Apple events, or
+# signal the operator's other processes. The few services allowed are the ones
+# ordinary command-line programs need to look up users and write log lines.
+# (com.apple.bsd.dirhelper is deliberately absent: with it reachable and the
+# per-user temporary folder unwritable, some programs wait on it for ever.)
+MAC_LOCKDOWN = '''(deny mach-lookup)
+(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo")
+                   (global-name "com.apple.system.notification_center")
+                   (global-name "com.apple.system.logger")
+                   (global-name "com.apple.logd")
+                   (global-name "com.apple.diagnosticd"))
+(deny job-creation)
+(deny appleevent-send)
+(deny signal)
+(allow signal (target same-sandbox))
+'''
+
+# Linux: places that hold other people's files, or sockets through which a
+# program could ask something outside the sandbox to act for it (the session
+# bus, the Docker socket, key agents, the X server). Each is replaced by an
+# empty folder; anything the command needs under one is put back by name.
+LINUX_HIDDEN = ("/home", "/root", "/tmp", "/var/tmp", "/run", "/mnt", "/media", "/srv")
+
 
 def _real(path):
     return os.path.realpath(str(path))
@@ -58,6 +86,10 @@ def _ancestors(path, stop):
             break
         current = os.path.dirname(current)
     return out
+
+
+def _inside(path, root):
+    return path == root or path.startswith(root.rstrip("/") + "/")
 
 
 class Sandbox:
@@ -82,7 +114,7 @@ class Sandbox:
             if not os.access(tool, os.X_OK):
                 return "off", "sandbox-exec is not present on this Mac"
             probe = subprocess.run([tool, "-p", "(version 1)(allow default)", "/usr/bin/true"],
-                                   capture_output=True, timeout=20)
+                                   capture_output=True, timeout=20, stdin=subprocess.DEVNULL)
             if probe.returncode != 0:
                 return "off", "sandbox-exec could not start (the console may itself be sandboxed)"
             return "seatbelt", ""
@@ -91,7 +123,8 @@ class Sandbox:
             if not tool:
                 return "off", "bubblewrap is not installed (install the bubblewrap package)"
             probe = subprocess.run([tool, "--ro-bind", "/", "/", "--unshare-net", "--die-with-parent",
-                                    "true"], capture_output=True, timeout=20)
+                                    "--new-session", "true"],
+                                   capture_output=True, timeout=20, stdin=subprocess.DEVNULL)
             if probe.returncode != 0:
                 return "off", "bubblewrap could not create a sandbox on this system"
             return "bwrap", ""
@@ -99,25 +132,33 @@ class Sandbox:
 
     @property
     def contained(self):
-        return self.kind != "off"
+        """True only when the operating system confines each command. A
+        container does not count: inside it, AI-written build scripts would
+        have the container's network and the operator's AI login."""
+        return self.kind in ("seatbelt", "bwrap")
 
     def summary(self):
         """What the console tells the operator about confinement."""
         labels = {
             "seatbelt": "macOS sandbox",
             "bwrap": "Linux sandbox (bubblewrap)",
-            "container": "Container",
+            "container": "Container only",
             "off": "Not confined",
         }
         details = {
             "seatbelt": "Builds, tests and lab nodes run inside the macOS sandbox: no network "
                         "beyond the lab's own loopback ports, no writes outside the lab folders, "
-                        "and no access to your home folder beyond this source tree.",
+                        "no access to your home folder beyond this source tree, and no way to "
+                        "ask other programs on this Mac to act for them.",
             "bwrap": "Builds, tests and lab nodes run inside bubblewrap: a private network, no "
-                     "writes outside the lab folders, and no view of your home folder beyond "
-                     "this source tree.",
-            "container": "The console is running in a container, which is the enclosure. Builds, "
-                         "tests and nodes can reach whatever the container can reach.",
+                     "writes outside the lab folders, and no view of home folders, temporary "
+                     "folders or local service sockets beyond this source tree. One exception: "
+                     "your own running node keeps the machine's network, so that the console "
+                     "can reach it.",
+            "container": "The console is running in a container. The container keeps this away "
+                         "from the rest of your machine, but inside it AI-written code has the "
+                         "network and can read this container's AI login. So nothing is compiled "
+                         "until you have reviewed and applied it, and automatic mode is off.",
             "off": "No operating-system sandbox is available here (" + self.reason + "). "
                    "Proposals are not compiled until you have reviewed them, and automatic "
                    "mode is switched off.",
@@ -142,7 +183,7 @@ class Sandbox:
     # ----- wrapping -------------------------------------------------------
 
     def _readable(self, write, read=()):
-        """Paths under the home folder that a confined process may read."""
+        """Paths in otherwise hidden places that a confined process may read."""
         paths = [self.repo, *[_real(p) for p in write], *[_real(p) for p in read]]
         for name in (".gitconfig", ".config/git"):
             candidate = os.path.join(self.home, name)
@@ -154,7 +195,7 @@ class Sandbox:
                                    ("cmake", "ninja", "make", "cc", "c++", "git", "ccache"))]
         for tool in filter(None, tools):
             real = _real(tool)
-            if not real.startswith(self.home + os.sep):
+            if not _inside(real, self.home):
                 continue
             prefix = os.path.dirname(os.path.dirname(real))
             paths.append(os.path.dirname(real))
@@ -175,7 +216,7 @@ class Sandbox:
         the console's access key and the operator's own node data."""
         hidden = [os.path.join(self.state_dir, "key"), os.path.join(self.state_dir, "data")]
         allowed = [_real(p) for p in write]
-        return [h for h in hidden if not any(h == a or h.startswith(a + os.sep) for a in allowed)]
+        return [h for h in hidden if not any(_inside(h, a) for a in allowed)]
 
     def seatbelt_profile(self, write=(), network="none", ports=(), read=()):
         readable = self._readable(write, read)
@@ -205,20 +246,33 @@ class Sandbox:
                 lines.append(f'(allow network-bind (local ip "localhost:{int(port)}"))')
                 lines.append(f'(allow network-inbound (local ip "localhost:{int(port)}"))')
                 lines.append(f'(allow network-outbound (remote ip "localhost:{int(port)}"))')
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines) + "\n" + MAC_LOCKDOWN
+
+    def _hidden_roots(self):
+        """Folders replaced by empty ones, outermost only."""
+        roots = [root for root in dict.fromkeys((*LINUX_HIDDEN, self.home))
+                 if os.path.isdir(root) and not os.path.islink(root)]
+        return [root for root in roots
+                if not any(root != other and _inside(root, other) for other in roots)]
 
     def bwrap_args(self, write=(), network="none", read=()):
-        args = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
-                "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                "--tmpfs", self.home]
+        args = ["bwrap", "--die-with-parent", "--new-session",
+                "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+                "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"]
+        hidden = self._hidden_roots()
+        for root in hidden:
+            args += ["--tmpfs", root]
         if network in ("none", "loopback"):
             # A private network namespace with its own loopback: processes
             # started together can talk to each other and to nobody else.
             # "local" cannot be expressed this way, because the console must
             # reach the node over the host's loopback, so it is left open.
             args.append("--unshare-net")
+        elif os.path.isdir("/run/systemd/resolve"):
+            # A node on a real network looks up its first peers by name.
+            args += ["--ro-bind", "/run/systemd/resolve", "/run/systemd/resolve"]
         for path in self._readable(write, read):
-            if path.startswith(self.home + os.sep) and os.path.exists(path):
+            if any(_inside(path, root) for root in hidden) and os.path.exists(path):
                 args += ["--ro-bind", path, path]
         for path in write:
             real = _real(path)
@@ -235,7 +289,7 @@ class Sandbox:
         """Return argv confined by whatever mechanism this machine has.
 
         write    folders the command may write to (everything else is read-only)
-        read     extra folders under the home folder the command may read
+        read     extra folders in otherwise hidden places the command may read
         network  "none"; "loopback" (only the given ports, for lab nodes);
                  "local" (this machine only, for the operator's regtest node;
                  not enforceable with bubblewrap); or "full"

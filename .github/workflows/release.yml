@@ -350,10 +350,26 @@ jobs:
           EOF
           cat notes.md
 
+      # Created as a draft and published only once every file is attached, so
+      # "the latest release" never points at one that is missing its installer
+      # or its checksums.
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
+          draft: true
           files: assets/*
           body_path: notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected=$(find assets -maxdepth 1 -type f | wc -l)
+          attached=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
+          if [ "$attached" -ne "$expected" ]; then
+            echo "::error::Only $attached of $expected files are attached; the release stays a draft."
+            exit 1
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

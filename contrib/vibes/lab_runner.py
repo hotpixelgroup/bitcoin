@@ -24,6 +24,7 @@ import argparse
 import base64
 import json
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -131,7 +132,7 @@ class LabNode:
              f"-port={self.p2pport}", "-bind=127.0.0.1", "-server=1", "-listen=1",
              "-discover=0", "-dnsseed=0", "-fixedseeds=0", "-listenonion=0",
              "-natpmp=0", "-fallbackfee=0.0002", "-dbcache=16", *self.extra],
-            stdout=self.log, stderr=self.log, start_new_session=True)
+            stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log)
 
     def named(self, method, wallet=None, timeout=30, **params):
         """Call an RPC with named parameters."""
@@ -178,18 +179,24 @@ class LabNode:
                 return text[-limit:]
         return ""
 
-    def stop(self):
+    def stop(self, quick=False):
+        """Stop the node. `quick` is for when the lab itself is being stopped:
+        the data folder is thrown away anyway, so the node is simply killed."""
         if self.proc is None:
             return
-        try:
-            self.rpc("stop", timeout=5)
-        except (OSError, ValueError, RpcError):
-            pass
+        if quick:
+            self.proc.kill()
+        else:
+            try:
+                self.rpc("stop", timeout=5)
+            except (OSError, ValueError, RpcError):
+                pass
         try:
             self.proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
+        self.proc = None
         if self.log:
             self.log.close()
 
@@ -289,6 +296,7 @@ def setting_differences(reference, candidate):
 
 
 VERDICTS = {
+    "inconclusive": "The comparison could not be completed",
     "none": "No difference observed",
     "policy": "Local policy only",
     "tightened": "Your node rejects blocks the unmodified node accepts",
@@ -486,6 +494,13 @@ def finish(result, reference, candidate):
         verdict = "policy"
     else:
         verdict = "none"
+    # A check that could not be carried out is not a check that passed. If no
+    # difference was found only because part of the comparison never ran, the
+    # outcome is "could not be completed", never "no difference".
+    unfinished = [row["title"] for row in result["rows"] if row["status"] in ("error", "skipped")]
+    if unfinished and verdict in ("none", "policy"):
+        verdict = "inconclusive"
+        result["unfinished"] = unfinished
     ref_height, cand_height = view["reference_tip"]["height"], view["candidate_tip"]["height"]
     if view["converged"]:
         plain = f"Connected directly, both nodes settled on the same chain at block {ref_height}."
@@ -1003,6 +1018,15 @@ def main(argv=None):
     second = LabNode("candidate", args.candidate, workdir, ports[2], ports[3],
                      second_args + args.candidate_arg)
     code = 0
+    stopping = []
+
+    def stop_now(signum, frame):
+        stopping.append(signum)
+        raise KeyboardInterrupt
+    # Cancelling a run or reaching its time limit sends this. The nodes are in
+    # the same process group and get it too; this makes sure none is left.
+    signal.signal(signal.SIGTERM, stop_now)
+    signal.signal(signal.SIGHUP, stop_now)
     try:
         step("Starting two nodes on a throwaway private chain")
         first.start()
@@ -1014,13 +1038,17 @@ def main(argv=None):
         else:
             result = SCENES[args.scene](first, second)
         emit("result", result=result)
+    except KeyboardInterrupt:
+        code = 130
     except Exception as error:                      # noqa: BLE001 - reported to the console
         emit("error", detail=str(error)[:1200])
         code = 1
     finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
         for node in (second, first):
             try:
-                node.stop()
+                node.stop(quick=bool(stopping))
             except Exception:                       # noqa: BLE001
                 pass
         shutil.rmtree(workdir / "reference", ignore_errors=True)
