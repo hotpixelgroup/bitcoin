@@ -389,7 +389,12 @@ try_prebuilt() {
     rm -rf "$tmp"; return 1
   fi
   mkdir -p "$DEST/build/bin"
-  cp "$dir/bitcoind" "$dir/bitcoin-cli" "$DEST/build/bin/" || { rm -rf "$tmp"; return 1; }
+  # Remove any earlier programs first, so the new ones are new files: macOS
+  # on Apple silicon kills a program that was overwritten in place after it
+  # had been run. COMMIT goes along as a note of what the program was built
+  # from; the console reads it when it adopts this node as its reference.
+  rm -f "$DEST/build/bin/bitcoind" "$DEST/build/bin/bitcoin-cli" "$DEST/build/bin/COMMIT"
+  cp "$dir/bitcoind" "$dir/bitcoin-cli" "$dir/COMMIT" "$DEST/build/bin/" || { rm -rf "$tmp"; return 1; }
   chmod +x "$DEST/build/bin/bitcoind" "$DEST/build/bin/bitcoin-cli"
   if ! "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1; then
     note "the prebuilt node would not run here — building instead"
@@ -397,8 +402,8 @@ try_prebuilt() {
   fi
   rm -rf "$tmp"
   note "using a prebuilt node built from this exact source"
-  note "your first experiment compiles the node from source: that wait has been"
-  note "postponed, not avoided"
+  note "the ready-made experiments need no compiling. A request in your own"
+  note "words compiles the node from source: that wait is postponed, not avoided"
   return 0
 }
 
