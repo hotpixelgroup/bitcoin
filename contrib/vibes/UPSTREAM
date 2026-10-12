@@ -1,0 +1,6 @@
+# The Bitcoin Core revision this fork is built on. Read by the console to tell
+# the operator how old the base is; updated by hand when the base moves.
+commit=6b059d9dbdbd4d5b6f52993f93bf291181bf3900
+date=2026-07-24
+version=31.99.0
+kind=development snapshot of Bitcoin Core's main line (never a released version)
