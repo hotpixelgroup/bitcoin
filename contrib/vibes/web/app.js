@@ -196,7 +196,7 @@ function observedAnswer(job) {
   }
   if (item?.kind === 'scene') return item.answer;
   const verdict = job.compare?.verdict;
-  if (!verdict) return null;
+  if (!verdict || verdict === 'inconclusive') return null;
   return verdict === 'identical' ? 'none' : verdict;
 }
 
@@ -345,14 +345,34 @@ function loadDraft() {
     if (['review', 'auto'].includes(draft.mode)) $('mode').value = draft.mode;
     if (typeof draft.autobuild === 'boolean') $('autobuild').checked = draft.autobuild;
     if (typeof draft.autorestart === 'boolean') $('autorestart').checked = draft.autorestart;
-    if (draft.imported && draft.prompt) imported = draft.imported;
+    if (draft.imported && draft.prompt) imported = {sender: cleanSender(draft.imported.sender)};
   } catch { /* a damaged draft is simply ignored */ }
+}
+
+// Characters a reader cannot see but an AI agent would still receive: controls
+// (other than line breaks and tabs), zero-width and bidirectional marks, tag
+// characters, private-use characters, lone surrogates and variation selectors.
+const HIDDEN_CHARACTERS = /[\p{Cf}\p{Co}\p{Cs}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]|[^\P{Cc}\n\r\t]/u;
+const EVERY_HIDDEN_CHARACTER = new RegExp(HIDDEN_CHARACTERS.source, 'gu');
+
+// What a sharing token says about the sender's machine comes from a stranger.
+// Keep only well-formed, bounded values, so a crafted token cannot break the page.
+function cleanSender(sender) {
+  const from = sender && typeof sender === 'object' ? sender : {};
+  const text = (value, limit) => String(value ?? '').replace(EVERY_HIDDEN_CHARACTER, '').slice(0, limit);
+  return {
+    sha: text(from.sha, 12),
+    ts: Number.isFinite(Number(from.ts)) ? Number(from.ts) : 0,
+    c: Array.isArray(from.c) ? from.c.filter(item => typeof item === 'string').slice(0, 8).map(item => text(item, 80)) : [],
+    f: Array.isArray(from.f) ? from.f.filter(file => Array.isArray(file) && typeof file[0] === 'string').slice(0, 12)
+      .map(file => [text(file[0], 200), Number(file[1]) || 0, Number(file[2]) || 0]) : [],
+  };
 }
 
 function renderImportedNote() {
   $('imported-note').hidden = !imported;
   if (!imported) return;
-  const sender = imported.sender || {};
+  const sender = imported.sender = cleanSender(imported.sender);
   const parts = ['This request came from someone else.'];
   if (sender.ts) parts.push(`They saved it on ${new Date(sender.ts * 1000).toLocaleDateString()}.`);
   if (sender.c?.length) parts.push(`Their console flagged it as touching: ${sender.c.join(', ')}.`);
@@ -430,6 +450,10 @@ function renderNode(next) {
   for (const alert of next.node.alerts || []) {
     $('node-alerts').append(el('div', {class: 'notice ' + (alert.level === 'danger' ? 'danger' : '')}, [
       el('b', {text: alert.title + '. '}), el('span', {text: alert.detail})]));
+  }
+  if (next.source_problem) {
+    $('node-alerts').append(el('div', {class: 'notice danger'}, [
+      el('b', {text: 'Your source is not on your branch. '}), el('span', {text: next.source_problem})]));
   }
 
   const sandbox = next.sandbox || {};
@@ -566,7 +590,7 @@ function renderComparison(job) {
   const scene = job.kind === 'scene';
   const verdict = lessons.verdicts[compare.verdict];
   $('verdict-title').textContent = scene ? compare.headline : verdict?.title || compare.headline;
-  $('verdict-title').className = 'verdict ' + (['tightened', 'loosened', 'split'].includes(compare.verdict) ? 'differs' : '');
+  $('verdict-title').className = 'verdict ' + (['tightened', 'loosened', 'split', 'inconclusive'].includes(compare.verdict) ? 'differs' : '');
   $('verdict-meaning').textContent = scene ? '' : verdict?.meaning || '';
   $('verdict-meaning').hidden = scene;
   $('mainnet-heading').hidden = scene || !verdict;
@@ -999,7 +1023,7 @@ function decodeToken(raw) {
   const binary = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
   const value = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
   if (value.v !== 1 || typeof value.p !== 'string' || !value.p.trim() || value.p.length > 4000) throw new Error('A shared request must contain 1 to 4,000 characters.');
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f‪-‮⁦-⁩]/.test(value.p)) throw new Error('This shared request contains hidden control characters and was refused.');
+  if (HIDDEN_CHARACTERS.test(value.p)) throw new Error('This shared request contains invisible or control characters and was refused. Ask the sender to retype it as plain text.');
   return value;
 }
 
@@ -1017,9 +1041,7 @@ async function importRequest(raw) {
     'Put it in my draft');
   if (!ok) return;
   $('wish').value = value.p;
-  imported = {sender: {sha: String(value.sha || '').slice(0, 12), ts: Number(value.ts) || 0,
-                       c: Array.isArray(value.c) ? value.c.slice(0, 8).map(String) : [],
-                       f: Array.isArray(value.f) ? value.f.slice(0, 12) : []}};
+  imported = {sender: cleanSender(value)};
   $('mode').value = 'review';
   renderImportedNote();
   saveDraft();
@@ -1150,7 +1172,7 @@ $('mine-101').onclick = () => action('/api/node', {action: 'mine', blocks: 101})
 $('maturity').onclick = () => action('/api/playground', {scenario: 'maturity'});
 $('refine').onclick = () => {
   $('wish').value = selected?.summary.prompt || '';
-  imported = selected?.summary.origin === 'imported' ? {sender: selected.summary.sender || {}} : null;
+  imported = selected?.summary.origin === 'imported' ? {sender: cleanSender(selected.summary.sender)} : null;
   renderImportedNote();
   saveDraft();
   updateControls();

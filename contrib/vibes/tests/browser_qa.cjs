@@ -132,7 +132,28 @@ function token(value) {
     await page.locator('summary', {hasText: 'Import or share a request'}).click();
     await page.locator('#import-token').fill(token({v: 1, p: 'safe‮evil'}));
     await page.locator('#import').click();
-    await page.locator('#toast').filter({hasText: 'hidden control characters'}).waitFor();
+    await page.locator('#toast').filter({hasText: 'invisible or control characters'}).waitFor();
+
+    // So are the other kinds a reader cannot see: zero-width, tag and variation characters.
+    for (const unseen of ['\u200b', '\u{E0041}', '\ufe0f']) {
+      await page.goto(base + '/demo.html');
+      await page.locator('summary', {hasText: 'Import or share a request'}).click();
+      await page.locator('#import-token').fill(token({v: 1, p: 'safe' + unseen + 'evil'}));
+      await page.locator('#import').click();
+      await page.locator('#toast').filter({hasText: 'invisible or control characters'}).waitFor();
+      assert.ok(!(await page.locator('#wish').inputValue()).includes('safe'), 'a refused request must not reach the draft');
+    }
+
+    // A token whose extra fields are malformed cannot break the page, now or after a reload.
+    await page.goto(base + '/demo.html#decree=' + token({v: 1, p: 'Raise the subsidy', sha: 5, ts: 'soon', c: 'nope',
+                                                        f: [null, 7, ['src/a.cpp', 1, 1], [null, 1, 1]]}));
+    await page.getByRole('heading', {name: 'A request from someone else'}).waitFor();
+    await page.locator('#confirm-action').click();
+    await page.locator('#imported-note').filter({hasText: 'On their machine it changed: src/a.cpp.'}).waitFor();
+    await page.goto(base + '/demo.html');
+    await page.locator('#imported-note').filter({hasText: 'came from someone else'}).waitFor();
+    assert.equal(await page.locator('#wish').inputValue(), 'Raise the subsidy');
+    await page.locator('#curated-grid button').first().waitFor();
 
     // Narrow screens.
     for (const width of [768, 390, 320]) {

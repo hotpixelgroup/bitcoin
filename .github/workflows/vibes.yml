@@ -169,10 +169,10 @@ jobs:
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
 
       # Hosted Ubuntu images restrict unprivileged user namespaces, which
-      # bubblewrap needs. Lifting that here lets the Linux sandbox path be
-      # exercised for real; if it still cannot start, the tests below run
-      # unconfined and this step says which happened.
-      - name: Which sandbox does this runner offer?
+      # bubblewrap needs. Lifting that here lets the Linux sandbox be exercised
+      # for real. The job fails if it still cannot start: the steps below are
+      # only evidence about the sandbox if they ran inside it.
+      - name: The Linux sandbox is available
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           python3 - <<'PY'
@@ -181,7 +181,31 @@ jobs:
           from vibeslib.sandbox import Sandbox
           box = Sandbox(".", ".vibes")
           print("sandbox:", box.kind, box.reason)
+          if box.kind != "bwrap":
+              sys.exit("::error::bubblewrap could not start on this runner, so the Linux sandbox was not tested")
           PY
+
+      # The same command the console uses to compile a proposal, run the way
+      # the console runs it: no network, the build folder the only place it
+      # may write, home and temporary folders hidden.
+      - name: The node compiles inside the Linux sandbox
+        run: |
+          touch src/validation.cpp
+          python3 - <<'PY'
+          import os, subprocess, sys
+          sys.path.insert(0, "contrib/vibes")
+          from vibeslib.sandbox import Sandbox
+          box = Sandbox(".", ".vibes")
+          scratch = os.path.abspath(".vibes/tmp/ci")
+          os.makedirs(scratch, exist_ok=True)
+          for step in (["cmake", "-B", "build"],
+                       ["cmake", "--build", "build", "--target", "bitcoind", "-j", str(os.cpu_count() or 2)]):
+              argv = box.wrap(step, write=[scratch, os.path.abspath("build")], network="none")
+              code = subprocess.run(argv, env=box.clean_env(scratch), stdin=subprocess.DEVNULL).returncode
+              if code:
+                  sys.exit(f"::error::{' '.join(step)} failed inside the sandbox (exit {code})")
+          PY
+          ./build/bin/bitcoind -version | head -1
 
       - name: Console against a real node (two-node lab, activation, recovery)
         env:

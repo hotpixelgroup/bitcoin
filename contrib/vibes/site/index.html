@@ -98,7 +98,7 @@ VIBES_DRY_RUN=1 sh install.sh</pre>
       <pre>git clone -b master https://github.com/hotpixelgroup/bitcoin.git
 cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
-      <p class="subtle">Open the link from the logs. The container keeps its own Claude Code sign-in.</p>
+      <p class="subtle">Open the link from the logs. The container keeps its own Claude Code sign-in. In Docker a proposal is compiled only after you have reviewed it.</p>
       <h3>Already installed?</h3>
       <p class="subtle">Use “Check for and take updates” in the console. Like Bitcoin Core, the lab never updates by itself.</p>
       <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the full manual ↗</a>
@@ -118,7 +118,7 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
   </details>
   <details>
     <summary>Is it safe to let an AI rewrite a node on my machine?</summary>
-    <p>The agent can read and edit files in its own copy of the source and nothing else: no commands, no network. What it writes is compiled and run inside an operating-system sandbox. That is confinement, not a guarantee, and you should still read the change. Where no sandbox is available the lab says so and compiles nothing until you have reviewed it.</p>
+    <p>The agent can read and edit files in its own copy of the source and nothing else: no commands, no network. What it writes is compiled and run inside an operating-system sandbox. That is confinement, not a guarantee, and you should still read the change. Where no sandbox is available, which includes Docker, the lab says so and compiles nothing until you have reviewed it.</p>
   </details>
   <details>
     <summary>What do the checks prove?</summary>

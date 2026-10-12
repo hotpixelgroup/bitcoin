@@ -35,6 +35,15 @@ VERDICTS = {
         "mainnet": "On a real network this node follows the same chain as every other "
                    "unmodified node.",
     },
+    "inconclusive": {
+        "title": "The comparison could not be completed",
+        "meaning": "At least one check could not be carried out, for example because this "
+                   "build could not produce a block of its own. The checks that did run found "
+                   "no difference, but a check that never ran is not a check that passed.",
+        "mainnet": "Treat this build as unknown. The lab does not apply it without your review "
+                   "and does not start it on a shared network. The rows below show which check "
+                   "did not run and why.",
+    },
     "none": {
         "title": "No difference observed",
         "meaning": "In every check the lab ran, the two nodes accepted each other's blocks and "

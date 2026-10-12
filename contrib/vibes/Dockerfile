@@ -35,8 +35,10 @@ ENV HOME=/home/vibes \
     # Keep every Claude Code file, credentials included, inside the one folder
     # that docker-compose.yml gives its own volume.
     CLAUDE_CONFIG_DIR=/home/vibes/.claude \
-    # The container is the enclosure. Without this the console would look for
-    # a second sandbox inside it, find none, and refuse to build before review.
+    # There is no sandbox around each build in here: bubblewrap needs
+    # privileges this container is deliberately not given. Saying so makes the
+    # console review-first: nothing is compiled until the operator has
+    # reviewed and applied it.
     VIBES_SANDBOX=container
 
 # Claude Code, from Anthropic's own installer: a script fetched over HTTPS and

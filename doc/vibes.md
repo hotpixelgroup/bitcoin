@@ -91,10 +91,14 @@ Code login, separate from the one on your machine; sign in once inside it:
 docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
 ```
 
-Two things differ in Docker. The container itself is the enclosure, so there
-is no second sandbox inside it. And the in-console updater has nothing to
-update from; to move to a newer version, rebuild the image and start from a
-fresh volume (export your experiments first with `git format-patch`).
+Two things differ in Docker. A container keeps the lab away from the rest of
+your machine, but it is not a sandbox around each build: inside it, AI-written
+build scripts would have the container's network and its Claude Code sign-in.
+So the lab treats Docker like a machine with no sandbox. A proposal is not
+compiled until you have reviewed and applied it, and automatic applying is
+off. And the in-console updater has nothing to update from; to move to a newer
+version, rebuild the image and start from a fresh volume (export your
+experiments first with `git format-patch`).
 
 ### Building it the long way
 
@@ -184,7 +188,10 @@ difference observed".
 2. The agent writes a proposal in an isolated copy of the source. It can read
    and edit files there. It cannot run commands or use the network.
 3. The lab compiles the proposal inside an operating-system sandbox and runs
-   Bitcoin Core's unit tests on it, each suite in its own process.
+   Bitcoin Core's unit tests on it, each suite in its own process. It compiles
+   in a copy of your build folder and throws the copy away afterwards, so what
+   an unreviewed proposal's build leaves in the folder is not picked up by the
+   next build.
 4. The lab starts the new build beside an unmodified node on a throwaway
    private chain, hands each node the other's blocks and a few test
    transactions, and records what each one did.
@@ -195,9 +202,20 @@ difference observed".
    byte, the revision that was built and compared.
 
 If you choose "Apply it if nothing is flagged", a proposal is applied without
-waiting only when it compiles, every stock unit test passes, no text or test
-flag is raised and the comparison finds no difference. Anything else waits for
-you. A request imported from someone else always waits.
+waiting only when it compiles, every stock unit test passes, no text, test or
+build-file flag is raised and the comparison finds no difference. Anything
+else waits for you. A request imported from someone else always waits.
+
+A proposal may change node source and its documentation. The lab refuses one
+that edits the lab itself, anything under `contrib/`, the project's
+automation, the top-level build tooling (`CMakeLists.txt`, `cmake/`,
+`depends/`, `ci/`, `share/`), or any `.gitattributes`, `.gitignore` or
+`.gitmodules`, which could change what the review shows you. An edit to a
+`CMakeLists.txt` under `src/` is allowed, because adding a source file needs
+one; it is named in the review and always waits for you, since build files
+can run commands while compiling. File names must be plain (letters, digits
+and `. _ - @ +`): other characters can be shown or matched misleadingly, and
+no change to the node needs them.
 
 ### What the comparison can tell you
 
@@ -208,6 +226,7 @@ you. A request imported from someone else always waits.
 | Tightened | Your node refuses blocks the unmodified node produces. | Your node follows the chain until the first block that breaks your rule, then stops. Others follow you only if most mining power enforces the same rule. This shape of change is called a soft fork. |
 | Loosened | The unmodified node refuses blocks your node produces. | Nothing visible changes until a block uses the looser rule. Your node then accepts a block that every unmodified node refuses. This shape is called a hard fork. |
 | Split | Each node refuses the other's blocks. | The two separate at the first block either side refuses, for good. |
+| Could not be completed | A check could not be carried out, for example because your build could not produce a block of its own. The checks that did run found no difference. | Unknown. A check that never ran is not a check that passed, so the proposal waits for your review and the lab does not start the build on a shared network. |
 
 The comparison covers block rewards, one reward halving (regtest places it at
 block 150), an ordinary payment, a data-carrying transaction, and block
@@ -240,31 +259,71 @@ temporary folder.
 Without a reference node a build is marked "not compared". On a private chain
 of one node any rule appears to work, because nobody is present to disagree.
 
+"Unmodified" means every file that can feed the build is unchanged: the
+source, and every build script wherever it lives, not only `src/`. Other
+documentation, the console and the project's automation do not count.
+
+The reference is taken from your own build folder only while that folder has
+never been writable by a build of changed source: in practice, the first
+build of a fresh install, or your current source compiled once before your
+first proposal. After that it is compiled in a folder of its own, from a clean
+checkout of the unmodified source, which is one full compile each time the
+baseline moves. A proposal's own build never becomes the reference. When you
+restore the baseline, the node kept for it is the reference node itself.
+
 ## Confinement
 
 AI-written code is compiled and run only inside an enclosure:
 
 | Where | Mechanism | What it restricts |
 |---|---|---|
-| macOS | `sandbox-exec` | No network beyond the lab's own loopback ports; no writes outside the lab folders; no reads of your home folder beyond this source tree; the console's key and your node's data folder are hidden. |
-| Linux | `bubblewrap` | A private network; no writes outside the lab folders; your home folder hidden apart from this source tree. Install the `bubblewrap` package. |
-| Docker | the container | Whatever the container can reach. |
+| macOS | `sandbox-exec` | No network beyond the lab's own loopback ports; no writes outside the lab folders; no reads of your home folder, the shared temporary folders or other disks beyond this source tree; the console's key and your node's data folder are hidden; no asking other programs on the Mac to act for it (launch services, Apple events); no signalling anything outside the sandbox. |
+| Linux | `bubblewrap` | A private network; no writes outside the lab folders; home folders, temporary folders, `/var` and local service sockets (`/run`, `/tmp`) hidden apart from this source tree; its own terminal session. Install the `bubblewrap` package. Tools installed as snaps cannot run inside it, and tools from Homebrew may not; `VIBES_SANDBOX_READ` names extra folders it may read. |
+| Docker | none inside the container | Treated as no sandbox: nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 | None of these | none | The console says so. Nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 
 Limits you should know. This is confinement by the operating system, not a
 virtual machine. On macOS the two unit test suites that need local sockets are
 left out, because allowing them would also allow reaching any service on your
 machine. On Linux the running node's network cannot be limited to this
-machine; on macOS it is, while you are on regtest. The Linux mechanism has
-automated tests for how it is invoked but has not been exercised on real
-hardware by the maintainers; treat it as new.
+machine; on macOS it is, while you are on regtest. The Linux mechanism runs
+in this project's automated checks on GitHub's Ubuntu machines, with real
+nodes; it has not been tried on other distributions.
+
+What the sandbox does not hide. System folders stay readable on both
+systems. On macOS, confined code can read the command lines and environment
+variables of your other running programs (it has no network to send them
+anywhere), and a program started during a build can deliberately outlive it
+while keeping its permission to write to the build folder. That last point is
+why the reference node never comes from a shared build folder; it also means
+such a program could alter a later build of changed source, which is one more
+reason the comparison is made against a reference compiled apart.
+
+Because confined code may write to its build and scratch folders, it could
+put a link in a folder's place. The lab never compiles in, or gives permission
+to write through, a folder that is really a link. If your own build folder or
+node data folder is a link you made, replace it with an ordinary folder. Only
+one console runs per source folder; a second one refuses to start.
+
+Two more limits. Compiling runs build scripts and tools that come from the
+source being compiled, so during a build it is the sandbox, not your review,
+that stands between a proposal and your machine. And both lab nodes, with the
+script that drives them, share one sandbox: a node program written to deceive
+(as opposed to one that merely differs) could interfere with the unmodified
+node beside it and forge a result. The comparison is evidence about rule
+changes and honest mistakes. It is not a defence against a program built to
+lie to it.
 
 The agent is confined differently, by Claude Code's own controls: it gets five
 file tools and nothing else (no shell, no web access, no MCP servers), it does
-not load your hooks, plugins or project settings, it has explicit deny rules
-for credential stores, and it stops after 60 steps or 20 minutes. Change those
-limits with `--agent-turns`, `--agent-minutes` and `--agent-budget`, and the
-model with `--model`.
+not load your hooks, plugins or project settings, it is denied reading
+anything under your home folder except the path to its own copy of the source,
+and it stops after 60 steps or 20 minutes. Change those limits with
+`--agent-turns`, `--agent-minutes` and `--agent-budget`, and the model with
+`--model`. Those read rules are enforced by Claude Code, not by the operating
+system, and outside your home folder the agent can read what your account can.
+The lab will not use a Claude Code older than 2.1.169, which would not honour
+these limits. The console also never runs your git hooks on AI-edited source.
 
 The console never runs the `bitcoin-cli` it builds. It talks to your node over
 the local RPC port directly, because that program comes from the same
@@ -282,9 +341,10 @@ Regtest is the default and the place for experiments. On the real network the
 console asks you to type `MAINNET` after reading what that means (or pass
 `--accept-mainnet-risk` when no terminal is available), and then:
 
-- it refuses to start any build whose comparison found a consensus difference,
-  that has not been compared, that touches consensus-related code or tests, or
-  that fails stock unit tests;
+- it refuses to start any build whose comparison found a consensus difference
+  or could not be completed, that has not been compared, that touches
+  consensus-related code, tests or build files, or that fails stock unit
+  tests;
 - the wallet stays disabled and incoming connections stay off unless you
   switch them on in Node settings;
 - it watches the node's own warnings, chain tips and log, and tells you in
@@ -318,7 +378,11 @@ as untrusted. The console shows you the text and what the sender's console
 recorded, tells the agent in a fixed preamble to treat it only as a
 description of a source change, never applies or starts it automatically, and
 refuses any proposal that touches the lab's own files, its launcher, the
-project's automation or the agent's configuration.
+project's automation or the agent's configuration. A request containing
+characters you cannot see (zero-width, right-to-left, tag or private-use
+characters, which could carry instructions past you) is refused outright.
+That includes the invisible joiners that some scripts and some emoji need, so
+a request written with them has to be retyped by you.
 
 ## Node settings
 
