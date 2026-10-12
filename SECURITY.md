@@ -83,6 +83,13 @@ pretend to a 24-hour SLA we cannot keep.
   including its network and its Claude Code sign-in.
 - Compiling runs build scripts and tools from the source being compiled. On
   macOS and Linux that happens inside the sandbox, before review.
+- The sandbox hides the home folder, shared temporary folders and local
+  service sockets; system folders stay readable. On macOS, confined code can
+  read the command lines and environment variables of the operator's other
+  running programs, and a program started during a build can deliberately
+  outlive it while keeping its permission to write to the build folder. The
+  reference node is therefore never taken from a build folder that a build of
+  changed source could write to.
 - Both lab nodes and the script that drives them share one sandbox. A node
   program written to deceive could interfere with the unmodified node beside
   it and forge a comparison. The comparison is evidence about rule changes,

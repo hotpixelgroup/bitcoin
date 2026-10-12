@@ -65,7 +65,11 @@ MAC_LOCKDOWN = '''(deny mach-lookup)
 # program could ask something outside the sandbox to act for it (the session
 # bus, the Docker socket, key agents, the X server). Each is replaced by an
 # empty folder; anything the command needs under one is put back by name.
-LINUX_HIDDEN = ("/home", "/root", "/tmp", "/var/tmp", "/run", "/mnt", "/media", "/srv")
+LINUX_HIDDEN = ("/home", "/root", "/tmp", "/var", "/run", "/mnt", "/media", "/srv")
+
+# macOS: besides the home folder, the shared temporary folders (other
+# programs' files, and the sockets of key agents) and other disks.
+MAC_HIDDEN = ("/private/tmp", "/private/var/folders", "/Volumes")
 
 
 def _real(path):
@@ -189,13 +193,14 @@ class Sandbox:
             candidate = os.path.join(self.home, name)
             if os.path.exists(candidate):
                 paths.append(_real(candidate))
-        # Toolchains installed under the home folder (pyenv, ~/.local, a
-        # personal Homebrew): expose the tool's own folders, nothing wider.
+        # Toolchains installed in a hidden place (pyenv, ~/.local, a personal
+        # Homebrew, /home/linuxbrew): expose the tool's own folders, nothing wider.
+        hidden = self._hidden_roots() if sys.platform.startswith("linux") else [self.home, *MAC_HIDDEN]
         tools = [sys.executable, *(shutil.which(t) or "" for t in
                                    ("cmake", "ninja", "make", "cc", "c++", "git", "ccache"))]
         for tool in filter(None, tools):
             real = _real(tool)
-            if not _inside(real, self.home):
+            if not any(_inside(real, root) for root in hidden):
                 continue
             prefix = os.path.dirname(os.path.dirname(real))
             paths.append(os.path.dirname(real))
@@ -222,12 +227,18 @@ class Sandbox:
         readable = self._readable(write, read)
         lines = ["(version 1)", "(allow default)"]
         lines.append(f"(deny file-read* (subpath {_quote(self.home)}))")
+        elsewhere = [root for root in MAC_HIDDEN if os.path.isdir(root)]
+        if elsewhere:
+            lines.append("(deny file-read* " + " ".join(f"(subpath {_quote(r)})" for r in elsewhere) + ")")
         lines.append("(allow file-read* " + " ".join(f"(subpath {_quote(p)})" for p in readable) + ")")
         parents = []
         for path in readable:
-            for parent in _ancestors(path, self.home):
-                if parent not in parents:
-                    parents.append(parent)
+            for root in (self.home, *elsewhere):
+                if not _inside(path, root):
+                    continue
+                for parent in _ancestors(path, root):
+                    if parent not in parents:
+                        parents.append(parent)
         if parents:
             lines.append("(allow file-read-metadata " +
                          " ".join(f"(literal {_quote(p)})" for p in parents) + ")")
@@ -239,6 +250,10 @@ class Sandbox:
                      " " + MAC_DEVICE_WRITES + ")")
         if network != "full":
             lines.append("(deny network*)")
+        else:
+            # A node on a real network needs the internet, not the local
+            # sockets of key agents and other services on this Mac.
+            lines.append("(deny network-outbound (remote unix-socket))")
         if network == "local":
             lines.append('(allow network* (local ip "localhost:*") (remote ip "localhost:*"))')
         if network == "loopback":

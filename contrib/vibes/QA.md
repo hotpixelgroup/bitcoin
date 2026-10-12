@@ -69,7 +69,7 @@ checked.
 
 ## Automated suites
 
-- 88 console tests and 17 installer tests (`python3 -m unittest discover -s
+- 102 console tests and 17 installer tests (`python3 -m unittest discover -s
   contrib/vibes/tests`), all passing, including the tests that need a real
   node. See `tests/README.md` for what each group covers.
 - Browser checks of the landing page and demo in Chrome via Playwright: the
@@ -96,15 +96,18 @@ checked.
 After the lab was merged, a reviewer who had not written it read the console,
 the sandbox, the lab script, the page, the installer and the release workflow,
 without running them. It reported four serious problems and eight lesser ones.
-All were fixed before anything was released. The review is attached to the
-pull request that made the fixes.
+Each was addressed before anything was released, and the fixes were then
+reviewed a second time; that second review found gaps in several of them,
+which are listed after the table with what was done. Both reviews are attached
+to the pull request that made the fixes. What is still open is under "Not
+checked".
 
 | What the review found | What changed | How the fix was checked |
 |---|---|---|
-| On Linux, confined code could still see `/run` and `/tmp`, where local service sockets live, and shared the operator's terminal session | Those places are replaced by empty folders, and every command gets its own session | The arguments by unit test; the behaviour by the CI job, which runs the real-node tests inside `bubblewrap` |
-| On macOS, confined code could ask other programs to act for it and could signal any process | Launch services, launchd, Apple events and signals to anything outside the sandbox are denied | Probed directly: `open -a` fails and a signal to an outside process fails, while a build, the unit tests, the lab scenes and node start still work |
+| On Linux, confined code could still see `/run` and `/tmp`, where local service sockets live, and shared the operator's terminal session | Those places and `/var` are replaced by empty folders, and every command gets its own session | The arguments by unit test; the behaviour by the CI job, which fails unless `bubblewrap` starts, compiles the node inside it, and runs the real-node tests and the probes below inside it |
+| On macOS, confined code could ask other programs to act for it and could signal any process | Launch services, launchd, Apple events and signals to anything outside the sandbox are denied; shared temporary folders and other disks are hidden; a node on a real network cannot reach local sockets such as a key agent's | Probed directly: `open -a` fails, a signal to an outside process fails and the key agent's socket is refused, while a build, the unit tests, the lab scenes and node start still work. Tests now try writes, reads and the network from inside the sandbox (RealSandboxTests) |
 | In Docker, a proposal was compiled before review, with the network and the container's AI sign-in in reach | A container no longer counts as confinement; Docker is review-first | Unit test |
-| "Same as the unmodified node" looked only at `src/`; build tooling could be edited; a proposal's build could leave things behind in the shared build folder | Identity covers everything that feeds the build; top-level build tooling is refused; a proposal is compiled in a copy of the build folder that is thrown away; the reference never comes from a folder that has compiled a change | Unit tests, and the real run described under this table |
+| "Same as the unmodified node" looked only at `src/`; build tooling could be edited; a proposal's build could leave things behind in the shared build folder | Identity covers every file that can feed the build; top-level build tooling is refused; a proposal is compiled in a copy of the build folder that is thrown away; the reference never comes from a proposal's build or from a build folder that a build of changed source could write to | Unit tests (ReferenceRuleTests), and the real run described under this table |
 | Unusual file names, or a `.gitattributes` in a subfolder, could hide a change from the path checks or from the reviewer | Paths are read unquoted and NUL-separated; changes are always shown as text; those files are refused at any depth | Unit tests with accented, quoted and tab-containing names |
 | A build that could not produce a block was reported as "No difference observed" | A new outcome, "The comparison could not be completed", which blocks automatic applying and shared networks | Unit tests |
 | If the operator's branch could not be put back after a build, the console hid it | The console reports it and shows the real state; SIGTERM and SIGHUP are handled like Ctrl-C | Unit test |
@@ -114,25 +117,53 @@ pull request that made the fixes.
 | A crafted sharing token could break the page until its storage was cleared | Token fields are validated before use | Browser test |
 | Smaller items | The release is a draft until every file is attached; no partial upgrade on Arch; the access key file is private from creation; the installer runs nothing if cut short; the operator's git hooks are not run on AI-edited source | Unit tests where practical; the release change runs for the first time when a release is made |
 
-The fixes were then run through the real console inside the macOS sandbox, on
-a temporary branch:
+After both rounds of fixes, the lab was run through the real console inside
+the macOS sandbox, on a temporary branch, starting from a build folder that
+had compiled changed source before and with no reference node:
 
+- At start, the console did not adopt the program in that build folder as the
+  reference. Asked to prepare one, it compiled the unmodified source in a
+  folder of its own and deleted that folder afterwards.
+- Build and check of the unmodified source was judged identical, and the node
+  kept for it was the reference node itself, byte for byte.
 - The doubled-reward proposal was compiled before review in a copy of the
   build folder, and found to be "loosened" as before. Afterwards the build
   folder's node program and its configuration had the same content and the
-  same file times as before the proposal, no copy was left behind, and the
-  source was back on its branch. Compiling in a copy did not slow the run
-  down on this machine, where the copy shares disk space with the original.
+  same file times as before the proposal, no copy was left behind, the
+  reference was untouched and the source was back on its branch. Compiling in
+  a copy did not slow the run down on this machine, where the copy shares disk
+  space with the original.
+- A second console started for the same source while the first was running
+  refused to start and disturbed nothing.
 - The halved-reward proposal was compiled, reviewed and applied; the applied
-  revision was the one that had been built. Building again with the change
-  applied marked the build folder as having compiled a change.
-- Restore the baseline then produced a build judged identical, and the node
-  kept for it was the reference node itself, byte for byte.
-- The keys, rule-breaking-miner, mining-power (at 30%), soft-fork replay and
-  reorganisation scenes all ran inside the tightened sandbox with their
+  revision was the one that had been built. Restore the baseline then produced
+  a build judged identical, kept as the reference node itself.
+- The keys, fees, rule-breaking-miner, mining-power (at 70%), soft-fork replay
+  and relay-filter scenes all ran inside the tightened sandbox with their
   documented outcomes.
-- The console was stopped with a terminate signal: it stopped its node and
-  exited cleanly.
+- The console was stopped once with a terminate signal and once with a
+  hang-up signal: each time it stopped its node and exited cleanly.
+
+### The second review, of the fixes themselves
+
+| What it found | What was done |
+|---|---|
+| A build file under `doc/` was outside the "same node" check, although the build reads it; a proposal's own build could still become the reference | A build file counts wherever it lives; a proposal's build never becomes the reference |
+| A program started during a proposal's build on macOS can outlive it and keep permission to write to the build folder | The reference is never taken from a build folder that a build of changed source could write to; after the first proposal it is compiled in a folder of its own. Whatever a confined command leaves in its process group is ended when the command ends |
+| Starting a second console while the first was building moved the build folder and the branch from under it | One console process per lab folder, enforced with a lock taken before any tidying up |
+| The refused-paths check was case-sensitive, and a Mac's usual filesystem is not | Compared without regard to case; file names that are not plain letters, digits and `. _ - @ +` are refused |
+| Showing a change to a binary file as text could stop the job with an error | Output that is not valid text is shown with replacement marks |
+| Tidying up on exit could be cut short by a second signal or a closed terminal; a linked or missing build folder was mishandled | Signals are ignored and terminal errors tolerated while tidying up; a linked build folder is refused; whatever is found in the build folder's place is cleared before it is put back |
+| Two nodes that refused nothing and still ended on different chains were reported as "no difference" | Reported as "could not be completed" |
+| Tools installed under `/home/linuxbrew` vanished from the Linux sandbox | A tool's own folders are shown again from any hidden place |
+| The manual and this record claimed more than the code did in three places | Reworded; the limits it pointed to are now stated in the manual and the security policy |
+
+Not closed, and stated as limits instead: the sandboxes still start from
+"everything readable" and hide chosen places, not the other way round; on
+macOS confined code can read other programs' command lines and environment
+variables; the agent runs with your full environment under Claude Code's own
+rules; a shared request that needs invisible joiners (some scripts, some
+emoji) is refused and has to be retyped.
 
 ## Not checked
 

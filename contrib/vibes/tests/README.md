@@ -40,6 +40,8 @@ installations.
 | "The same node" covers everything that feeds the build; an unfinished comparison never counts as agreement | SafetyTests, RegtestRulesTests, SharedNetworkTests | no |
 | Shared requests with invisible characters are refused; sender notes are bounded; the agent's read rules cover the home folder; an old Claude Code is not used | SafetyTests | no |
 | Stopping a lab run leaves no nodes behind | RealNodeTests | yes |
+| Where the reference node may come from: the first unshared build, never a proposal's own build, never a shared build folder | ReferenceRuleTests | no |
+| What the machine's own sandbox stops, tried from inside it: writes elsewhere, reading the key, the home folder and shared temporary files, the network; and that a compiler still works there | RealSandboxTests | no (skipped where there is no sandbox) |
 | The agent's command line: file tools only, no bypass flag, deny rules | SafetyTests | no |
 | The real agent path, driven by a stand-in for the `claude` program, and its time limit | SafetyTests | no |
 | Which builds may start on a shared network; the mainnet confirmation; wallet and listening defaults | SharedNetworkTests | no |
@@ -71,7 +73,8 @@ mining-power scene (at 30% and 70%) with the nodes it has just built.
 - A live AI session. The agent path is exercised with a stand-in program, never
   with a real model.
 - The Linux sandbox (`bubblewrap`) anywhere but GitHub's Ubuntu machines,
-  where the CI job runs these tests inside it with real nodes.
+  where the CI job fails unless the sandbox starts, compiles the node inside
+  it, and runs these tests inside it with real nodes.
 - The Mac app, notarisation, and the Docker image beyond "it builds and the
   console answers".
 - The real console page in a browser. The browser tests drive the static demo,

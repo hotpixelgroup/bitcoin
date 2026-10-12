@@ -189,8 +189,9 @@ difference observed".
    and edit files there. It cannot run commands or use the network.
 3. The lab compiles the proposal inside an operating-system sandbox and runs
    Bitcoin Core's unit tests on it, each suite in its own process. It compiles
-   in a copy of your build folder and throws the copy away afterwards, so
-   nothing an unreviewed proposal's build leaves behind can reach a later one.
+   in a copy of your build folder and throws the copy away afterwards, so what
+   an unreviewed proposal's build leaves in the folder is not picked up by the
+   next build.
 4. The lab starts the new build beside an unmodified node on a throwaway
    private chain, hands each node the other's blocks and a few test
    transactions, and records what each one did.
@@ -212,7 +213,9 @@ automation, the top-level build tooling (`CMakeLists.txt`, `cmake/`,
 `.gitmodules`, which could change what the review shows you. An edit to a
 `CMakeLists.txt` under `src/` is allowed, because adding a source file needs
 one; it is named in the review and always waits for you, since build files
-can run commands while compiling.
+can run commands while compiling. File names must be plain (letters, digits
+and `. _ - @ +`): other characters can be shown or matched misleadingly, and
+no change to the node needs them.
 
 ### What the comparison can tell you
 
@@ -256,12 +259,17 @@ temporary folder.
 Without a reference node a build is marked "not compared". On a private chain
 of one node any rule appears to work, because nobody is present to disagree.
 
-"Unmodified" means everything that feeds the build is unchanged: the source,
-the build scripts and the tooling, not only `src/`. Documentation, the console
-and the project's automation do not count. The reference is never taken from
-a build folder that has compiled changed source; if that is the only folder
-available, it is emptied and compiled afresh. When you restore the baseline,
-the node kept for it is the reference node itself.
+"Unmodified" means every file that can feed the build is unchanged: the
+source, and every build script wherever it lives, not only `src/`. Other
+documentation, the console and the project's automation do not count.
+
+The reference is taken from your own build folder only while that folder has
+never been writable by a build of changed source: in practice, the first
+build of a fresh install, or your current source compiled once before your
+first proposal. After that it is compiled in a folder of its own, from a clean
+checkout of the unmodified source, which is one full compile each time the
+baseline moves. A proposal's own build never becomes the reference. When you
+restore the baseline, the node kept for it is the reference node itself.
 
 ## Confinement
 
@@ -269,8 +277,8 @@ AI-written code is compiled and run only inside an enclosure:
 
 | Where | Mechanism | What it restricts |
 |---|---|---|
-| macOS | `sandbox-exec` | No network beyond the lab's own loopback ports; no writes outside the lab folders; no reads of your home folder beyond this source tree; the console's key and your node's data folder are hidden; no asking other programs on the Mac to act for it (launch services, Apple events); no signalling anything outside the sandbox. |
-| Linux | `bubblewrap` | A private network; no writes outside the lab folders; home folders, temporary folders and local service sockets (`/run`, `/tmp`) hidden apart from this source tree; its own terminal session. Install the `bubblewrap` package. |
+| macOS | `sandbox-exec` | No network beyond the lab's own loopback ports; no writes outside the lab folders; no reads of your home folder, the shared temporary folders or other disks beyond this source tree; the console's key and your node's data folder are hidden; no asking other programs on the Mac to act for it (launch services, Apple events); no signalling anything outside the sandbox. |
+| Linux | `bubblewrap` | A private network; no writes outside the lab folders; home folders, temporary folders, `/var` and local service sockets (`/run`, `/tmp`) hidden apart from this source tree; its own terminal session. Install the `bubblewrap` package. Tools installed as snaps cannot run inside it. |
 | Docker | none inside the container | Treated as no sandbox: nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 | None of these | none | The console says so. Nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 
@@ -281,6 +289,13 @@ machine. On Linux the running node's network cannot be limited to this
 machine; on macOS it is, while you are on regtest. The Linux mechanism runs
 in this project's automated checks on GitHub's Ubuntu machines, with real
 nodes; it has not been tried on other distributions.
+
+What the sandbox does not hide. System folders stay readable on both
+systems. On macOS, confined code can read the command lines and environment
+variables of your other running programs (it has no network to send them
+anywhere), and a program started during a build can deliberately outlive it
+while keeping its permission to write to the build folder. That last point is
+why the reference node never comes from a shared build folder.
 
 Two more limits. Compiling runs build scripts and tools that come from the
 source being compiled, so during a build it is the sandbox, not your review,
@@ -358,6 +373,8 @@ refuses any proposal that touches the lab's own files, its launcher, the
 project's automation or the agent's configuration. A request containing
 characters you cannot see (zero-width, right-to-left, tag or private-use
 characters, which could carry instructions past you) is refused outright.
+That includes the invisible joiners that some scripts and some emoji need, so
+a request written with them has to be retyped by you.
 
 ## Node settings
 

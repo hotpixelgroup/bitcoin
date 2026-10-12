@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import stat
 import subprocess
@@ -224,7 +225,10 @@ class SafetyTests(ConsoleCase):
         for target in ('contrib/vibes/bitcoin-vibes', 'vibes', '.github/workflows/x.yml',
                        '.claude/settings.json', '.mcp.json', 'CLAUDE.md', 'CMakeLists.txt',
                        'cmake/module/Extra.cmake', 'depends/Makefile', 'contrib/devtools/x.py',
-                       'ci/test/x.sh', 'src/.gitattributes', 'src/wallet/.gitignore', '.gitmodules'):
+                       'ci/test/x.sh', 'src/.gitattributes', 'src/wallet/.gitignore', '.gitmodules',
+                       # The same names in another case: one folder on a Mac's usual filesystem.
+                       '.Claude/settings.json', 'Claude.md', '.MCP.json', 'src/.GitAttributes',
+                       'Contrib/vibes/x.py'):
             def edit(workspace, target=target):
                 (workspace / target).parent.mkdir(parents=True, exist_ok=True)
                 (workspace / target).write_text('changed\n')
@@ -237,20 +241,37 @@ class SafetyTests(ConsoleCase):
         for allowed in ('vibes-notes.md', 'src/validation.cpp', 'src/CMakeLists.txt', 'doc/x.md'):
             self.assertFalse(vibes.Console._is_protected(allowed), allowed)
 
-    def test_awkward_file_names_cannot_slip_past_the_checks(self):
-        """git quotes and escapes unusual paths unless told not to. A quoted
-        path would no longer start with src/test/, and would escape the flag."""
-        names = ['src/test/t\u00e9st_tests.cpp', 'src/test/with "quotes".cpp', 'src/test/tab\there.cpp']
+    def test_unusual_file_names_are_refused_and_reported_exactly(self):
+        """git quotes and escapes unusual paths unless told not to, and a
+        quoted path would slip past every check that reads it. The console
+        reads them unquoted, and refuses names that are not plain."""
+        names = ['src/test/t\u00e9st_tests.cpp', 'src/test/with "quotes".cpp', 'src/test/tab\there.cpp',
+                 'src/v\u0430lidation.cpp', 'src/two words.cpp']
+        for name in names:
+            def edit(workspace, name=name):
+                (workspace / name).parent.mkdir(parents=True, exist_ok=True)
+                (workspace / name).write_text('// edited\n')
+            with self.with_agent(edit), self.confined(), self.fake_build():
+                job = self.propose(review=False)
+            self.assertEqual(job.state, 'error', name)
+            self.assertIn('unusual names', job.meta['error'])
+            self.assertIn(repr(name), job.meta['error'])
+            self.assertEqual([f['path'] for f in job.meta['files']], [name])
+        for plain in ('src/validation.cpp', 'src/qt/locale/bitcoin_uz@Cyrl.ts', 'doc/release-notes-31.md'):
+            self.assertTrue(vibes.Console._is_plain_name(plain), plain)
+
+    def test_a_change_to_a_binary_file_is_shown_not_fatal(self):
+        (self.repo / 'doc/logo.png').write_bytes(b'\x89PNG\r\n\xff\xfe\x00\x01')
+        self.git('add', '-A')
+        self.git('commit', '-m', 'a binary file')
+        self.console.baseline = {}
 
         def edit(workspace):
-            (workspace / 'src/test').mkdir(parents=True)
-            for name in names:
-                (workspace / name).write_text('// edited\n')
-        with self.with_agent(edit), self.confined(), self.fake_build():
-            job = self.propose(review=False)
+            (workspace / 'doc/logo.png').write_bytes(b'\x89PNG\r\n\xfd\xfc\x00\x02 changed')
+        with self.with_agent(edit):
+            job = self.propose()
         self.assertEqual(job.state, 'review', job.meta.get('error'))
-        self.assertEqual(sorted(job.meta['tests_touched']), sorted(names))
-        self.assertEqual(sorted(f['path'] for f in job.meta['files']), sorted(names))
+        self.assertIn('doc/logo.png', job.meta['patch'])
 
     def test_a_change_git_would_hide_is_still_shown_and_refused(self):
         def edit(workspace):
@@ -287,7 +308,13 @@ class SafetyTests(ConsoleCase):
         (self.repo / 'cmake/script.cmake').write_text('message("hello")\n')
         self.git('add', '-A')
         self.git('commit', '-m', 'a build script, no source change')
-        self.assertNotEqual(self.console.node_key('HEAD'), base)
+        changed = self.console.node_key('HEAD')
+        self.assertNotEqual(changed, base)
+        # doc/ is part of the build: its CMakeLists.txt is read like any other.
+        (self.repo / 'doc/CMakeLists.txt').write_text('set(CMAKE_CXX_FLAGS "-include doc/x.h" PARENT_SCOPE)\n')
+        self.git('add', '-A')
+        self.git('commit', '-m', 'a build file under doc')
+        self.assertNotEqual(self.console.node_key('HEAD'), changed)
         self.assertEqual(self.console.node_key('no-such-revision'), '')
 
     def test_unfinished_comparison_is_never_treated_as_agreement(self):
@@ -314,10 +341,12 @@ class SafetyTests(ConsoleCase):
 
         def edit(workspace):
             (workspace / 'doc/vibes.md').write_text('changed\n')
-        with self.with_agent(edit), self.confined(), patch.object(self.console, '_build', building):
+        with self.with_agent(edit), self.confined(), patch.object(self.console, '_build', building), \
+                patch.object(self.console, '_compile', return_value=0):
             job = self.propose(review=True, autobuild=True)
         self.assertEqual(job.state, 'review', job.meta.get('error'))
         self.assertEqual(seen, {'kept': 'trusted\n', 'copy': 'trusted\n'})
+        self.assertTrue(self.console._build_folder_was_shared())
         self.assertEqual((build / 'object.o').read_text(), 'trusted\n')
         self.assertFalse((build / 'extra').exists())
         self.assertFalse((self.console.state_dir / 'build-kept').exists())
@@ -333,6 +362,54 @@ class SafetyTests(ConsoleCase):
         self.assertEqual((build / 'object.o').read_text(), 'trusted\n')
         self.assertFalse(kept.exists())
         self.assertEqual(list(again.state_dir.glob('build-discard-*')), [])
+
+    def test_a_linked_build_folder_is_not_used_for_a_proposal(self):
+        elsewhere = self.repo.parent / (self.repo.name + '-elsewhere')
+        elsewhere.mkdir()
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        (elsewhere / 'CMakeCache.txt').write_text('trusted\n')
+        (self.repo / 'build').symlink_to(elsewhere)
+        (self.repo / '.git/info/exclude').write_text('build\n')      # a link is not a folder to git
+
+        def edit(workspace):
+            (workspace / 'doc/vibes.md').write_text('changed\n')
+        with self.with_agent(edit), self.confined(), self.fake_build():
+            job = self.propose(review=True, autobuild=True)
+        self.assertEqual(job.state, 'error')
+        self.assertIn('link to somewhere else', job.meta['error'])
+        self.assertEqual((elsewhere / 'CMakeCache.txt').read_text(), 'trusted\n')
+
+    def test_build_folder_comes_back_whatever_was_left_in_its_place(self):
+        build, kept = self.repo / 'build', self.console.state_dir / 'build-kept'
+        for leave in ('a dangling link', 'a file', 'nothing'):
+            kept.mkdir()
+            (kept / 'object.o').write_text('trusted\n')
+            if leave == 'a dangling link':
+                build.symlink_to(self.repo / 'no-such-folder')
+            elif leave == 'a file':
+                build.write_text('not a folder\n')
+            self.assertTrue(self.console._restore_build_folder(), leave)
+            self.assertEqual((build / 'object.o').read_text(), 'trusted\n', leave)
+            self.assertFalse(kept.exists(), leave)
+            shutil.rmtree(build)
+
+    def test_a_second_console_does_not_disturb_a_build_in_progress(self):
+        build, kept = self.repo / 'build', self.console.state_dir / 'build-kept'
+        kept.mkdir()
+        (kept / 'object.o').write_text('trusted\n')
+        build.mkdir()
+        (build / 'object.o').write_text('the copy a proposal is being compiled in\n')
+        # As if another process were the console for this lab: its lock is held
+        # by an open file this new console does not know about.
+        held = vibes.Console._lab_locks.pop(str(self.console.state_dir))
+        try:
+            second = vibes.Console(self.opts)
+        finally:
+            vibes.Console._lab_locks[str(self.console.state_dir)] = held
+        self.assertFalse(second.owns_lab)
+        self.assertEqual((build / 'object.o').read_text(), 'the copy a proposal is being compiled in\n')
+        self.assertTrue(kept.exists())
+        self.assertTrue(self.console.owns_lab)
 
     def test_a_branch_that_cannot_be_put_back_is_reported_not_hidden(self):
         self.console._write_json(self.console.state_dir / 'checkout.json',
@@ -568,6 +645,9 @@ class RegtestRulesTests(ConsoleCase):
         # A difference that was found is still reported as that difference.
         found = outcome([dict(same), dict(failed)], cand_rejects={'height': 1, 'plain': 'x'})
         self.assertEqual(found['verdict'], 'tightened')
+        # Two nodes that refused nothing and still ended on different chains.
+        view = dict(view, converged=False, candidate_tip={'height': 150})
+        self.assertEqual(outcome([dict(same)])['verdict'], 'inconclusive')
 
     def test_private_chain_runs_anything(self):
         record = {'verified': True, 'compare': {'verdict': 'split'}}
@@ -651,6 +731,167 @@ class RegtestRulesTests(ConsoleCase):
         self.assertEqual([ev['seq'] for ev in self.console.experiment(job.id)['events']], [1, 2])
         with self.assertRaises(ValueError):
             self.console.experiment('../../key')
+
+
+class ReferenceRuleTests(ConsoleCase):
+    """Where the unmodified reference node may come from."""
+
+    def programs(self, content='stock'):
+        (self.repo / 'build/bin').mkdir(parents=True, exist_ok=True)
+        (self.repo / 'build/CMakeCache.txt').write_text('configured\n')
+        for name in ('bitcoind', 'bitcoin-cli'):
+            (self.repo / 'build/bin' / name).write_text(content)
+        test = self.repo / 'build/bin/test_bitcoin'
+        test.write_text('#!/bin/sh\ncase "$1" in --list_content) printf "good_tests*\\n" >&2 ;; esac\nexit 0\n')
+        test.chmod(0o755)
+
+    def compiling(self):
+        return patch.object(self.console, '_stream', return_value=0)
+
+    def reference(self):
+        program = self.console.reference_dir / 'bitcoind'
+        return program.read_text() if self.console.reference_state()['ready'] else None
+
+    def test_first_build_of_unmodified_source_becomes_the_reference(self):
+        self.programs()
+        with self.compiling():
+            self.console._build(vibes.Job('build'))
+        self.assertEqual(self.reference(), 'stock')
+
+    def test_a_proposals_own_build_never_becomes_the_reference(self):
+        self.programs()
+        with self.compiling():
+            record = self.console._build(vibes.Job('vibe'), promote=False)
+        self.assertEqual(record['compare']['verdict'], 'identical')
+        self.assertIsNone(self.reference())
+
+    def test_current_source_is_kept_as_the_reference_before_a_first_proposal(self):
+        self.programs()
+
+        def edit(workspace):
+            (workspace / 'src').mkdir()
+            (workspace / 'src/validation.cpp').write_text('int nSubsidy = 100;\n')
+        with self.with_agent(edit), self.confined(), self.compiling(), self.fake_build('loosened'):
+            job = self.propose(review=True, autobuild=True)
+        self.assertEqual(job.state, 'review', job.meta.get('error'))
+        self.assertEqual(self.reference(), 'stock')
+        self.assertTrue(self.console._build_folder_was_shared())
+
+    def test_building_changed_source_marks_the_folder_for_good(self):
+        (self.repo / 'src').mkdir()
+        (self.repo / 'src/validation.cpp').write_text('int nSubsidy = 100;\n')
+        self.git('add', '-A')
+        self.git('commit', '-m', 'vibe: change the subsidy')
+        self.programs('changed')
+        self.assertFalse(self.console._build_folder_was_shared())
+        with self.compiling():
+            self.console._build(vibes.Job('build'))
+        self.assertTrue(self.console._build_folder_was_shared())
+        self.assertIsNone(self.reference())
+
+    def test_a_shared_build_folder_never_provides_the_unmodified_node(self):
+        self.programs('could have been altered')
+        self.console._note_build_folder_shared('abc')
+        apart = []
+
+        def compile_apart(job):
+            apart.append(True)
+            folder = self.repo.parent / (self.repo.name + '-apart')
+            folder.mkdir()
+            self.addCleanup(shutil.rmtree, folder, True)
+            (folder / 'bitcoind').write_text('compiled apart')
+            return self.console._capture_reference(self.console.stock_rev(), folder, job)
+        with self.compiling(), patch.object(self.console, '_build_reference_apart', compile_apart):
+            record = self.console._build(vibes.Job('build'))
+        self.assertEqual(apart, [True])
+        self.assertEqual(self.reference(), 'compiled apart')
+        self.assertEqual((Path(record['path']) / 'bitcoind').read_text(), 'compiled apart')
+        # Nor is the program in that folder taken on trust at the next start.
+        (self.console.reference_dir / 'reference.json').unlink()
+        with patch.object(self.console, 'ask_node_program') as ask:
+            self.console._adopt_installed_reference()
+        ask.assert_not_called()
+        self.assertIsNone(self.reference())
+
+    def test_reference_compiled_apart_uses_its_own_checkout_and_folder(self):
+        seen = []
+
+        def stream(job, cmd, write=(), **kwargs):
+            seen.append((list(map(str, cmd)), [str(w) for w in write]))
+            if '--build' in cmd:
+                bin_dir = Path(cmd[cmd.index('--build') + 1]) / 'bin'
+                bin_dir.mkdir(parents=True)
+                (bin_dir / 'bitcoind').write_text('compiled apart')
+            return 0
+        with patch.object(self.console, '_stream', stream):
+            self.assertTrue(self.console._build_reference_apart(vibes.Job('build')))
+        self.assertEqual(self.reference(), 'compiled apart')
+        own = str(self.console.state_dir / 'reference-build')
+        for cmd, write in seen:
+            self.assertEqual(write, [own])
+            self.assertNotIn(str(self.repo / 'build'), cmd)
+        self.assertFalse((self.console.state_dir / 'reference-build').exists())
+        self.assertFalse((self.console.state_dir / 'reference-src').exists())
+
+
+class RealSandboxTests(ConsoleCase):
+    """What this machine's own sandbox actually stops, tried from inside it.
+    Skipped where there is none."""
+    sandbox = None
+
+    def setUp(self):
+        super().setUp()
+        if not self.console.sandbox.contained:
+            self.skipTest('no operating-system sandbox on this machine')
+        self.work = self.console.state_dir / 'tmp' / 'inside'
+        self.work.mkdir(parents=True)
+
+    def inside(self, *argv, network='none'):
+        command = self.console.sandbox.wrap(list(argv), write=[self.work], network=network)
+        return subprocess.run(command, capture_output=True, text=True, timeout=180, cwd=self.repo,
+                              env=self.console.sandbox.clean_env(self.work), stdin=subprocess.DEVNULL)
+
+    def planted(self, path, text='private'):
+        path.write_text(text)
+        self.addCleanup(lambda: path.unlink() if path.exists() else None)
+        return path
+
+    def test_writes_stay_inside_the_folder_it_was_given(self):
+        allowed = self.inside('/bin/sh', '-c', f'echo x > "{self.work}/allowed"')
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        home = Path.home() / '.vibes-sandbox-test-write'
+        self.addCleanup(lambda: home.unlink() if home.exists() else None)
+        for target in (self.repo / 'doc/planted', self.console.state_dir / 'planted', home):
+            result = self.inside('/bin/sh', '-c', f'echo x > "{target}"')
+            self.assertNotEqual(result.returncode, 0, target)
+            self.assertFalse(target.exists(), target)
+
+    def test_the_key_the_home_folder_and_shared_temporary_files_are_out_of_sight(self):
+        outside = [self.console.state_dir / 'key',
+                   self.planted(Path.home() / '.vibes-sandbox-test-read')]
+        if os.path.isdir('/tmp'):
+            outside.append(self.planted(Path('/tmp') / f'vibes-sandbox-test-{os.getpid()}'))
+        for path in outside:
+            result = self.inside('/bin/cat', str(path))
+            self.assertNotEqual(result.returncode, 0, path)
+            self.assertEqual(result.stdout, '', path)
+        inside = self.planted(self.repo / 'doc' / 'readable.txt', 'source')
+        self.assertEqual(self.inside('/bin/cat', str(inside)).stdout, 'source')
+
+    def test_no_network(self):
+        code = ("import socket\ntry:\n    socket.create_connection(('1.1.1.1', 53), 3)\n"
+                "    print('reached the internet')\nexcept OSError:\n    print('no route')\n")
+        result = self.inside(sys.executable, '-I', '-c', code)
+        self.assertEqual(result.stdout.strip(), 'no route', result.stderr)
+
+    def test_a_compiler_works_inside_it(self):
+        if not shutil.which('c++'):
+            self.skipTest('no C++ compiler on this machine')
+        source = self.work / 'hello.cpp'
+        source.write_text('#include <iostream>\n#include <vector>\n'
+                          'int main() { std::vector<int> v{1, 2, 3}; std::cout << "built " << v.size() << "\\n"; }\n')
+        result = self.inside('/bin/sh', '-c', f'c++ -std=c++20 "{source}" -o "{self.work}/hello" && "{self.work}/hello"')
+        self.assertEqual(result.stdout.strip(), 'built 3', result.stderr)
 
 
 class UpdateTests(unittest.TestCase):
@@ -1006,6 +1247,14 @@ class SandboxProfileTests(ConsoleCase):
                      '(deny signal)', '(allow signal (target same-sandbox))'):
             self.assertIn(rule, profile)
         self.assertNotIn('com.apple.coreservices', profile)
+        # Shared temporary folders and other disks are hidden like the home folder.
+        for root in ('/private/tmp', '/private/var/folders'):
+            if os.path.isdir(root):
+                self.assertIn(f'(subpath "{root}")', profile.split('(allow file-read*')[0])
+        # A node on a real network gets the internet, not this machine's local sockets.
+        full = sandbox.seatbelt_profile(write=[work], network='full')
+        self.assertNotIn('(deny network*)', full)
+        self.assertIn('(deny network-outbound (remote unix-socket))', full)
 
     def test_bwrap_arguments_hide_home_and_cut_the_network(self):
         sandbox = self.console.sandbox
@@ -1013,7 +1262,7 @@ class SandboxProfileTests(ConsoleCase):
         self.assertIn('--unshare-net', args)
         hidden = [args[i + 1] for i, arg in enumerate(args) if arg == '--tmpfs']
         self.assertTrue(any(sandbox.home == root or sandbox.home.startswith(root + '/') for root in hidden), hidden)
-        for root in ('/tmp', '/run'):
+        for root in ('/tmp', '/run', '/var'):
             if os.path.isdir(root) and not os.path.islink(root):
                 self.assertIn(root, hidden)
         for flag in ('--die-with-parent', '--new-session', '--unshare-pid'):
