@@ -379,6 +379,42 @@ class SafetyTests(ConsoleCase):
         self.assertIn('link to somewhere else', job.meta['error'])
         self.assertEqual((elsewhere / 'CMakeCache.txt').read_text(), 'trusted\n')
 
+    def test_a_link_planted_in_a_writable_folders_place_grants_nothing(self):
+        """Confined code may write to its build and scratch folders, so it can
+        swap either for a link. Following the link would hand the next
+        command whatever it points to."""
+        elsewhere = self.repo.parent / (self.repo.name + '-home')
+        elsewhere.mkdir()
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        planted = self.repo / 'planted'
+        planted.symlink_to(elsewhere)
+        for sandbox in (self.console.sandbox, vibes.Sandbox(self.repo, self.console.state_dir, 'off')):
+            for make in (lambda: sandbox.seatbelt_profile(write=[planted]), lambda: sandbox.bwrap_args(write=[planted])):
+                with self.assertRaisesRegex(RuntimeError, 'link to another place'):
+                    make()
+        # The build folder: nothing is compiled through a link.
+        (self.repo / 'build').symlink_to(elsewhere)
+        with patch.object(self.console, '_stream') as stream:
+            with self.assertRaisesRegex(RuntimeError, 'not an ordinary folder'):
+                self.console._compile(vibes.Job('build'))
+        stream.assert_not_called()
+        # A job's scratch folder: the link is removed and a real folder made.
+        job = vibes.Job('build')
+        scratch = self.console.state_dir / 'tmp' / job.id
+        scratch.parent.mkdir(parents=True, exist_ok=True)
+        scratch.symlink_to(elsewhere)
+        made = self.console._scratch(job)
+        self.assertTrue(made.is_dir() and not made.is_symlink())
+        self.assertEqual(list(elsewhere.iterdir()), [])
+
+    def test_a_lab_folder_from_an_earlier_version_is_treated_as_shared(self):
+        self.assertFalse(self.console._build_folder_was_shared())      # a new lab
+        (self.console.state_dir / 'lab-version').unlink()
+        (self.console.jobs_dir / 'old.json').write_text('{}')
+        again = vibes.Console(self.opts)
+        self.assertTrue(again._build_folder_was_shared())
+        self.assertTrue((self.console.state_dir / 'lab-version').exists())
+
     def test_build_folder_comes_back_whatever_was_left_in_its_place(self):
         build, kept = self.repo / 'build', self.console.state_dir / 'build-kept'
         for leave in ('a dangling link', 'a file', 'nothing'):
@@ -401,12 +437,15 @@ class SafetyTests(ConsoleCase):
         (build / 'object.o').write_text('the copy a proposal is being compiled in\n')
         # As if another process were the console for this lab: its lock is held
         # by an open file this new console does not know about.
+        script = self.console.runtime_dir / 'lab_runner.py'
+        script.write_text('# the copy the first console is running from\n')
         held = vibes.Console._lab_locks.pop(str(self.console.state_dir))
         try:
             second = vibes.Console(self.opts)
         finally:
             vibes.Console._lab_locks[str(self.console.state_dir)] = held
         self.assertFalse(second.owns_lab)
+        self.assertEqual(script.read_text(), '# the copy the first console is running from\n')
         self.assertEqual((build / 'object.o').read_text(), 'the copy a proposal is being compiled in\n')
         self.assertTrue(kept.exists())
         self.assertTrue(self.console.owns_lab)
@@ -648,6 +687,9 @@ class RegtestRulesTests(ConsoleCase):
         # Two nodes that refused nothing and still ended on different chains.
         view = dict(view, converged=False, candidate_tip={'height': 150})
         self.assertEqual(outcome([dict(same)])['verdict'], 'inconclusive')
+        # Or that hold the same blocks only because the lab handed them over, and never connected.
+        view = dict(view, converged=True, connected=False)
+        self.assertEqual(outcome([dict(same)])['verdict'], 'inconclusive')
 
     def test_private_chain_runs_anything(self):
         record = {'verified': True, 'compare': {'verdict': 'split'}}
@@ -765,6 +807,23 @@ class ReferenceRuleTests(ConsoleCase):
         self.assertEqual(record['compare']['verdict'], 'identical')
         self.assertIsNone(self.reference())
 
+    def test_unmodified_source_from_a_shared_folder_is_always_the_reference(self):
+        """Even for a proposal: a documentation-only proposal judged identical
+        must not leave a program from a shared folder as the node to run."""
+        self.programs('could have been altered')
+        self.console._note_build_folder_shared('abc')
+
+        def compile_apart(job):
+            folder = self.repo.parent / (self.repo.name + '-apart')
+            folder.mkdir()
+            self.addCleanup(shutil.rmtree, folder, True)
+            (folder / 'bitcoind').write_text('compiled apart')
+            return self.console._capture_reference(self.console.stock_rev(), folder, job)
+        with self.compiling(), patch.object(self.console, '_build_reference_apart', compile_apart):
+            record = self.console._build(vibes.Job('vibe'), promote=False)
+        self.assertEqual(record['compare']['verdict'], 'identical')
+        self.assertEqual((Path(record['path']) / 'bitcoind').read_text(), 'compiled apart')
+
     def test_current_source_is_kept_as_the_reference_before_a_first_proposal(self):
         self.programs()
 
@@ -859,24 +918,44 @@ class RealSandboxTests(ConsoleCase):
     def test_writes_stay_inside_the_folder_it_was_given(self):
         allowed = self.inside('/bin/sh', '-c', f'echo x > "{self.work}/allowed"')
         self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        self.assertTrue((self.work / 'allowed').exists())
         home = Path.home() / '.vibes-sandbox-test-write'
         self.addCleanup(lambda: home.unlink() if home.exists() else None)
+        # On Linux a hidden place is an empty folder of the sandbox's own, so a
+        # write there may "succeed" inside; what matters is that nothing
+        # arrives outside.
         for target in (self.repo / 'doc/planted', self.console.state_dir / 'planted', home):
-            result = self.inside('/bin/sh', '-c', f'echo x > "{target}"')
-            self.assertNotEqual(result.returncode, 0, target)
+            self.inside('/bin/sh', '-c', f'echo x > "{target}"')
             self.assertFalse(target.exists(), target)
 
     def test_the_key_the_home_folder_and_shared_temporary_files_are_out_of_sight(self):
-        outside = [self.console.state_dir / 'key',
-                   self.planted(Path.home() / '.vibes-sandbox-test-read')]
+        outside = [(self.console.state_dir / 'key', self.console.key),
+                   (self.planted(Path.home() / '.vibes-sandbox-test-read'), 'private')]
         if os.path.isdir('/tmp'):
-            outside.append(self.planted(Path('/tmp') / f'vibes-sandbox-test-{os.getpid()}'))
-        for path in outside:
-            result = self.inside('/bin/cat', str(path))
-            self.assertNotEqual(result.returncode, 0, path)
-            self.assertEqual(result.stdout, '', path)
+            outside.append((self.planted(Path('/tmp') / f'vibes-sandbox-test-{os.getpid()}'), 'private'))
+        for path, content in outside:
+            self.assertNotIn(content, self.inside('/bin/cat', str(path)).stdout, path)
         inside = self.planted(self.repo / 'doc' / 'readable.txt', 'source')
         self.assertEqual(self.inside('/bin/cat', str(inside)).stdout, 'source')
+
+    def test_a_node_on_a_real_network_can_look_up_names_but_not_reach_local_sockets(self):
+        lookup = "import socket\nprint('resolved', len(socket.getaddrinfo('example.com', 443)) > 0)\n"
+        outside = subprocess.run([sys.executable, '-I', '-c', lookup], capture_output=True, text=True, timeout=60)
+        if 'resolved True' not in outside.stdout:
+            self.skipTest('this machine cannot look up names right now')
+        result = self.inside(sys.executable, '-I', '-c', lookup, network='full')
+        self.assertIn('resolved True', result.stdout, result.stderr)
+        if sys.platform == 'darwin':
+            with tempfile.TemporaryDirectory(dir='/tmp') as folder:
+                path = os.path.join(folder, 's')
+                listener = socket.socket(socket.AF_UNIX)
+                listener.bind(path)
+                listener.listen(1)
+                self.addCleanup(listener.close)
+                connect = ("import socket\ns = socket.socket(socket.AF_UNIX)\ntry:\n    s.connect(%r)\n"
+                           "    print('reached a local socket')\nexcept OSError:\n    print('refused')\n" % path)
+                result = self.inside(sys.executable, '-I', '-c', connect, network='full')
+                self.assertEqual(result.stdout.strip(), 'refused', result.stderr)
 
     def test_no_network(self):
         code = ("import socket\ntry:\n    socket.create_connection(('1.1.1.1', 53), 3)\n"
@@ -1255,6 +1334,7 @@ class SandboxProfileTests(ConsoleCase):
         full = sandbox.seatbelt_profile(write=[work], network='full')
         self.assertNotIn('(deny network*)', full)
         self.assertIn('(deny network-outbound (remote unix-socket))', full)
+        self.assertIn('mDNSResponder', full.split('(deny network-outbound (remote unix-socket))')[1])
 
     def test_bwrap_arguments_hide_home_and_cut_the_network(self):
         sandbox = self.console.sandbox

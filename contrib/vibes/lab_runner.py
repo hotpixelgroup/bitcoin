@@ -498,9 +498,9 @@ def finish(result, reference, candidate):
     # difference was found only because part of the comparison never ran, the
     # outcome is "could not be completed", never "no difference".
     unfinished = [row["title"] for row in result["rows"] if row["status"] in ("error", "skipped")]
-    if not view["converged"] and not tightened and not loosened:
-        # Two nodes that found nothing to refuse and still ended on different
-        # chains: something went unobserved.
+    if not (view["converged"] and view["connected"]) and not tightened and not loosened:
+        # Two nodes that found nothing to refuse, and yet never connected or
+        # ended on different chains: something went unobserved.
         unfinished.append("Connected directly, do they agree on one chain?")
     if unfinished and verdict in ("none", "policy"):
         verdict = "inconclusive"

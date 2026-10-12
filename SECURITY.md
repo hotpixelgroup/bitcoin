@@ -89,7 +89,8 @@ pretend to a 24-hour SLA we cannot keep.
   running programs, and a program started during a build can deliberately
   outlive it while keeping its permission to write to the build folder. The
   reference node is therefore never taken from a build folder that a build of
-  changed source could write to.
+  changed source could write to. Such a program could still alter a later
+  build of changed source in that folder.
 - Both lab nodes and the script that drives them share one sandbox. A node
   program written to deceive could interfere with the unmodified node beside
   it and forge a comparison. The comparison is evidence about rule changes,

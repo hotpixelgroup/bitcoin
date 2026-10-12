@@ -278,7 +278,7 @@ AI-written code is compiled and run only inside an enclosure:
 | Where | Mechanism | What it restricts |
 |---|---|---|
 | macOS | `sandbox-exec` | No network beyond the lab's own loopback ports; no writes outside the lab folders; no reads of your home folder, the shared temporary folders or other disks beyond this source tree; the console's key and your node's data folder are hidden; no asking other programs on the Mac to act for it (launch services, Apple events); no signalling anything outside the sandbox. |
-| Linux | `bubblewrap` | A private network; no writes outside the lab folders; home folders, temporary folders, `/var` and local service sockets (`/run`, `/tmp`) hidden apart from this source tree; its own terminal session. Install the `bubblewrap` package. Tools installed as snaps cannot run inside it. |
+| Linux | `bubblewrap` | A private network; no writes outside the lab folders; home folders, temporary folders, `/var` and local service sockets (`/run`, `/tmp`) hidden apart from this source tree; its own terminal session. Install the `bubblewrap` package. Tools installed as snaps cannot run inside it, and tools from Homebrew may not; `VIBES_SANDBOX_READ` names extra folders it may read. |
 | Docker | none inside the container | Treated as no sandbox: nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 | None of these | none | The console says so. Nothing is compiled until you have reviewed and applied it, and automatic applying is off. |
 
@@ -295,7 +295,15 @@ systems. On macOS, confined code can read the command lines and environment
 variables of your other running programs (it has no network to send them
 anywhere), and a program started during a build can deliberately outlive it
 while keeping its permission to write to the build folder. That last point is
-why the reference node never comes from a shared build folder.
+why the reference node never comes from a shared build folder; it also means
+such a program could alter a later build of changed source, which is one more
+reason the comparison is made against a reference compiled apart.
+
+Because confined code may write to its build and scratch folders, it could
+put a link in a folder's place. The lab never compiles in, or gives permission
+to write through, a folder that is really a link. If your own build folder or
+node data folder is a link you made, replace it with an ordinary folder. Only
+one console runs per source folder; a second one refuses to start.
 
 Two more limits. Compiling runs build scripts and tools that come from the
 source being compiled, so during a build it is the sandbox, not your review,

@@ -72,8 +72,26 @@ LINUX_HIDDEN = ("/home", "/root", "/tmp", "/var", "/run", "/mnt", "/media", "/sr
 MAC_HIDDEN = ("/private/tmp", "/private/var/folders", "/Volumes")
 
 
+class SandboxError(RuntimeError):
+    """A request the sandbox will not turn into permissions."""
+
+
 def _real(path):
     return os.path.realpath(str(path))
+
+
+def _writable(path):
+    """The path of a folder a confined command may write to: the folder
+    itself, never whatever a link in its place points to. Confined code can
+    replace a folder it may write to with a link; following that link here
+    would turn "may write to the build folder" into "may write to the home
+    folder"."""
+    path = os.path.abspath(str(path))
+    literal = os.path.join(_real(os.path.dirname(path)), os.path.basename(path))
+    if os.path.islink(literal):
+        raise SandboxError(f"{literal} is a link to another place. A confined command is never "
+                           "given permission to write through a link; replace it with an ordinary folder.")
+    return literal
 
 
 def _quote(path):
@@ -188,7 +206,7 @@ class Sandbox:
 
     def _readable(self, write, read=()):
         """Paths in otherwise hidden places that a confined process may read."""
-        paths = [self.repo, *[_real(p) for p in write], *[_real(p) for p in read]]
+        paths = [self.repo, *[_writable(p) for p in write], *[_real(p) for p in read]]
         for name in (".gitconfig", ".config/git"):
             candidate = os.path.join(self.home, name)
             if os.path.exists(candidate):
@@ -220,7 +238,7 @@ class Sandbox:
         """Paths inside the source tree that confined code must never read:
         the console's access key and the operator's own node data."""
         hidden = [os.path.join(self.state_dir, "key"), os.path.join(self.state_dir, "data")]
-        allowed = [_real(p) for p in write]
+        allowed = [_writable(p) for p in write]
         return [h for h in hidden if not any(_inside(h, a) for a in allowed)]
 
     def seatbelt_profile(self, write=(), network="none", ports=(), read=()):
@@ -246,7 +264,7 @@ class Sandbox:
             lines.append(f"(deny file-read* (literal {_quote(secret)}) (subpath {_quote(secret)}))")
         lines.append("(deny file-write*)")
         lines.append("(allow file-write* " +
-                     " ".join(f"(subpath {_quote(_real(p))})" for p in write) +
+                     " ".join(f"(subpath {_quote(_writable(p))})" for p in write) +
                      " " + MAC_DEVICE_WRITES + ")")
         if network != "full":
             lines.append("(deny network*)")
@@ -254,6 +272,9 @@ class Sandbox:
             # A node on a real network needs the internet, not the local
             # sockets of key agents and other services on this Mac.
             lines.append("(deny network-outbound (remote unix-socket))")
+            # Except the system's name lookup service: without it the node
+            # cannot find its first peers by name.
+            lines.append('(allow network-outbound (literal "/private/var/run/mDNSResponder"))')
         if network == "local":
             lines.append('(allow network* (local ip "localhost:*") (remote ip "localhost:*"))')
         if network == "loopback":
@@ -290,7 +311,7 @@ class Sandbox:
             if any(_inside(path, root) for root in hidden) and os.path.exists(path):
                 args += ["--ro-bind", path, path]
         for path in write:
-            real = _real(path)
+            real = _writable(path)
             os.makedirs(real, exist_ok=True)
             args += ["--bind", real, real]
         for secret in self._secrets(write):

@@ -69,7 +69,7 @@ checked.
 
 ## Automated suites
 
-- 102 console tests and 17 installer tests (`python3 -m unittest discover -s
+- 106 console tests and 17 installer tests (`python3 -m unittest discover -s
   contrib/vibes/tests`), all passing, including the tests that need a real
   node. See `tests/README.md` for what each group covers.
 - Browser checks of the landing page and demo in Chrome via Playwright: the
@@ -104,7 +104,7 @@ checked".
 
 | What the review found | What changed | How the fix was checked |
 |---|---|---|
-| On Linux, confined code could still see `/run` and `/tmp`, where local service sockets live, and shared the operator's terminal session | Those places and `/var` are replaced by empty folders, and every command gets its own session | The arguments by unit test; the behaviour by the CI job, which fails unless `bubblewrap` starts, compiles the node inside it, and runs the real-node tests and the probes below inside it |
+| On Linux, confined code could still see `/run` and `/tmp`, where local service sockets live, and shared the operator's terminal session | Those places and `/var` are replaced by empty folders, and every command gets its own session | The arguments by unit test; the behaviour by the CI job, which fails unless `bubblewrap` starts, recompiles part of the node and links it inside it, and runs the real-node tests and the probes below inside it |
 | On macOS, confined code could ask other programs to act for it and could signal any process | Launch services, launchd, Apple events and signals to anything outside the sandbox are denied; shared temporary folders and other disks are hidden; a node on a real network cannot reach local sockets such as a key agent's | Probed directly: `open -a` fails, a signal to an outside process fails and the key agent's socket is refused, while a build, the unit tests, the lab scenes and node start still work. Tests now try writes, reads and the network from inside the sandbox (RealSandboxTests) |
 | In Docker, a proposal was compiled before review, with the network and the container's AI sign-in in reach | A container no longer counts as confinement; Docker is review-first | Unit test |
 | "Same as the unmodified node" looked only at `src/`; build tooling could be edited; a proposal's build could leave things behind in the shared build folder | Identity covers every file that can feed the build; top-level build tooling is refused; a proposal is compiled in a copy of the build folder that is thrown away; the reference never comes from a proposal's build or from a build folder that a build of changed source could write to | Unit tests (ReferenceRuleTests), and the real run described under this table |
@@ -144,6 +144,11 @@ had compiled changed source before and with no reference node:
 - The console was stopped once with a terminate signal and once with a
   hang-up signal: each time it stopped its node and exited cleanly.
 
+That run was made after the second round. After the third, the automated
+suites were run again in full, including the real-node tests and the probes
+from inside the sandbox, and a shorter run through the console repeated the
+proposal build and a cancelled build.
+
 ### The second review, of the fixes themselves
 
 | What it found | What was done |
@@ -158,12 +163,31 @@ had compiled changed source before and with no reference node:
 | Tools installed under `/home/linuxbrew` vanished from the Linux sandbox | A tool's own folders are shown again from any hidden place |
 | The manual and this record claimed more than the code did in three places | Reworded; the limits it pointed to are now stated in the manual and the security policy |
 
+### The third check, of the second round
+
+A narrower check of the second round found two more problems of substance and
+some smaller ones. This was the last round of review before release; three
+rounds each found something, so more may remain.
+
+| What it found | What was done |
+|---|---|
+| Confined code may write to its build folder, so it could put a link to the home folder in its place; the next build would then have been given permission to write there | A folder a command may write to is never followed through a link: the sandbox refuses, nothing is compiled in a linked build folder, and a linked scratch folder is replaced by a real one |
+| A documentation-only proposal, judged identical, could leave a program from a shared build folder as the node to run when no reference existed | Unmodified source from a shared folder is always the reference, compiled apart if need be, for proposals too |
+| With the network open, denying every local socket on macOS also blocked the system's name lookups | The lookup service is allowed again; a test looks up a name from inside the sandbox and confirms another local socket is refused |
+| Two sandbox tests asserted things that hold on macOS and not on Linux | They assert what must hold on both: nothing arrives outside, and no secret is read |
+| A second console still rewrote the lab's own copies of its scripts before finding out it was second | The lock is taken before anything is written |
+| A lab folder from an earlier version was trusted as never shared | Any lab folder with past jobs and no version stamp is treated as shared |
+| Two nodes that never connected, holding the same blocks only because the lab handed them over, were "no difference" | Reported as "could not be completed" |
+| Cancelling could stall if a leftover process kept the output open | The whole process group is ended, whether or not its first process has gone |
+
 Not closed, and stated as limits instead: the sandboxes still start from
 "everything readable" and hide chosen places, not the other way round; on
 macOS confined code can read other programs' command lines and environment
-variables; the agent runs with your full environment under Claude Code's own
-rules; a shared request that needs invisible joiners (some scripts, some
-emoji) is refused and has to be retyped.
+variables, and a program that outlives a build could alter a later build of
+changed source; the agent runs with your full environment under Claude Code's
+own rules; tools from Homebrew on Linux may not run inside the sandbox; a
+shared request that needs invisible joiners (some scripts, some emoji) is
+refused and has to be retyped.
 
 ## Not checked
 
