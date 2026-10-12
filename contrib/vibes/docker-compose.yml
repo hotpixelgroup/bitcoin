@@ -20,8 +20,9 @@ services:
       # in once inside the container:
       #   docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
       - vibes-claude:/home/vibes/.claude
-    # The container is the enclosure for AI-written code, so give it as little
-    # as it needs: no extra privileges, and none to be gained.
+    # Once a change has been reviewed and applied, the container is all that
+    # encloses it, so give it as little as it needs: no extra privileges, and
+    # none to be gained.
     cap_drop:
       - ALL
     security_opt:

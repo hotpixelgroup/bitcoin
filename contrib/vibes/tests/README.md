@@ -35,7 +35,11 @@ installations.
 |---|---|---|
 | Propose, review, apply, revert, restore the baseline, restart recovery | `test_console.py` WorkflowTests | no |
 | What must wait for review: no sandbox, consensus-looking code, test edits, imported requests, observed differences | SafetyTests | no |
-| Proposals that edit the lab itself are refused | SafetyTests | no |
+| Proposals that edit the lab, top-level build tooling or files that change what git shows are refused; unusual file names cannot slip past the path checks | SafetyTests | no |
+| A proposal is compiled in a copy of the build folder; an interrupted one is undone at the next start; a branch that cannot be put back is reported | SafetyTests | no |
+| "The same node" covers everything that feeds the build; an unfinished comparison never counts as agreement | SafetyTests, RegtestRulesTests, SharedNetworkTests | no |
+| Shared requests with invisible characters are refused; sender notes are bounded; the agent's read rules cover the home folder; an old Claude Code is not used | SafetyTests | no |
+| Stopping a lab run leaves no nodes behind | RealNodeTests | yes |
 | The agent's command line: file tools only, no bypass flag, deny rules | SafetyTests | no |
 | The real agent path, driven by a stand-in for the `claude` program, and its time limit | SafetyTests | no |
 | Which builds may start on a shared network; the mainnet confirmation; wallet and listening defaults | SharedNetworkTests | no |
@@ -66,8 +70,8 @@ mining-power scene (at 30% and 70%) with the nodes it has just built.
 
 - A live AI session. The agent path is exercised with a stand-in program, never
   with a real model.
-- The Linux sandbox (`bubblewrap`) on real hardware, beyond the CI job that
-  tries to enable it on a hosted runner.
+- The Linux sandbox (`bubblewrap`) anywhere but GitHub's Ubuntu machines,
+  where the CI job runs these tests inside it with real nodes.
 - The Mac app, notarisation, and the Docker image beyond "it builds and the
   console answers".
 - The real console page in a browser. The browser tests drive the static demo,

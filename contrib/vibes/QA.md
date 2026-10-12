@@ -4,6 +4,10 @@ What was checked for the two-node lab, on one machine (macOS, Apple silicon
 toolchain as installed, the macOS sandbox). Read the last section first: it
 lists what was not checked.
 
+The lab was then read by a second reviewer who had not written it. The section
+"Independent review" below records what that found and how each fix was
+checked.
+
 ## Run on a real node, through the real console
 
 - **Build and check of unmodified source.** Compiled `bitcoind`, `bitcoin-cli`
@@ -65,7 +69,7 @@ lists what was not checked.
 
 ## Automated suites
 
-- 73 console tests and 17 installer tests (`python3 -m unittest discover -s
+- 88 console tests and 17 installer tests (`python3 -m unittest discover -s
   contrib/vibes/tests`), all passing, including the tests that need a real
   node. See `tests/README.md` for what each group covers.
 - Browser checks of the landing page and demo in Chrome via Playwright: the
@@ -87,20 +91,65 @@ lists what was not checked.
   block), JavaScript syntax checks, shell syntax checks and the static site
   build.
 
+## Independent review
+
+After the lab was merged, a reviewer who had not written it read the console,
+the sandbox, the lab script, the page, the installer and the release workflow,
+without running them. It reported four serious problems and eight lesser ones.
+All were fixed before anything was released. The review is attached to the
+pull request that made the fixes.
+
+| What the review found | What changed | How the fix was checked |
+|---|---|---|
+| On Linux, confined code could still see `/run` and `/tmp`, where local service sockets live, and shared the operator's terminal session | Those places are replaced by empty folders, and every command gets its own session | The arguments by unit test; the behaviour by the CI job, which runs the real-node tests inside `bubblewrap` |
+| On macOS, confined code could ask other programs to act for it and could signal any process | Launch services, launchd, Apple events and signals to anything outside the sandbox are denied | Probed directly: `open -a` fails and a signal to an outside process fails, while a build, the unit tests, the lab scenes and node start still work |
+| In Docker, a proposal was compiled before review, with the network and the container's AI sign-in in reach | A container no longer counts as confinement; Docker is review-first | Unit test |
+| "Same as the unmodified node" looked only at `src/`; build tooling could be edited; a proposal's build could leave things behind in the shared build folder | Identity covers everything that feeds the build; top-level build tooling is refused; a proposal is compiled in a copy of the build folder that is thrown away; the reference never comes from a folder that has compiled a change | Unit tests, and the real run described under this table |
+| Unusual file names, or a `.gitattributes` in a subfolder, could hide a change from the path checks or from the reviewer | Paths are read unquoted and NUL-separated; changes are always shown as text; those files are refused at any depth | Unit tests with accented, quoted and tab-containing names |
+| A build that could not produce a block was reported as "No difference observed" | A new outcome, "The comparison could not be completed", which blocks automatic applying and shared networks | Unit tests |
+| If the operator's branch could not be put back after a build, the console hid it | The console reports it and shows the real state; SIGTERM and SIGHUP are handled like Ctrl-C | Unit test |
+| The agent could read most of the home folder | Its read rules cover everything under the home folder except the path to its workspace; an old Claude Code is not used | Unit test of the rules; not tried with a live agent |
+| Invisible characters other than bidirectional ones passed the shared-request filter | Zero-width, tag, private-use and variation characters are refused, in the page and on the server | Unit and browser tests |
+| Stopping a lab run left its two nodes running on macOS | Nodes stay in the lab's process group and the lab stops them | A real-node test, which fails against the old code |
+| A crafted sharing token could break the page until its storage was cleared | Token fields are validated before use | Browser test |
+| Smaller items | The release is a draft until every file is attached; no partial upgrade on Arch; the access key file is private from creation; the installer runs nothing if cut short; the operator's git hooks are not run on AI-edited source | Unit tests where practical; the release change runs for the first time when a release is made |
+
+The fixes were then run through the real console inside the macOS sandbox, on
+a temporary branch:
+
+- The doubled-reward proposal was compiled before review in a copy of the
+  build folder, and found to be "loosened" as before. Afterwards the build
+  folder's node program and its configuration had the same content and the
+  same file times as before the proposal, no copy was left behind, and the
+  source was back on its branch. Compiling in a copy did not slow the run
+  down on this machine, where the copy shares disk space with the original.
+- The halved-reward proposal was compiled, reviewed and applied; the applied
+  revision was the one that had been built. Building again with the change
+  applied marked the build folder as having compiled a change.
+- Restore the baseline then produced a build judged identical, and the node
+  kept for it was the reference node itself, byte for byte.
+- The keys, rule-breaking-miner, mining-power (at 30%), soft-fork replay and
+  reorganisation scenes all ran inside the tightened sandbox with their
+  documented outcomes.
+- The console was stopped with a terminate signal: it stopped its node and
+  exited cleanly.
+
 ## Not checked
 
 - **A live AI session.** The agent's command line was accepted by Claude Code
   2.1.220 when run without a prompt, and the agent path was driven end to end
   with a stand-in program. No request was sent to a real model, so how a real
-  agent behaves under these restrictions (file tools only, no shell) has not
-  been observed.
-- **Linux.** The `bubblewrap` arguments have unit tests for their shape and
-  have never run on a Linux machine. The CI job tries to enable user
-  namespaces on the hosted runner so that they do; until that job has passed,
-  treat the Linux sandbox as unproven.
-- **Docker.** The image was rewritten (unprivileged user, working copy in a
-  volume, its own Claude Code state) and has not been built. A CI workflow now
-  builds it and checks that the console answers.
+  agent behaves under these restrictions (file tools only, no shell, the wider
+  read rules) has not been observed, and neither has whether Claude Code
+  enforces every rule as written.
+- **Linux beyond CI.** The `bubblewrap` sandbox runs in the CI job on
+  GitHub's Ubuntu machines, with real nodes. It has not been tried on a
+  desktop Linux machine or on another distribution, and nobody has tried to
+  break out of it.
+- **Breaking out of either sandbox.** The probes above show that particular
+  routes are closed. They are not an attempt by a specialist to find others.
+- **Docker.** CI builds the image and checks that the console answers. The
+  review-first behaviour inside it is covered by a unit test only.
 - **The Mac app**, the release workflow, signing and notarisation. None can run
   outside GitHub Actions or without credentials. That includes the new step
   that builds and ships the three changed nodes, and the console's download of

@@ -26,8 +26,14 @@ pretend to a 24-hour SLA we cannot keep.
   it should leave the address bar once the page has loaded.
 - **Any escape from confinement.** AI-written code is compiled, tested and run
   inside `sandbox-exec` (macOS) or `bubblewrap` (Linux). Reaching the network,
-  writing outside the lab's folders, or reading the operator's home folder, the
-  console's key or the node's data folder from inside it is a vulnerability.
+  writing outside the lab's folders, reading the operator's home folder, the
+  console's key or the node's data folder, or getting another program on the
+  machine to act for it, from inside the sandbox, is a vulnerability.
+- **Anything an unreviewed proposal's build leaves behind** that reaches a
+  later build, the reference node, or the operator's source.
+- **A change the review does not show.** A proposal altering a file the lab
+  says it refuses, or a changed file missing from, or misnamed in, what the
+  operator is shown.
 - **Anything a shared request can make happen** beyond a proposed change to
   node source that then waits for review. That includes getting the agent to
   run a command, read or reveal a file outside its workspace, reach the
@@ -71,7 +77,19 @@ pretend to a 24-hour SLA we cannot keep.
 - With no sandbox available (Linux without `bubblewrap`, or other systems),
   builds and nodes run unconfined. The console says so, compiles nothing until
   the operator has reviewed and applied it, and disables automatic applying.
-- In Docker the container is the enclosure; there is no second sandbox inside.
+- In Docker there is no sandbox around each build, so the lab is review-first
+  there: nothing is compiled until the operator has reviewed and applied it.
+  After that, AI-written code runs with whatever the container can reach,
+  including its network and its Claude Code sign-in.
+- Compiling runs build scripts and tools from the source being compiled. On
+  macOS and Linux that happens inside the sandbox, before review.
+- Both lab nodes and the script that drives them share one sandbox. A node
+  program written to deceive could interfere with the unmodified node beside
+  it and forge a comparison. The comparison is evidence about rule changes,
+  not a defence against a program built to lie to it.
+- The agent's read limits cover the operator's home folder and are enforced by
+  Claude Code. Outside the home folder the agent can read what the operator's
+  account can.
 - On Linux the running node's network cannot be restricted to the local
   machine.
 - The agent is confined by Claude Code's own tool and permission controls, not

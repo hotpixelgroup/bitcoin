@@ -95,6 +95,9 @@ Open the `?key=…` link printed in the logs. The console is published to
 `127.0.0.1` only. Your source, saved experiments, build output and chain data
 live in a named volume and survive container rebuilds.
 
+A container is not a sandbox around each build, so in Docker the lab compiles
+a proposal only after you have reviewed and applied it.
+
 The container keeps its own Claude Code login, separate from the one on your
 machine. Sign in once inside it:
 
