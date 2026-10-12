@@ -12,13 +12,23 @@ services:
     ports:
       - "127.0.0.1:21212:21212"
     volumes:
-      # Your chain data and your decrees, kept across container rebuilds.
-      - vibes-data:/vibes/.vibes
-      # Your Claude Code login, so you sign in once on the host and the
-      # container inherits it. Create it first: mkdir -p ~/.claude
-      - ${HOME}/.claude:/root/.claude
+      # The working copy: source, saved experiments (git commits), build
+      # output and chain data. Kept across container and image rebuilds.
+      - vibes-work:/home/vibes/work
+      # Claude Code's own state for this container, login included. It is not
+      # your machine's ~/.claude: the agent here never sees that folder. Sign
+      # in once inside the container:
+      #   docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
+      - vibes-claude:/home/vibes/.claude
+    # The container is the enclosure for AI-written code, so give it as little
+    # as it needs: no extra privileges, and none to be gained.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     stdin_open: true
     tty: true
 
 volumes:
-  vibes-data:
+  vibes-work:
+  vibes-claude:

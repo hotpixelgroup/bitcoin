@@ -7,11 +7,17 @@
 # goes wrong in a native dialog rather than into the void.
 set -u
 
+# Stamped with the release tag when the app is built for a release, so the app
+# fetches the source of its own release. Empty in the repository.
+PINNED_REF=""
+
 APP_SUPPORT="${VIBES_HOME:-$HOME/Library/Application Support/Bitcoin Vibes}"
 SRC="$APP_SUPPORT/source"
 LOG="$APP_SUPPORT/launch.log"
 REPO="${VIBES_REPO:-https://github.com/hotpixelgroup/bitcoin.git}"
-BRANCH="${VIBES_BRANCH:-master}"
+# What to fetch on first run: VIBES_REF, else the stamp above, else
+# VIBES_BRANCH (the older name), else master.
+REF="${VIBES_REF:-${PINNED_REF:-${VIBES_BRANCH:-master}}}"
 
 mkdir -p "$APP_SUPPORT"
 exec 2>>"$LOG"
@@ -29,6 +35,10 @@ PY=$(command -v python3 || true)
 [ -n "$PY" ] || die "Bitcoin Vibes needs Python 3, which normally ships with macOS.\n\nOpening Terminal and running:  xcode-select --install\n\nwill install it along with the developer tools."
 
 # First run: fetch the source. Everything else assumes it is there.
+#
+# Later launches fetch nothing. Like Bitcoin Core, this never updates by
+# itself: the console tells the operator when a newer release exists and
+# updates only when they ask, replaying their saved experiments on top.
 if [ ! -d "$SRC/.git" ]; then
   if ! command -v git >/dev/null 2>&1; then
     osascript -e 'display dialog "Bitcoin Vibes needs Apple'"'"'s command line tools (they include git and the compiler).\n\nClick OK and macOS will offer to install them. Reopen Bitcoin Vibes once it finishes." with title "Bitcoin Vibes" buttons {"OK"} default button 1 with icon note' >/dev/null 2>&1
@@ -36,17 +46,20 @@ if [ ! -d "$SRC/.git" ]; then
     exit 0
   fi
   say "Bitcoin Vibes is fetching the node's source code.\n\nThis takes a minute. The console will open by itself when it is ready."
-  git clone --depth 1 --branch "$BRANCH" "$REPO" "$SRC" >>"$LOG" 2>&1 \
+  git -c advice.detachedHead=false clone --depth 1 --branch "$REF" "$REPO" "$SRC" >>"$LOG" 2>&1 \
     || die "Could not download Bitcoin Vibes.\n\nCheck your internet connection and try again.\n\nDetails: $LOG"
-else
-  # Keep up to date, but never clobber decrees the operator made locally.
-  git -C "$SRC" fetch --depth 1 origin "$BRANCH" >>"$LOG" 2>&1 || true
-  git -C "$SRC" merge --ff-only FETCH_HEAD >>"$LOG" 2>&1 || true
+  # A release tag leaves HEAD detached, and the console saves experiments as
+  # commits on the current branch, so give it one.
+  if ! git -C "$SRC" symbolic-ref -q HEAD >/dev/null 2>&1; then
+    git -C "$SRC" checkout -q -b vibes >>"$LOG" 2>&1 \
+      || die "Could not prepare the Bitcoin Vibes source.\n\nDetails: $LOG"
+  fi
 fi
 
 CONSOLE="$SRC/contrib/vibes/bitcoin-vibes"
 [ -f "$CONSOLE" ] || die "The Bitcoin Vibes source looks incomplete.\n\nDelete this folder and reopen the app:\n$SRC"
 
 # Hand over. --app makes first-run setup stream into the browser, because from
-# here there is no terminal for it to print to.
+# here there is no terminal for it to print to, and keeps the console's access
+# key out of this log.
 exec "$PY" -u "$CONSOLE" --app "$@" >>"$LOG" 2>&1

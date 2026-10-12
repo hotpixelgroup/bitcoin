@@ -59,10 +59,26 @@ else
   echo "  note: no contrib/vibes/macos/icon.png — the app will use a blank icon"
 fi
 
-# Ad-hoc signature. Not notarised: Gatekeeper will still want a right-click →
-# Open the first time, which the README says plainly rather than pretending.
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
-  && echo "  ad-hoc signed" || echo "  note: could not sign (the app still runs)"
+# Signing. With no credentials the app gets an ad-hoc signature and is not
+# notarised: macOS then blocks the first launch until the operator allows it,
+# which the README says plainly rather than pretending.
+#
+# With VIBES_CODESIGN_IDENTITY set to a "Developer ID Application: ..." identity
+# the app is signed properly, and the disk image is notarised and stapled when
+# notary credentials are also supplied (see the --dmg step below). Nobody has
+# had those credentials yet, so the signed and notarised paths are written from
+# Apple's documented commands and are untested.
+SIGN_STATE="ad-hoc only (not notarised)"
+if [ -n "${VIBES_CODESIGN_IDENTITY:-}" ]; then
+  codesign --force --deep --options runtime --timestamp \
+           --sign "$VIBES_CODESIGN_IDENTITY" "$APP"
+  codesign --verify --deep --strict "$APP"
+  SIGN_STATE="signed with a Developer ID, not notarised"
+  echo "  signed: $VIBES_CODESIGN_IDENTITY"
+else
+  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
+    && echo "  ad-hoc signed" || echo "  note: could not sign (the app still runs)"
+fi
 
 echo "→ $APP"
 
@@ -74,5 +90,26 @@ if [ "${1:-}" = "--dmg" ]; then
   ln -s /Applications "$STAGE/Applications"
   hdiutil create -volname "Bitcoin Vibes" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
   rm -rf "$STAGE"
+
+  # Notarisation needs a Developer ID signature first, then either a stored
+  # notarytool profile or an Apple ID, team and app-specific password.
+  if [ -n "${VIBES_CODESIGN_IDENTITY:-}" ]; then
+    codesign --force --timestamp --sign "$VIBES_CODESIGN_IDENTITY" "$DMG"
+    if [ -n "${VIBES_NOTARY_PROFILE:-}" ]; then
+      xcrun notarytool submit "$DMG" --keychain-profile "$VIBES_NOTARY_PROFILE" --wait
+      NOTARISED=1
+    elif [ -n "${VIBES_NOTARY_APPLE_ID:-}" ] && [ -n "${VIBES_NOTARY_TEAM_ID:-}" ] \
+         && [ -n "${VIBES_NOTARY_PASSWORD:-}" ]; then
+      xcrun notarytool submit "$DMG" --apple-id "$VIBES_NOTARY_APPLE_ID" \
+            --team-id "$VIBES_NOTARY_TEAM_ID" --password "$VIBES_NOTARY_PASSWORD" --wait
+      NOTARISED=1
+    fi
+    if [ "${NOTARISED:-0}" = "1" ]; then
+      xcrun stapler staple "$DMG"
+      SIGN_STATE="signed with a Developer ID and notarised"
+    fi
+  fi
   echo "→ $DMG"
 fi
+
+echo "  signing: $SIGN_STATE"

@@ -8,39 +8,64 @@ Bitcoin Vibes
 Fifteen years of mailing lists, BIPs, IRC flame wars, and filtering discourse,
 and somehow neither Core nor Knots ever shipped the one feature people
 actually wanted: **a big text area where you type what Bitcoin should be, and
-the node rewrites its own source code to match.** One commit per wish.
-Rebuild. Restart. Revert button, for when your convictions don't survive
-contact with the compiler.
+the node rewrites its own source code to match.**
 
-|                             | Bitcoin Core                   | Bitcoin Knots            | **Bitcoin Vibes**               |
-|-----------------------------|--------------------------------|--------------------------|---------------------------------|
-| Who decides what Bitcoin is | rough consensus, since 2010    | one man's convictions    | **you, in a text area**         |
-| Change process              | BIP → years of debate → maybe  | a curated patchset       | **vibes**                       |
-| Release cadence             | every ~6 months                | rebased on releases      | **every time you hit Manifest** |
-| Undo mechanism              | contentious hard fork          | downgrade                | **a revert button**             |
+So here it is. And here is the catch, which is the whole point: you really can
+make your own node do anything in one sentence. What you cannot do is make
+anyone else's node agree. Bitcoin Vibes builds your change, runs it beside an
+unmodified node on a private chain, and shows you what each one does with the
+other's blocks.
+
+|                             | Bitcoin Core                   | Bitcoin Knots            | **Bitcoin Vibes**                     |
+|-----------------------------|--------------------------------|--------------------------|---------------------------------------|
+| Who decides what Bitcoin is | rough consensus, since 2010    | a curated patchset       | **you, for one node, in a text area** |
+| Change process              | BIP → years of debate → maybe  | maintainer's judgement   | **type it, then ask a second node**   |
+| Undo mechanism              | there isn't one                | downgrade                | **a revert button**                   |
+
+*That table is satire. Bitcoin Vibes is not an alternative to Bitcoin Core or
+Bitcoin Knots, and it is not for holding or moving real funds. It is a lab for
+seeing why changing a node does not change Bitcoin.*
 
 Install
 -------
 
-**On a Mac, and you would rather not see a terminal?**
-[Download Bitcoin Vibes.app](https://github.com/hotpixelgroup/bitcoin/releases/latest),
-drag it to Applications, open it. It does the rest and shows you what it is doing
-in your browser. (It is not notarised yet, so the first time you will need to
-right-click it and choose **Open** — macOS asks that of every small developer.)
+**One line:**
 
-**Everyone else, one line:**
+```bash
+curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh | sh
+```
+
+That is the installer published with the latest release. It installs that
+release and nothing newer, checks the ready-made node against its published
+SHA-256, asks before it runs anyone else's installer, and prints everything it
+does. To follow the development line instead, use the copy on `master`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh
 ```
 
-That is the whole thing. It installs the build dependencies, fetches the
-source, builds the node, sets up the AI engine, and offers to launch. It asks
-before it starts, and prints everything it does.
+**Piping a stranger's script into your shell is a bad habit.** Read it first.
+A dry run shows exactly what it would do and changes nothing:
+
+```bash
+curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh -o install.sh
+less install.sh
+VIBES_DRY_RUN=1 sh install.sh
+```
+
+It honours `VIBES_DIR` (default `~/bitcoin-vibes`), `VIBES_REF` (a release tag
+or a branch), and `VIBES_REPO`.
+
+**On a Mac, and you would rather not see a terminal?**
+[Download Bitcoin Vibes.app](https://github.com/hotpixelgroup/bitcoin/releases/latest),
+drag it to Applications, open it. It prepares the node and shows you what it is
+doing in your browser. It is not notarised by Apple yet, so macOS blocks the
+first launch: on macOS 15 and later, try to open it once, then choose **Open
+Anyway** under System Settings → Privacy & Security; on macOS 14 and earlier,
+right-click it and choose **Open**.
 
 **You need:** macOS or Linux (on Windows, use WSL2), about 3 GB of disk, and
-one build. The build is the only slow part, it happens once, and how long it
-takes depends almost entirely on your core count:
+one build. How long the build takes depends almost entirely on your core count:
 
 | Machine | First build |
 |---|---|
@@ -49,24 +74,14 @@ takes depends almost entirely on your core count:
 | 2 cores (a small VPS) | ~20–40 minutes |
 | 1 core | up to an hour and a half |
 
-The installer tells you which case you are in before it starts, and prints its
-own estimate. Low on memory? It automatically runs fewer parallel jobs, because
-each one can want a gigabyte and a linker that gets OOM-killed is a miserable
-way to learn that. Under about 2 GB of RAM, expect the slowest row regardless
-of cores.
+The installer tells you which case you are in before it starts. Low on memory?
+It automatically runs fewer parallel jobs. Under about 2 GB of RAM, expect the
+slowest row regardless of cores.
 
-Everything after the first build takes seconds: wishes rebuild incrementally.
-
-**Piping a stranger's script into your shell is a bad habit.** Read it first —
-it will show you exactly what it would do and change nothing:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh -o install.sh
-less install.sh
-VIBES_DRY_RUN=1 sh install.sh
-```
-
-It honors `VIBES_DIR` (default `~/bitcoin-vibes`), `VIBES_BRANCH`, and `VIBES_REPO`.
+After the first build, an experiment recompiles only what it touched, then
+runs Bitcoin Core's unit tests and the two-node comparison. On Linux, install
+the `bubblewrap` package as well: it is the sandbox that AI-written code is
+compiled and run in.
 
 <details>
 <summary><b>Prefer Docker?</b> Nothing but Docker touches your machine.</summary>
@@ -77,10 +92,11 @@ docker compose -f contrib/vibes/docker-compose.yml up --build
 ```
 
 Open the `?key=…` link printed in the logs. The console is published to
-`127.0.0.1` only, and your chain data and decrees persist in a named volume.
+`127.0.0.1` only. Your source, saved experiments, build output and chain data
+live in a named volume and survive container rebuilds.
 
-On macOS, Claude Code's login lives in the system Keychain and cannot be handed
-to a container, so sign in once inside it:
+The container keeps its own Claude Code login, separate from the one on your
+machine. Sign in once inside it:
 
 ```bash
 docker compose -f contrib/vibes/docker-compose.yml exec vibes claude auth login
@@ -98,15 +114,14 @@ cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 ./vibes
 ```
 
-Dependencies are the usual Bitcoin Core set plus nothing: a C++20 compiler,
-CMake, Boost headers, SQLite3 headers, and Cap'n Proto. See `doc/build-*.md`.
+Dependencies are the usual Bitcoin Core set: a C++20 compiler, CMake, Boost
+headers, SQLite3 headers, and Cap'n Proto. See `doc/build-*.md`.
 
 </details>
 
-You also need [Claude Code](https://claude.com/claude-code), signed in — it is
-the engine that rewrites the node. The installer sets it up for you. If it is
-ever missing or signed out, the console says so plainly, with the fix, before
-you waste a wish on it.
+Requests in your own words need [Claude Code](https://claude.com/claude-code),
+signed in. The ready-made experiments do not. If Claude Code is missing or
+signed out, the console says so, with the fix.
 
 Running it
 ----------
@@ -115,89 +130,129 @@ Running it
 ~/bitcoin-vibes/vibes
 ```
 
-One command. It builds anything missing, wakes the node, and opens the console
-at `http://127.0.0.1:21212/?key=…`. The key is required — it keeps random web
-pages from governing your node — and it persists, so the link keeps working
-across restarts.
-
-```bash
-~/bitcoin-vibes/vibes --chain=main   # the real network. Read the warning below first.
-```
+One command. It starts the node on **regtest**, a private test chain that
+exists only on your machine, and opens the console at
+`http://127.0.0.1:21212/?key=…`. The key keeps other web pages from driving
+your node. It is stored and reused, so the link keeps working across restarts.
 
 Useful flags: `--no-open` (don't open a browser), `--no-autostart` (don't build
-or start the node), `--engine mock` (rehearse the whole loop with no AI and no
-cost), `--port`, `--jobs`. Run `./vibes --help` for the rest.
+or start the node), `--engine mock` (rehearse the whole loop with no AI),
+`--model`, `--agent-minutes`, `--port`, `--jobs`. Run `./vibes --help` for the
+rest.
 
-How a wish becomes code
------------------------
+What happens to a request
+-------------------------
 
-1. Type a request and press **Manifest**. The agent prepares a proposal in an isolated checkout.
-2. Review its explanation, acceptance goal, compatibility flags, and complete diff.
-3. Apply the proposal. Your unrelated source edits are never included; applying requires a clean tree.
-4. Build and verify it with Bitcoin unit tests, a disposable regtest check, and wish-specific RPC assertions when supplied.
-5. Activate the verified executable when ready. The console waits for RPC readiness and attempts to restore the previous tracked executable if activation fails.
+1. **Predict.** Before anything runs you are asked what an unmodified node will
+   do with your change. People who commit to a prediction learn more from what
+   they then see.
+2. **Propose.** The agent writes a proposal in an isolated copy of the source.
+   It can read and edit files there and nothing else: no commands, no network.
+3. **Build.** The lab compiles the proposal inside an operating-system sandbox
+   and runs Bitcoin Core's unit tests on it. Tests that no longer pass are
+   listed by name: they are the behaviours your change altered.
+4. **Compare.** The lab starts the new build beside an unmodified node on a
+   throwaway private chain and hands each one the other's blocks and a few test
+   transactions.
+5. **Review.** You see the outcome (no difference, local policy only,
+   tightened, loosened, or split), what that would mean on a real network, and
+   the change itself. Then you apply it or discard it.
 
-Automatic mode applies, builds, verifies, and activates ordinary experiments. Consensus-sensitive proposals always pause for review. General checks do not prove every requested behavior or mainnet compatibility.
+Start with the ten **ready-made experiments** at the top of the console. They
+need no AI and no compiler, have known outcomes, and each ends with a short
+explanation and its sources:
 
-Source, verified build, and running revision appear separately. Search your experiment history, inspect saved activity, retry builds, refine requests, share a request, or **Revert change**. Revert creates a new source commit; executable recovery does not undo chain data.
+| | |
+|---|---|
+| **Coins, keys and payments** | Are your coins in your wallet? · Does sending more cost more? · Is a confirmed payment final? |
+| **Rules, and who enforces them** | Can a filter keep data out of the chain? · Can you raise the block reward? · What if your node demands a smaller reward? · What if the reward halved sooner? |
+| **Mining power and upgrades** | Can most of the mining power break the rules? · How much mining power does a stricter rule need? (with a slider) · What happened to nodes that never upgraded in 2015? |
 
-Try the [browser lab](https://hotpixelgroup.github.io/bitcoin/demo.html) without an account or AI calls. It simulates the workflow and failure recovery. Install locally to run real experiments.
+Three of them change one line of the node's source. A release ships nodes
+already built with each change, so they run in seconds; you can also compile
+any of them yourself and see which of Bitcoin Core's unit tests it breaks.
+
+**Check your thinking** asks ten true-or-false statements before you start and
+again afterwards, so you can see what changed. The answers stay on your
+machine.
+
+Try the [browser demo](https://hotpixelgroup.github.io/bitcoin/demo.html) to see
+all of this without installing anything. It replays results recorded from real
+runs; it runs no AI and no node.
 
 ### Things worth typing
 
-> Rename the mempool to "the waiting room" everywhere in the logs.
 > Log a haiku about entropy whenever a new block arrives.
-> Make every error message gentler; nobody needs that tone at 3am.
-> Raise the block subsidy to 100 BTC. (Yes, it will do it. See below.)
+> Change the default data-carrier relay limit to 83 bytes.
+> Reduce the maximum block weight to one million.
+> Raise the block subsidy to 100 BTC. (Yes, it will do it. Then watch what the other node does.)
 
-### Two modes
-
-- **Guarded** (default) — the agent may read anything, edit files, and run a
-  short allowlist of build and read-only git commands.
-- **YOLO** — no tool restrictions on your machine at all. It is called YOLO
-  mode because you only live once, which is also true of nodes.
+You can also point the lab at **another node program** on your machine, such as
+a Bitcoin Knots build or a build of a proposed change, and it will run that
+beside the unmodified node and report what each did with the other's blocks.
 
 Read this part
 --------------
 
-**A fresh install is stock Bitcoin Core.** Out of the box this node follows the
-real Bitcoin network: 21 million coins, 50 BTC halving to schedule, every
+**A fresh install is stock Bitcoin Core.** Out of the box this node has every
 consensus rule exactly as upstream wrote it. The only things we change are the
-name it reports and the console bolted onto the side. Nobody inherits anybody
-else's monetary policy — every deviation on your node is one you asked for, in
-a commit with your name on it.
+name it reports and the console bolted onto the side. An automated check fails
+our build if anything else under `src/` differs. Every deviation on your node
+is one you asked for, in a commit with your name on it.
 
-**Consensus changes can make your node incompatible with the Bitcoin network.** The console flags possible impacts using source patterns and sensitive paths. This is a review aid, not proof of a fork or compatibility. Use the default private `regtest` network to observe changes before considering any other network.
+**AI-written code runs in a sandbox, and you should still read it.** Proposals
+are compiled, tested and run inside `sandbox-exec` on macOS or `bubblewrap` on
+Linux: no network, no writes outside the lab's folders, no view of your home
+folder beyond this source tree. That is confinement by the operating system,
+not a virtual machine. Where no sandbox is available the console says so,
+compiles nothing until you have reviewed it, and switches automatic applying
+off. [The manual](doc/vibes.md#confinement) lists the limits.
 
-**The console uses an isolated datadir** (`.vibes/data/`), binds to loopback, requires an authentication key, and rejects cross-origin requests. Disposable transaction scenarios create temporary regtest wallets and use test coins. They do not touch `~/.bitcoin` or real coins. AI-generated code and unrestricted agent mode still require your judgment.
+**The real network is a deliberate step.** `--chain=main` makes you type
+`MAINNET` after reading what it means. There, the lab refuses to start any
+build whose comparison found a consensus difference, the wallet stays disabled
+and incoming connections stay off unless you switch them on, and the console
+tells you in plain words if your node has refused a block. Do not point a
+wallet that holds real funds at an experimental node.
 
-**What it costs:** every wish is a Claude Code session, billed like one.
-Actual session cost appears when reported by the provider. The demo and mock engine make no AI calls.
+**A shared request is untrusted.** Sharing sends your words, never your code.
+Words are still instructions to an AI agent, so an imported request always
+waits for your review and is never applied or started automatically.
 
-**What you now own:** the agent writes real C++ into your fork. `git show` is
-right there. You are the maintainer, and the reviewer, and the entire community.
+**What the checks prove:** that the change compiles, which stock unit tests
+still pass, and what an unmodified node did with a limited set of blocks and
+transactions. They do not prove a change is safe on a real network.
+
+**What it costs:** each request in your own words is a Claude Code session,
+billed by your provider. The amount it reports is shown afterwards. The
+ready-made experiments, the mock engine and the browser demo make no AI calls.
+
+**Nothing here goes upstream.** Bitcoin Core's contribution policy requires a
+human author who understands every change and says pull requests should not be
+driven by autonomous agents. This project is the opposite arrangement on
+purpose, kept on your own machine: nothing made here is offered to Bitcoin
+Core.
 
 Troubleshooting
 ---------------
 
 | Symptom | Fix |
 |---|---|
-| Console says your envoy is not signed in | `claude auth login` |
+| Console says Claude Code is not signed in | `claude auth login` |
 | `Address already in use` | A console is already running: `kill $(lsof -tiTCP:21212 -sTCP:LISTEN)` |
-| A wish failed to build | Press **repent** on it, or vibe a correction. Your node kept running the old code. |
+| A proposal did not compile | Nothing changed. Read the compiler output under Technical activity, then refine the request or use **Ask the agent to fix the build error**. |
+| "Not compared" on a build | No reference node yet: use **Prepare reference node** on the node card. |
+| The node "refused a block" | An experiment tightened a rule. On regtest, **Reset my private chain** under Setup & help. |
 | `.git/index.lock` exists | A git process died mid-commit: `rm ~/bitcoin-vibes/.git/index.lock` |
-| Want to start over | `rm -rf ~/bitcoin-vibes/.vibes` wipes chain data and the session key, keeping your decrees |
+| Want unmodified rules back | **Restore the baseline source** under Setup & help |
+| Want to start over | `rm -rf ~/bitcoin-vibes/.vibes` wipes chain data, build records, experiment records and the access key. Your saved experiments remain in git. |
 | Want it gone entirely | `rm -rf ~/bitcoin-vibes` |
-
-Uninstalling removes the node, its chain data, and every decree you ever made.
-Bitcoin will go on without you. It always does.
 
 More
 ----
 
-[doc/vibes.md](doc/vibes.md) has the full manual: the pipeline in detail, the
-guardrails, the security model, and an FAQ that answers "is this a joke?"
-about as honestly as it can be answered.
+[doc/vibes.md](doc/vibes.md) has the full manual: the pipeline in detail, what
+each outcome means, the confinement model and its limits, and an FAQ.
 
 Credits
 -------
@@ -207,13 +262,12 @@ Maintained by [Hot Pixel Group](https://hotpixelgroup.com).
 
 Bitcoin Vibes is a fork of [Bitcoin Core](https://github.com/bitcoin/bitcoin),
 whose contributors wrote everything here that actually works. MIT licensed, like
-its ancestors. Not affiliated with, endorsed by, or particularly welcome among
-the Bitcoin Core project.
+its ancestors. Not affiliated with or endorsed by the Bitcoin Core project.
 
 ---
 
 *Everything below is the upstream Bitcoin Core README, which still describes
-this codebase — at least until your first vibe.*
+this codebase.*
 
 ---
 

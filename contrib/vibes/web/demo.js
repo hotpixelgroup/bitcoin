@@ -1,19 +1,164 @@
 'use strict';
-// Browser-only rehearsal. No API requests or real node/AI operations.
+// Browser demo. No AI, no node and no network requests.
+//
+// The ready-made experiments replay results that were recorded from real runs
+// of the lab (see demo-data.js). Nothing here pretends to write code: a typed
+// request is refused with an explanation, because inventing a plausible result
+// for it would teach the wrong thing.
 (() => {
-const key='vibes-browser-demo-v2';const base='b17c01a0000000000000000000000000000000000000';
-const initial=()=>({chain:'regtest',branch:'demo-universe',source:base,dirty:false,engine:'demo',engine_ready:{ok:true},binary:true,node:{running:true,health:'healthy',blocks:0,peers:0,revision:base},build:{sha:base,verified:true},baseline:{sha:base},job:null,experiments:[],vibes:[],records:{}});
-let data;try{data=JSON.parse(localStorage.getItem(key)||'null');}catch{}if(!data?.records)data=initial();
-const clone=value=>JSON.parse(JSON.stringify(value));const persist=()=>{try{localStorage.setItem(key,JSON.stringify(data));}catch{}};
-const sync=job=>{data.job=job;const i=data.experiments.findIndex(item=>item.id===job.id);if(i<0)data.experiments.unshift(job);else data.experiments[i]=job;data.records[job.id].summary=job;persist();};
-if(data.job&&['running','cancelling'].includes(data.job.state)){data.job.state='error';data.job.error='Browser demo interrupted by a reload. Refine the request or retry its build.';sync(data.job);}
-const event=(job,t,fields={})=>{const record=data.records[job.id];record.events.push({t,ts:Date.now()/1000,seq:record.events.length+1,...fields});sync(job);};
-const phase=(job,name,detail)=>event(job,'phase',{name,detail});
-function newJob(kind,prompt){if(data.job&&['running','review','cancelling'].includes(data.job.state))throw new Error('Finish or discard the current experiment first');const job={id:Math.floor(Date.now()/1000)+'-'+Array.from(crypto.getRandomValues(new Uint8Array(3)),n=>n.toString(16).padStart(2,'0')).join(''),time:Date.now()/1000,kind,prompt,state:'running',build_status:'not run',test_status:'not run',activation:'not activated',cost:0};data.records[job.id]={summary:job,events:[]};sync(job);return job;}
-function later(job,delay,fn){setTimeout(()=>{if(data.records[job.id]&&job.state==='running')fn();},delay);}
-function activate(job){phase(job,'restart','Simulated activation · waiting for RPC readiness');if(job.scenario==='activation-failure'){job.state='error';job.activation='rolled back';job.error='Simulated candidate startup failure. Previous executable restored; chain data is unchanged in this demo.';phase(job,'error',job.error);}else{data.node.running=true;data.node.health='healthy';data.node.revision=data.build.sha;job.activation='active';job.state='done';phase(job,'done','Simulated verified revision is running.');}sync(job);}
-function build(job,automatic){job.build_status='running';phase(job,'build','Simulating the candidate build');later(job,650,()=>{if(job.scenario==='build-failure'){job.build_status='failed';job.state='error';job.error='Simulated compiler failure in validation.cpp. Running release unchanged. Refine or retry.';phase(job,'error',job.error);return;}job.build_status='passed';job.test_status='running';phase(job,'test','Simulating unit tests and a disposable regtest check');later(job,650,()=>{job.test_status='passed';job.sha=data.source;job.evidence=[{name:'Unit tests (simulated)',status:'passed'},{name:'Mine and validate one block (simulated)',status:'passed',expected:1,actual:1},{name:'Requested subsidy (simulated)',status:'passed',expected:job.risk.length?10000000000:5000000000,actual:job.risk.length?10000000000:5000000000}];data.build={sha:data.source,verified:true,evidence:job.evidence,time:Date.now()/1000};event(job,'verification',{evidence:job.evidence});if(automatic)later(job,500,()=>activate(job));else{job.state='done';phase(job,'done','Simulated build verified. Activate it when ready.');}});});}
-function apply(job){if(job.base!==data.source)throw new Error('Source advanced since generation. Regenerate this proposal.');job.state='running';data.source=job.proposal;job.sha=data.source;phase(job,'commit','Applying the simulated proposal');if(job.autobuild)build(job,job.autorestart);else{job.state='done';phase(job,'done','Simulated source applied. Build and verification have not run.');}}
-const api=async(path,body)=>{const url=new URL(path,'https://demo.invalid');switch(url.pathname){case '/api/status':return clone(data);case '/api/experiment':{const record=data.records[url.searchParams.get('id')];if(!record)throw new Error('Experiment not found');return clone(record);}case '/api/diff':return {patch:url.searchParams.get('base')==='baseline'?Object.values(data.records).filter(v=>v.summary.sha).map(v=>v.summary.patch||'').join('\n'):Object.values(data.records).find(v=>v.summary.sha===url.searchParams.get('sha'))?.summary.patch||''};case '/api/settings':if(body)return {ok:true,values:body.values};return {groups:[{id:'storage',title:'Storage'}],schema:[{key:'dbcache',label:'Database cache',type:'int',min:4,max:16384,unit:'MiB',help:'Simulated database cache setting.'},{key:'listen',label:'Accept incoming connections',type:'bool',help:'Simulated listening preference.'}],values:{dbcache:450,listen:true}};case '/api/update':{const job=newJob('update','Update Bitcoin Vibes');job.state='done';phase(job,'done','Browser demo has no real upstream updates.');return {job:clone(job)};}case '/api/playground':{const job=newJob('playground','Verify '+body.scenario+' on disposable regtest');job.test_status='passed';job.evidence=[{name:'Coinbase maturity (simulated)',status:'passed',expected:'> 0 BTC',actual:50}];if(body.scenario==='transaction')job.evidence.push({name:'Transaction enters mempool and confirms (simulated)',status:'passed'});job.state='done';phase(job,'done','Disposable scenario simulated.');return {job:clone(job)};}case '/api/node-log':return {log:'[browser demo] RPC ready on regtest\n[browser demo] Current height: '+data.node.blocks+'\n[browser demo] No real node is running.'};case '/api/vibe':{const job=newJob('vibe',body.prompt);job.base=data.source;job.scenario=document.getElementById('demo-scenario')?.value||'success';job.autobuild=body.autobuild;job.autorestart=body.autorestart;job.risk=/subsidy|halving|consensus|supply cap/i.test(body.prompt)?['block subsidy (simulated detection)']:[];job.sensitive=[];phase(job,'agent','Simulated agent is preparing a proposal');later(job,700,()=>{job.proposal=Array.from(crypto.getRandomValues(new Uint8Array(20)),n=>n.toString(16).padStart(2,'0')).join('');job.explanation=job.risk.length?'Simulated proposal: change the regtest subsidy to 100 BTC and keep mainnet behavior unchanged. Observe the subsidy through getblockstats.':'Simulated proposal: add a short note to the documentation describing your request. This demonstration does not generate real code.';job.acceptance={description:'Observe the simulated block subsidy after mining one regtest block.'};job.patch=job.risk.length?'diff --git a/src/kernel/chainparams.cpp b/src/kernel/chainparams.cpp\n--- a/src/kernel/chainparams.cpp\n+++ b/src/kernel/chainparams.cpp\n@@ -1,2 +1,2 @@\n-// illustrative regtest subsidy: 50 BTC\n+// illustrative regtest subsidy: 100 BTC\n':'diff --git a/doc/vibes.md b/doc/vibes.md\n--- a/doc/vibes.md\n+++ b/doc/vibes.md\n@@ -1 +1,2 @@\n # Bitcoin Vibes\n+<!-- simulated experiment: '+body.prompt.replaceAll('\n',' ').slice(0,300)+' -->\n';job.files=[{path:job.risk.length?'src/kernel/chainparams.cpp':'doc/vibes.md',added:1,removed:job.risk.length?1:0}];event(job,'diff',{patch:job.patch,files:job.files});if(body.review||job.risk.length){job.state='review';phase(job,'review','Simulated proposal ready for review');}else apply(job);});return {job:clone(job)};}case '/api/apply':{const job=data.job;if(!job||job.id!==body.id||job.state!=='review')throw new Error('No proposal awaiting review');apply(job);return {job:clone(job)};}case '/api/cancel':{const job=data.job;if(!job||!['running','review'].includes(job.state))return {cancelled:false};job.state='cancelled';phase(job,'cancelled','Simulated experiment stopped; no further activation.');return {cancelled:true};}case '/api/build':{const job=newJob('build','Build and verify current source');job.scenario='success';job.risk=[];build(job,body.autorestart);return {job:clone(job)};}case '/api/activate':{if(!data.build.verified)throw new Error('Build and verify first');const job=newJob('activate','Activate verified build');job.scenario='success';activate(job);return {job:clone(job)};}case '/api/revert':{const original=data.experiments.find(j=>j.sha===body.sha&&j.kind==='vibe');if(!original)throw new Error('Not a vibe commit');const job=newJob('revert','Revert '+original.prompt);job.reverts=body.sha;job.sha=Array.from(crypto.getRandomValues(new Uint8Array(20)),n=>n.toString(16).padStart(2,'0')).join('');data.source=job.sha;job.risk=[];job.scenario='success';phase(job,'revert','Simulated revert commit created');build(job,body.autorestart);return {job:clone(job)};}case '/api/node':{if(body.action==='mine'){if(!data.node.running)throw new Error('Start node first');if(!Number.isInteger(body.blocks)||body.blocks<1||body.blocks>150)throw new Error('Choose 1–150 blocks');const job=newJob('playground','Generate '+body.blocks+' regtest blocks');const before=data.node.blocks;data.node.blocks+=body.blocks;job.evidence=[{name:'Generated blocks (simulated)',status:'passed',expected:before+body.blocks,actual:data.node.blocks}];event(job,'verification',{evidence:job.evidence});job.state='done';phase(job,'done','Simulated regtest height updated');return {job:clone(job)};}const job=newJob('node',body.action+' node');if(body.action==='restart'){job.scenario='success';activate(job);}else{data.node.running=body.action==='start';data.node.health=data.node.running?'healthy':'stopped';job.state='done';phase(job,'done','Simulated node '+data.node.health);}return {job:clone(job)};}default:throw new Error('Unknown demo operation');}};
-window.VibesDemo={api,reset(){data=initial();persist();}};
+const key = 'vibes-browser-demo-v3';
+const base = 'b17c01a0000000000000000000000000000000000000';
+const lessons = window.VibesLessons || {curated: []};
+const recorded = window.VibesDemoData || {};
+
+const initial = () => ({experiments: [], records: {}, job: null, learning: []});
+let data;
+try {
+  data = JSON.parse(localStorage.getItem(key) || 'null');
+} catch {
+  data = null;
+}
+if (!data?.records) data = initial();
+
+const clone = value => JSON.parse(JSON.stringify(value));
+function persist() {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch { /* storage unavailable: the demo still works for this visit */ }
+}
+
+function status() {
+  return {
+    chain: 'regtest', branch: 'demo', source: base, dirty: false, engine: 'demo',
+    chain_note: lessons.networks?.regtest || '',
+    engine_ready: {ok: true}, binary: true,
+    agent: {model: 'none', turns: 0, minutes: 0},
+    node: {running: true, health: 'healthy', blocks: 0, peers: 0, revision: base, wallet: false, listening: false, alerts: []},
+    build: {sha: base, verified: true, unit_failures: [], compare: {verdict: 'identical', headline: 'Same rules as the unmodified node'}},
+    baseline: {sha: base},
+    sandbox: {kind: 'demo', contained: true, label: 'Not applicable in the demo', detail: 'The real lab compiles and runs every proposal inside an operating-system sandbox.'},
+    reference: {ready: true, sha: base},
+    variants: {'double-reward': true, 'halve-reward': true, 'faster-halving': true},
+    activation_block: '', upstream: {}, update: {known: false},
+    job: data.job, experiments: data.experiments, vibes: [],
+  };
+}
+
+function runCurated(body) {
+  const item = lessons.curated.find(entry => entry.id === body.id);
+  let result = recorded[body.id];
+  if (item?.slider) {
+    // Recorded at several shares; replay the nearest one to what was asked for.
+    const shares = Object.keys(recorded).filter(name => name.startsWith(body.id + '@')).map(name => Number(name.split('@')[1]));
+    const nearest = shares.sort((a, b) => Math.abs(a - body.share) - Math.abs(b - body.share))[0];
+    result = recorded[`${body.id}@${nearest}`];
+  }
+  if (!item || !result) throw new Error('This experiment has no recorded result in the demo.');
+  const id = Math.floor(Date.now() / 1000) + '-' + Array.from(crypto.getRandomValues(new Uint8Array(3)), n => n.toString(16).padStart(2, '0')).join('');
+  const scene = item.kind === 'scene';
+  const job = {
+    id, time: Date.now() / 1000, kind: scene ? 'scene' : 'vibe', prompt: item.title, state: 'done',
+    curated: item.id, prediction: body.prediction || null, origin: 'curated',
+    build_status: scene ? 'not run' : 'passed', test_status: scene ? 'passed' : result.unit_failures?.length ? 'findings' : 'passed',
+    unit_failures: result.unit_failures || [], activation: 'not activated',
+    compare: result.compare, compare_verdict: result.compare.headline,
+    explanation: item.summary, patch: result.patch || '', files: result.files || [],
+    risk: result.risk || [], sensitive: result.sensitive || [],
+    evidence: scene ? [] : [
+      {name: 'Compiled', status: 'passed', detail: 'Recorded from a real run.'},
+      {name: 'Bitcoin Core unit tests', status: result.unit_failures?.length ? 'failed' : 'passed',
+       detail: result.unit_failures?.length ? `${result.unit_failures.length} no longer pass: ${result.unit_failures.join(', ')}` : ''},
+      {name: 'Compared with an unmodified node', status: 'passed', detail: result.compare.headline},
+    ],
+  };
+  const events = [
+    {t: 'phase', name: 'test', detail: 'Replaying a result recorded from a real run of the lab', seq: 1, ts: job.time},
+    {t: 'log', line: 'Recorded with two real nodes on a throwaway private chain. Block hashes in your own run will differ.', seq: 2, ts: job.time},
+    {t: 'phase', name: 'done', seq: 3, ts: job.time},
+  ];
+  data.records[id] = {summary: job, events};
+  data.experiments.unshift({id, time: job.time, kind: job.kind, prompt: job.prompt, state: 'done', curated: item.id,
+                            build_status: job.build_status, compare_verdict: job.compare_verdict});
+  data.job = data.experiments[0];
+  persist();
+  return {job: clone(job)};
+}
+
+function learning(body) {
+  if (!body) {
+    const tally = stage => {
+      const rows = data.learning.filter(entry => entry.stage === stage);
+      return {answered: rows.length, correct: rows.filter(entry => entry.correct).length};
+    };
+    const beliefs = {};
+    for (const entry of data.learning) {
+      if (!['before', 'after'].includes(entry.stage)) continue;
+      beliefs[entry.experiment] = {...beliefs[entry.experiment], [entry.stage]: {choice: entry.choice, correct: entry.correct}};
+    }
+    return {summary: {prediction: tally('prediction'), followup: tally('followup'), before: tally('before'), after: tally('after')},
+            beliefs, entries: clone(data.learning)};
+  }
+  let correct;
+  let name = body.experiment;
+  if (['before', 'after'].includes(body.stage)) {
+    const belief = (lessons.beliefs || []).find(entry => entry.id === body.experiment);
+    if (!belief) throw new Error('Unknown statement');
+    correct = body.choice === String(belief.truth);
+  } else {
+    const item = lessons.curated.find(entry => entry.id === body.experiment);
+    if (!item) throw new Error('Unknown experiment');
+    name = item.id;
+    if (body.stage === 'followup') {
+      correct = body.choice === item.followup.answer;
+    } else if (item.answer_by_share) {
+      const share = data.records[body.job]?.summary.compare?.share || 0;
+      correct = body.choice === (share > item.answer_by_share.line ? item.answer_by_share.above : item.answer_by_share.below);
+    } else {
+      correct = body.choice === item.answer;
+    }
+  }
+  data.learning.push({experiment: name, stage: body.stage, choice: body.choice, correct});
+  persist();
+  return {correct};
+}
+
+const REAL_ONLY = 'The browser demo has no AI and no node, so it cannot do this. Try a ready-made experiment, which replays a result recorded from a real run, or install the lab to run your own.';
+
+async function api(path, body) {
+  const url = new URL(path, 'https://demo.invalid');
+  switch (url.pathname) {
+    case '/api/status':
+      return status();
+    case '/api/experiment': {
+      const record = data.records[url.searchParams.get('id')];
+      if (!record) throw new Error('Experiment not found');
+      return clone(record);
+    }
+    case '/api/curated':
+      return runCurated(body);
+    case '/api/learning':
+      return learning(body);
+    case '/api/settings':
+      if (body) throw new Error(REAL_ONLY);
+      return {groups: [{id: 'relay', title: 'What your node relays', blurb: 'In the real lab this list is read from the node itself.'}],
+              schema: [{key: 'datacarriersize', group: 'relay', label: 'Largest data payload', type: 'int', min: 0, max: 1000000, unit: 'bytes', default: 100000,
+                        help: 'The number the 2025 relay dispute was about.',
+                        tip: 'Relay policy: it governs what crosses your node, and your node accepts the same blocks whatever you choose.'}],
+              values: {datacarriersize: 100000}};
+    case '/api/diff':
+      return {patch: ''};
+    case '/api/node-log':
+      return {log: 'The browser demo runs no node.'};
+    default:
+      throw new Error(REAL_ONLY);
+  }
+}
+
+window.VibesDemo = {
+  api,
+  reset() {
+    data = initial();
+    persist();
+  },
+};
 })();

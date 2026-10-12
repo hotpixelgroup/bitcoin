@@ -1,13 +1,162 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bitcoin Vibes · Your convictions deserve evidence.</title><meta name="description" content="Core has rules. Knots has opinions. Vibes has you. Turn a sentence into a reviewable Bitcoin experiment, verify it on regtest, and run your own node."><meta name="theme-color" content="#f7f5ef"><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta property="og:title" content="Bitcoin Vibes · Your convictions deserve evidence."><meta property="og:description" content="Describe a change. Review the code. Observe the result. A real Bitcoin node with an experiment lab."><meta property="og:url" content="https://hotpixelgroup.github.io/bitcoin/"><meta property="og:type" content="website"><meta property="og:image" content="https://hotpixelgroup.github.io/bitcoin/og.png"><meta name="twitter:card" content="summary_large_image"><link rel="stylesheet" href="web/ui.css"></head><body>
-<a class="skip" href="#main">Skip to content</a><div class="landing"><nav class="landing-nav" aria-label="Main navigation"><a class="brand" href="./"><span aria-hidden="true">✦</span> BITCOIN VIBES</a><a href="demo.html">Try the lab</a><a href="#install">Install</a><a href="https://github.com/hotpixelgroup/bitcoin/tree/master">GitHub ↗</a></nav>
-<main id="main" style="padding:0;max-width:none"><div class="hero"><div><div class="eyebrow">CORE HAS RULES. KNOTS HAS OPINIONS. VIBES HAS YOU.</div><h1>What shall<br>Bitcoin become?</h1><p class="lede">A real Bitcoin node that reshapes itself around your ideas. Describe a change, review the code, and observe it working on your private chain.</p><p class="subtle">Speak, and it shall compile. Then check that it works.</p><div class="toolbar" style="margin-top:25px"><a class="button-link primary" href="demo.html">Try the experiment lab ✦</a><a class="button-link" href="#install">Install your node</a></div><p class="subtle" style="margin-top:15px">Browser demo: no account, no AI calls, no cost.</p></div><div class="hero-preview" aria-label="Illustrative experiment workflow"><div class="section-line"><span class="eyebrow">ONE IDEA. A REVIEWABLE EXPERIMENT.</span><span class="pill">REGTEST</span></div><blockquote>“What happens if the regtest block subsidy is 100 BTC?”</blockquote><div class="preview-step"><span class="pass">✓</span> Review the explanation and diff <small>Understand</small></div><div class="preview-step"><span class="pass">✓</span> Build, test, and observe the reward <small>Verify</small></div><div class="preview-step"><span class="pass">✓</span> Activate the verified release <small>Run</small></div><p class="subtle">Illustration only. Real experiments report their own results.</p></div></div>
-<section aria-labelledby="features-heading"><h2 id="features-heading">Your convictions deserve evidence.</h2><p class="subtle">The text area is still the point. Everything around it helps you understand what happens next.</p><div class="feature-grid"><article class="panel"><h3>Understand the change.</h3><p>Isolated proposals, a plain-English explanation, compatibility flags, and a complete downloadable diff. Review before applying, or automate ordinary experiments.</p></article><article class="panel"><h3>Observe the result.</h3><p>Unit tests, disposable regtest checks, and wish-specific RPC assertions when supplied. Explore block generation, coinbase maturity, and transaction confirmation.</p></article><article class="panel"><h3>Know what is running.</h3><p>Separate source, verified build, and running revisions. Search your experiments, retry a failed build, revert a change, and recover the previous executable if activation fails.</p></article></div></section>
-<section id="install" aria-labelledby="install-heading"><h2 id="install-heading">One command to start your universe.</h2><p>macOS or Linux. Windows users can run it in WSL2. Regtest is the default private network.</p><div class="install-grid"><div class="panel"><div class="install-copy-row"><h3 style="margin:0">Install from source</h3><button id="copy-install">Copy command</button></div><pre class="install-command" id="install-command">curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh | sh</pre><p class="subtle">Installs dependencies and prepares the node. The first build can take several minutes or longer, depending on your machine. Later builds are incremental.</p><details><summary>Read the installer first</summary><pre>curl -fsSL https://raw.githubusercontent.com/hotpixelgroup/bitcoin/master/contrib/vibes/install.sh -o install.sh
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bitcoin Vibes · Change one node. Then ask a second one.</title>
+<meta name="description" content="Core has rules. Knots has opinions. Vibes has you. Change a Bitcoin node in plain words, then see what an unmodified node makes of the change.">
+<meta name="theme-color" content="#f7f5ef">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:title" content="Bitcoin Vibes · Change one node. Then ask a second one.">
+<meta property="og:description" content="Describe a change to Bitcoin. The lab builds it and runs it beside an unmodified node, so you can see what each does with the other's blocks.">
+<meta property="og:url" content="https://hotpixelgroup.github.io/bitcoin/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://hotpixelgroup.github.io/bitcoin/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="web/ui.css">
+<script defer src="web/landing.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="landing">
+<nav class="landing-nav" aria-label="Main navigation">
+  <a class="brand" href="./"><span aria-hidden="true">✦</span> BITCOIN VIBES</a>
+  <a href="demo.html">Try the lab</a>
+  <a href="#install">Install</a>
+  <a href="https://github.com/hotpixelgroup/bitcoin">GitHub ↗</a>
+</nav>
+
+<main id="main" class="landing-main">
+<div class="hero">
+  <div>
+    <div class="eyebrow">CORE HAS RULES. KNOTS HAS OPINIONS. VIBES HAS YOU.</div>
+    <h1>What shall<br>Bitcoin become?</h1>
+    <p class="lede">A real Bitcoin node you can change in a sentence. Then the lab runs your version beside an unmodified one, and you watch what each does with the other's blocks.</p>
+    <p class="subtle">You can make your own node do anything. You cannot make anyone else's agree. This is a way to see that for yourself.</p>
+    <div class="toolbar hero-actions">
+      <a class="button-link primary" href="demo.html">Try the experiment lab ✦</a>
+      <a class="button-link" href="#install">Install your node</a>
+    </div>
+    <p class="subtle hero-note">Browser demo: no account, no AI, no node. It replays results recorded from real runs.</p>
+  </div>
+  <div class="hero-preview" aria-label="A recorded experiment">
+    <div class="section-line"><span class="eyebrow">ONE CHANGE. TWO NODES.</span><span class="pill">REGTEST</span></div>
+    <blockquote>“Raise the block reward to 100 BTC.”</blockquote>
+    <div class="preview-step"><span class="pass">✓</span> Your node produces a block paying 100 <small>It works here</small></div>
+    <div class="preview-step"><span class="fail">✕</span> The unmodified node refuses it: bad-cb-amount <small>And only here</small></div>
+    <div class="preview-step"><span class="pass">✓</span> You read why, then revert <small>Understand</small></div>
+    <p class="subtle">Recorded from a real run. Try it in the demo.</p>
+  </div>
+</div>
+
+<section aria-labelledby="features-heading">
+  <h2 id="features-heading">One node alone proves nothing.</h2>
+  <p class="subtle">On a private chain of one, any rule appears to work, because nobody is present to disagree. So every experiment gets a second node.</p>
+  <div class="feature-grid">
+    <div class="panel">
+      <h3>Predict.</h3>
+      <p>Before anything runs, you say what you think will happen. Ten ready-made experiments start you off, from "are your coins in your wallet?" to "how much mining power does a rule change need?". No AI and no compiler needed.</p>
+    </div>
+    <div class="panel">
+      <h3>Observe.</h3>
+      <p>Your change is compiled in a sandbox and run beside an unmodified node. You see which blocks each one refused, and the reason it gave.</p>
+    </div>
+    <div class="panel">
+      <h3>Understand.</h3>
+      <p>Each outcome comes with what it would mean on a real network, written by people, not by the AI, with its sources. Ten statements, answered before and after, show you what changed in your own thinking.</p>
+    </div>
+  </div>
+</section>
+
+<section id="install" aria-labelledby="install-heading">
+  <h2 id="install-heading">Install the lab.</h2>
+  <p>macOS or Linux. Windows users can run it in WSL2. It starts on regtest, a private chain that exists only on your machine.</p>
+  <div class="install-grid">
+    <div class="panel">
+      <h3>One line</h3>
+      <div class="install-copy-row">
+        <pre id="install-command" class="install-command">curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh | sh</pre>
+        <button id="copy-install">Copy command</button>
+      </div>
+      <p class="subtle">The installer published with the latest release. It installs that release, checks the ready-made node against its published SHA-256, and asks before running anyone else's installer. The first build takes several minutes or longer, depending on your machine.</p>
+      <details>
+        <summary>Read the installer first</summary>
+        <pre>curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh -o install.sh
 less install.sh
-VIBES_DRY_RUN=1 sh install.sh</pre></details><h3>Then run</h3><pre>~/bitcoin-vibes/vibes</pre><p class="subtle">The local console opens with an authenticated link. Claude Code powers real AI requests; sign in with <code>claude auth login</code>.</p></div><div class="panel"><h3>Prefer the Mac app?</h3><p>Download the app from the latest release. Desktop setup prepares your node and streams progress into the console.</p><a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/releases/latest">Download the latest release ↗</a><details><summary>Run with Docker</summary><pre>git clone -b master https://github.com/hotpixelgroup/bitcoin.git
+VIBES_DRY_RUN=1 sh install.sh</pre>
+      </details>
+      <h3>Then run</h3>
+      <pre>~/bitcoin-vibes/vibes</pre>
+      <p class="subtle">The console opens in your browser. The ready-made experiments need nothing more. Requests in your own words need Claude Code, signed in with <code>claude auth login</code>.</p>
+    </div>
+    <div class="panel">
+      <h3>Prefer the Mac app?</h3>
+      <p>A launcher that prepares the node and reports progress in your browser. It is not notarised by Apple yet, so macOS asks you to allow it the first time.</p>
+      <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/releases/latest">Download the latest release ↗</a>
+      <h3>Run with Docker</h3>
+      <pre>git clone -b master https://github.com/hotpixelgroup/bitcoin.git
 cd bitcoin
-docker compose -f contrib/vibes/docker-compose.yml up --build</pre><p class="subtle">Open the authenticated link from the logs. Sign in to Claude Code inside the container.</p></details><details><summary>Already installed?</summary><p class="subtle">Use “Update from origin” in the console, or commit your own edits and run:</p><pre>git pull --ff-only origin master
-./vibes</pre><p class="subtle">If your decrees diverge from upstream, the console update can replay them or report a conflict.</p></details><a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the full manual ↗</a></div></div></section>
-<section class="faq" aria-labelledby="faq-heading"><h2 id="faq-heading">A few things worth knowing.</h2><details><summary>Is the browser demo a real Bitcoin node?</summary><p>No. GitHub Pages hosts static files. The demo simulates the workflow, including failure recovery, without contacting an AI or running a node. Install Bitcoin Vibes to generate real code and run the local experiment lab.</p></details><details><summary>Does a fresh install change Bitcoin’s rules?</summary><p>A fresh install preserves upstream consensus rules. Your experiments determine subsequent changes. The console starts on regtest, a private test network.</p></details><details><summary>What does a passing experiment prove?</summary><p>The recorded checks passed for that candidate. Unit tests and a general regtest check do not prove every requested behavior. Wish-specific checks report expected and observed values separately. Compatibility detection is a heuristic and does not prove mainnet compatibility.</p></details><details><summary>What happens if activation fails?</summary><p>The console waits for RPC readiness and attempts to restart the previous executable when available. Revert adds a source commit and can build and verify it. Executable rollback does not undo chain data changes.</p></details><details><summary>Can I share an experiment?</summary><p>Share the original request as a link or vibe1 token. Recipients review the words and ask their own agent to generate a proposal. Shared requests never execute automatically.</p></details><details><summary>What does it cost?</summary><p>The software is free and MIT-licensed. Real requests use your Claude Code account and are billed by your provider. The console shows actual session cost when the engine reports it. The browser demo and local mock engine make no AI calls.</p></details><details><summary>Can it use my existing wallet?</summary><p>The console uses an isolated data directory. Playground transaction scenarios create temporary wallets on disposable regtest nodes. They do not send real bitcoin. AI code changes and unrestricted agent mode still require your judgment.</p></details><details><summary>Is this a joke?</summary><p>The node is real. The text area is real. The divine authority is between you and your compiler.</p></details></section>
-<div id="shared-request" class="notice" hidden>A shared request is attached to this page. <a id="shared-link" href="demo.html">Review it in the browser lab</a>. It will not run automatically.</div><section><div class="toolbar"><a class="button-link primary" href="demo.html">Try the lab ✦</a><a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/README.md#troubleshooting">Troubleshooting ↗</a></div></section></main><footer>Built by Harry Beckwith & Jones Beckwith · maintained by <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>A fork of Bitcoin Core · MIT licensed · Not affiliated with Bitcoin Core.</footer></div><div class="toast" id="copy-status" role="status" hidden></div>
-<script>document.getElementById('copy-install').onclick=async()=>{const status=document.getElementById('copy-status');try{await navigator.clipboard.writeText(document.getElementById('install-command').textContent);status.textContent='Install command copied.';}catch{status.textContent='Select and copy the command above.';}status.hidden=false;setTimeout(()=>status.hidden=true,4000);};if(/^#decree=vibe1\.[A-Za-z0-9_-]+$/.test(location.hash)){document.getElementById('shared-request').hidden=false;document.getElementById('shared-link').href='demo.html'+location.hash;}</script></body></html>
+docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
+      <p class="subtle">Open the link from the logs. The container keeps its own Claude Code sign-in.</p>
+      <h3>Already installed?</h3>
+      <p class="subtle">Use “Check for and take updates” in the console. Like Bitcoin Core, the lab never updates by itself.</p>
+      <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the full manual ↗</a>
+    </div>
+  </div>
+</section>
+
+<section class="faq" aria-labelledby="faq-heading">
+  <h2 id="faq-heading">A few things worth knowing.</h2>
+  <details>
+    <summary>Is the browser demo a real Bitcoin node?</summary>
+    <p>No. It runs no AI and no node. Its ready-made experiments replay results that were recorded from real runs of the lab, so what you read there is what two real nodes did. Install Bitcoin Vibes to run your own.</p>
+  </details>
+  <details>
+    <summary>Does a fresh install change Bitcoin's rules?</summary>
+    <p>No. A fresh install has Bitcoin Core's consensus rules exactly; an automated check fails our build if the node source differs from upstream in anything but the name it reports. Every change after that is one you asked for.</p>
+  </details>
+  <details>
+    <summary>Is it safe to let an AI rewrite a node on my machine?</summary>
+    <p>The agent can read and edit files in its own copy of the source and nothing else: no commands, no network. What it writes is compiled and run inside an operating-system sandbox. That is confinement, not a guarantee, and you should still read the change. Where no sandbox is available the lab says so and compiles nothing until you have reviewed it.</p>
+  </details>
+  <details>
+    <summary>What do the checks prove?</summary>
+    <p>That the change compiles, which of Bitcoin Core's unit tests still pass, and what an unmodified node did with a limited set of blocks and transactions. A change to something those checks never exercise shows no difference. None of it proves a change is safe on a real network.</p>
+  </details>
+  <details>
+    <summary>Can I use it on the real Bitcoin network?</summary>
+    <p>It is a lab, not a wallet. On the real network you must confirm deliberately, the lab refuses to start any build whose comparison found a consensus difference, and the wallet stays disabled unless you switch it on. Do not point a wallet holding real funds at an experimental node.</p>
+  </details>
+  <details>
+    <summary>Can I share an experiment?</summary>
+    <p>You share the words you typed, never code. Because words are instructions to an AI agent, the recipient's lab treats them as untrusted: it shows them first, never applies them automatically, and the agent that reads them can only edit files.</p>
+  </details>
+  <details>
+    <summary>What does it cost?</summary>
+    <p>The software is free and MIT licensed. The ready-made experiments and the demo make no AI calls. Each request in your own words is a Claude Code session billed by your provider.</p>
+  </details>
+  <details>
+    <summary>Is this an alternative to Bitcoin Core or Bitcoin Knots?</summary>
+    <p>No. The tagline is a joke. Nothing made here is offered to Bitcoin Core, whose own policy requires a human author who understands every change. Bitcoin Vibes is a way to see why changing a node does not change Bitcoin.</p>
+  </details>
+</section>
+
+<div id="shared-request" class="notice" hidden>
+  <b>Someone shared a request with you.</b> It is their words, not their code.
+  <a id="shared-link" href="demo.html">Read it in the browser demo</a>, or, if your own lab is running, <a id="shared-local" href="http://127.0.0.1:21212/import">open it in your own console</a>. It never runs automatically.
+</div>
+
+<section>
+  <div class="toolbar">
+    <a class="button-link primary" href="demo.html">Try the lab ✦</a>
+    <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/README.md#troubleshooting">Troubleshooting ↗</a>
+  </div>
+</section>
+</main>
+
+<footer>Built by Harry Beckwith &amp; Jones Beckwith · maintained by <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>A fork of Bitcoin Core · MIT licensed · Not affiliated with Bitcoin Core.</footer>
+</div>
+<div class="toast" id="copy-status" role="status" hidden></div>
+</body>
+</html>

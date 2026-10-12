@@ -1,0 +1,61 @@
+# Build the Docker image whenever something it is made from changes.
+#
+# The image compiles the node, so this is slow and runs only when it has to.
+# It builds and discards: nothing is pushed anywhere.
+name: Docker image
+
+on:
+  pull_request:
+    paths:
+      - contrib/vibes/Dockerfile
+      - contrib/vibes/docker-compose.yml
+      - contrib/vibes/docker-entrypoint.sh
+      - .dockerignore
+      - .github/workflows/docker.yml
+  push:
+    branches: [master]
+    paths:
+      - contrib/vibes/Dockerfile
+      - contrib/vibes/docker-compose.yml
+      - contrib/vibes/docker-entrypoint.sh
+      - .dockerignore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Image builds and the console starts
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Compose file is valid
+        run: docker compose -f contrib/vibes/docker-compose.yml config --quiet
+
+      - name: Build the image
+        run: docker compose -f contrib/vibes/docker-compose.yml build
+
+      # Start it with the mock engine and no node, and ask the console whether
+      # it is alive. This exercises the entrypoint: first-start copy into the
+      # volume, the git history it creates, and running as an unprivileged user.
+      - name: The console starts as an unprivileged user and keeps its working copy
+        run: |
+          set -e
+          run() { docker compose -f contrib/vibes/docker-compose.yml run --rm -T --entrypoint sh vibes -c "$1"; }
+          test "$(run 'id -u')" != "0" || { echo "::error::the container runs as root"; exit 1; }
+          docker compose -f contrib/vibes/docker-compose.yml up -d
+          trap 'docker compose -f contrib/vibes/docker-compose.yml logs --tail 60; docker compose -f contrib/vibes/docker-compose.yml down' EXIT
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:21212/api/ping >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:21212/api/ping
+          run 'git -C "$HOME/work" log --oneline -1'
+          run 'test "$VIBES_SANDBOX" = container'

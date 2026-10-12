@@ -4,11 +4,13 @@
 # aimed at a project with a hundred contributors and it starved everything else
 # in the queue. This is the small, fast replacement that checks the things this
 # project can actually break.
+#
+# Actions are pinned to full commit hashes, with the version in a comment, so a
+# moved tag cannot change what runs here.
 name: Vibes
 
 on:
   pull_request:
-    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -25,15 +27,19 @@ jobs:
     name: Console, installer and docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Console compiles
-        run: python3 -m py_compile contrib/vibes/bitcoin-vibes
+        run: |
+          python3 -m py_compile contrib/vibes/bitcoin-vibes contrib/vibes/lab_runner.py \
+            contrib/vibes/build_site.py contrib/vibes/vibeslib/*.py
 
       - name: Shell scripts parse
         run: |
-          sh -n contrib/vibes/install.sh
-          sh -n vibes
+          for script in vibes contrib/vibes/install.sh contrib/vibes/docker-entrypoint.sh \
+                        contrib/vibes/macos/launcher.sh contrib/vibes/macos/build-app.sh; do
+            sh -n "$script"
+          done
 
       - name: Installer dry run touches nothing
         run: |
@@ -46,31 +52,42 @@ jobs:
           import re, sys
           html = open("contrib/vibes/index.html").read()
           fails = []
-          for tag in ("html", "head", "body", "script", "style"):
+          for tag in ("html", "head", "body", "script", "main", "dialog"):
               # <head must not also match <header
               if len(re.findall(rf"<{tag}[ >]", html)) != html.count(f"</{tag}>"):
                   fails.append(f"unbalanced <{tag}>")
-          if "wish" not in html or 'id="feed"' not in html:
-              fails.append("console lost a core element")
-          # every input the form reads must still exist by id
+          ids = re.findall(r'\bid="([^"]+)"', html)
+          for dup in sorted({i for i in ids if ids.count(i) > 1}):
+              fails.append(f"duplicate id {dup}")
+          for needed in ("wish", "feed", "comparison-rows", "node-alerts", "predict-dialog"):
+              if needed not in ids:
+                  fails.append(f"console lost #{needed}")
           if 'label class="wish-label" for="wish"' not in html:
-              fails.append("the decree box lost its label")
+              fails.append("the request box lost its label")
+          # The page is served with a strict content security policy.
+          if re.search(r"<script(?![^>]*\bsrc=)", html) or " style=" in html or re.search(r'\son\w+="', html):
+              fails.append("inline script, style or event handler (blocked by the page's CSP)")
+          # Every id the script looks up must exist in the page.
+          js = open("contrib/vibes/web/app.js").read()
+          for wanted in sorted(set(re.findall(r"\$\('([a-z0-9-]+)'\)", js))):
+              if wanted not in ids:
+                  fails.append(f"app.js uses #{wanted}, which the page does not have")
           print("\n".join(fails) or "console UI ok")
           sys.exit(1 if fails else 0)
           PY
 
-      - name: Console integration and failure recovery
+      - name: Console workflows, safety rules and failure recovery
         run: python3 -m unittest discover -s contrib/vibes/tests -v
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
       - name: JavaScript parses and static site builds
         run: |
-          node --check contrib/vibes/web/app.js
-          node --check contrib/vibes/web/demo.js
+          for script in contrib/vibes/web/*.js; do node --check "$script"; done
           python3 contrib/vibes/build_site.py --out /tmp/vibes-site
+          node --check /tmp/vibes-site/web/lessons.js
 
       - name: Browser workflows and accessibility
         run: |
@@ -87,40 +104,50 @@ jobs:
   node:
     name: Node builds and validates
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The rule this project is strict about: whatever an experiment did to
+      # somebody else's node, the default everyone installs stays stock Bitcoin
+      # Core. Compare with the recorded upstream base, not with two greps.
+      - name: A fresh install differs from Bitcoin Core in one file
+        run: |
+          set -e
+          BASE=$(sed -n 's/^commit=//p' contrib/vibes/UPSTREAM)
+          git fetch --depth 1 https://github.com/bitcoin/bitcoin.git "$BASE"
+          CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- src/)
+          echo "files under src/ that differ from Bitcoin Core $BASE:"
+          echo "$CHANGED"
+          test "$CHANGED" = "src/clientversion.cpp" \
+            || { echo "::error::src/ differs from the upstream base in more than src/clientversion.cpp. The shipped default must not fork."; exit 1; }
+          grep -q 'MAX_MONEY = 21000000 \* COIN' src/consensus/amount.h
+          grep -q 'nSubsidy = 50 \* COIN' src/validation.cpp
 
       - name: Dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config python3 ccache \
+            build-essential cmake ninja-build pkg-config python3 ccache bubblewrap \
             libboost-dev libsqlite3-dev libcapnp-dev capnproto
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
-      - name: Build
+      - name: Build the node and Bitcoin Core's unit tests
         run: |
           cmake -B build -G Ninja \
-            -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
+            -DBUILD_TESTS=ON -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build -j"$(nproc)"
+          cmake --build build -j"$(nproc)" --target bitcoind bitcoin-cli test_bitcoin
 
-      # The rule this project is strict about: whatever a decree did to somebody
-      # else's node, the default everyone installs stays stock Bitcoin Core.
-      - name: A fresh install still ships Core's consensus
-        run: |
-          set -e
-          grep -q 'MAX_MONEY = 21000000 \* COIN' src/consensus/amount.h \
-            || { echo "::error::MAX_MONEY is not 21,000,000 — the shipped default must not fork"; exit 1; }
-          grep -q 'nSubsidy = 50 \* COIN' src/validation.cpp \
-            || { echo "::error::block subsidy is not 50 BTC — the shipped default must not fork"; exit 1; }
-          echo "consensus defaults intact"
+      # The whole suite, not a selection: on unmodified source every test must
+      # pass, and these are the tests the console later runs on each proposal.
+      - name: Bitcoin Core's unit tests pass on the shipped source
+        run: ./build/bin/test_bitcoin --log_level=error
 
       - name: Node starts, validates and answers
         run: |
@@ -141,7 +168,54 @@ jobs:
           test "$SUB" = "5000000000" || { echo "::error::subsidy is $SUB, expected 5000000000 (50 BTC)"; exit 1; }
           ./build/bin/bitcoin-cli -datadir="$DD" -chain=regtest stop
 
-      - name: Real console acceptance and transaction scenarios
+      # Hosted Ubuntu images restrict unprivileged user namespaces, which
+      # bubblewrap needs. Lifting that here lets the Linux sandbox path be
+      # exercised for real; if it still cannot start, the tests below run
+      # unconfined and this step says which happened.
+      - name: Which sandbox does this runner offer?
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "contrib/vibes")
+          from vibeslib.sandbox import Sandbox
+          box = Sandbox(".", ".vibes")
+          print("sandbox:", box.kind, box.reason)
+          PY
+
+      - name: Console against a real node (two-node lab, activation, recovery)
         env:
           VIBES_QA_BIN: ${{ github.workspace }}/build/bin
         run: python3 -m unittest discover -s contrib/vibes/tests -v
+
+      # The product's central claim, checked end to end: change one rule, and
+      # an unmodified node disagrees in the predicted direction.
+      - name: Ready-made experiments give their documented outcomes
+        run: |
+          set -e
+          mkdir -p /tmp/stock && cp build/bin/bitcoind /tmp/stock/
+          lab() {
+            work=$(mktemp -d)
+            python3 -I contrib/vibes/lab_runner.py --scene "$1" --reference /tmp/stock \
+              --candidate "$2" --workdir "$work" --ports 18501,18502,18503,18504 $3 > /tmp/lab.out
+            python3 -c "import json; r=[json.loads(l) for l in open('/tmp/lab.out')][-1]; print(r['result']['$4'] if r['t']=='result' else 'ERROR: '+r['detail'])"
+          }
+          expect() {
+            echo "$1: expected '$2', observed '$3'"
+            case "$3" in "$2"*) ;; *) cat /tmp/lab.out; echo "::error::$1 gave '$3', expected '$2'"; exit 1 ;; esac
+          }
+          check() {
+            patch=$1; want=$2
+            git apply "contrib/vibes/experiments/$patch.diff"
+            cmake --build build -j"$(nproc)" --target bitcoind
+            git checkout -- src/
+            mkdir -p "/tmp/$patch" && cp build/bin/bitcoind "/tmp/$patch/"
+            expect "$patch" "$want" "$(lab compare "/tmp/$patch" "" verdict)"
+          }
+          check double-reward loosened
+          check halve-reward tightened
+          check faster-halving tightened
+          # The scenes that put a changed node beside the unmodified one.
+          expect "rule-breaking miner" "Thirty blocks of mining power, refused" "$(lab miners /tmp/double-reward "" headline)"
+          expect "30% of mining power" "With 30% of mining power, the stricter nodes were left" "$(lab power /tmp/halve-reward "--share 30" headline)"
+          expect "70% of mining power" "With 70% of mining power, the stricter rule became" "$(lab power /tmp/halve-reward "--share 70" headline)"

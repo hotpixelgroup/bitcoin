@@ -1,13 +1,17 @@
-# Publish prebuilt nodes so a first run does not mean a first build.
+# Publish a release: prebuilt nodes, the Mac app, and the installer for exactly
+# this version.
 #
-# Compiling is unavoidable for *vibing* — rewriting the node needs a compiler —
-# but it is not needed to *run*. These artifacts let the installer bring a node
-# up in seconds and defer the compile until the operator's first decree, when
-# the wait finally means something.
+# Compiling is unavoidable for changing the node, but it is not needed to run
+# it. These artifacts let the installer bring a node up quickly and defer the
+# compile until the operator's first experiment.
 #
 # Every artifact records the commit it was built from. The installer refuses a
 # binary that does not match its source, because a node built from other code is
 # not the node the operator is about to start editing.
+#
+# Nothing is published unless every platform builds and passes its tests: the
+# builds upload their files as workflow artifacts, and a single final job
+# publishes them together. A release is either complete or absent.
 name: Release
 
 on:
@@ -16,19 +20,25 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach binaries to"
+        description: "Existing tag to build and publish"
         required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 180
+    env:
+      # Secrets cannot be read in a step's `if`, so their presence is noted here.
+      HAVE_SIGNING_CERT: ${{ secrets.VIBES_CODESIGN_P12_BASE64 != '' }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: macos-15
@@ -41,7 +51,9 @@ jobs:
             label: Linux (ARM64)
             slug: linux-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
 
       # The default Xcode is too old — AppleClang 15 lacks CTAD for aggregates,
       # which src/util/overloaded.h requires. Homebrew's LLVM is new enough but
@@ -65,7 +77,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config \
+            build-essential cmake ninja-build pkg-config python3 \
             libboost-dev libsqlite3-dev libcapnp-dev capnproto
 
       - name: Build
@@ -74,8 +86,17 @@ jobs:
           # 276MB of DWARF straight into the ELF (macOS hid the problem by
           # keeping debug info in a separate .dSYM).
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
-          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+            -DBUILD_TESTS=ON -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)" --target bitcoind bitcoin-cli test_bitcoin
+
+      # Ship nothing that has not passed the tests the product itself relies on.
+      - name: Bitcoin Core's unit tests
+        run: ./build/bin/test_bitcoin --log_level=error
+
+      - name: Console tests, against the node just built
+        env:
+          VIBES_QA_BIN: ${{ github.workspace }}/build/bin
+        run: python3 -m unittest discover -s contrib/vibes/tests -v
 
       # Ship nothing that cannot prove it is a node.
       - name: Prove it validates
@@ -122,32 +143,217 @@ jobs:
             exit 1
           fi
 
+      # The app fetches the source of its own release, so the release tag is
+      # stamped into its launcher before it is built.
+      - name: Stamp the launcher with this release
+        if: runner.os == 'macOS'
+        run: |
+          set -e
+          test "$(grep -c '^PINNED_REF=""$' contrib/vibes/macos/launcher.sh)" = "1"
+          sed -i '' "s/^PINNED_REF=\"\"\$/PINNED_REF=\"$TAG\"/" contrib/vibes/macos/launcher.sh
+          grep -n '^PINNED_REF=' contrib/vibes/macos/launcher.sh
+
+      # Signing is optional. With no secrets the app is ad-hoc signed and not
+      # notarised, and the release notes say so. The secrets do not exist yet,
+      # so the signed path below has never run.
+      - name: Import the signing certificate, if one is configured
+        if: runner.os == 'macOS' && env.HAVE_SIGNING_CERT == 'true'
+        env:
+          P12: ${{ secrets.VIBES_CODESIGN_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.VIBES_CODESIGN_P12_PASSWORD }}
+        run: |
+          set -e
+          KEYCHAIN="$RUNNER_TEMP/vibes-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
       # The README offers "download the app" from /releases/latest, so every
       # release has to carry it — otherwise that link 404s the moment a
       # node-only release becomes the latest one.
       - name: Build the Mac app
         if: runner.os == 'macOS'
+        env:
+          VIBES_CODESIGN_IDENTITY: ${{ secrets.VIBES_CODESIGN_IDENTITY }}
+          VIBES_NOTARY_APPLE_ID: ${{ secrets.VIBES_NOTARY_APPLE_ID }}
+          VIBES_NOTARY_TEAM_ID: ${{ secrets.VIBES_NOTARY_TEAM_ID }}
+          VIBES_NOTARY_PASSWORD: ${{ secrets.VIBES_NOTARY_PASSWORD }}
         run: |
-          sh contrib/vibes/macos/build-app.sh --dmg
+          sh contrib/vibes/macos/build-app.sh --dmg | tee "$RUNNER_TEMP/app-build.log"
           ls -lh dist/BitcoinVibes.dmg
+          grep 'signing:' "$RUNNER_TEMP/app-build.log" | sed 's/^ *signing: //' > mac-signing.txt
 
       - name: Package
         run: |
+          set -e
           SHA=$(git rev-parse HEAD)
           DIR="vibes-node-${{ matrix.slug }}"
-          mkdir -p "$DIR"
+          mkdir -p out "$DIR"
           cp build/bin/bitcoind build/bin/bitcoin-cli "$DIR"/
           # The installer reads this to decide whether the binary matches its source.
           printf '%s\n' "$SHA" > "$DIR/COMMIT"
-          tar -czf "$DIR.tar.gz" "$DIR"
-          shasum -a 256 "$DIR.tar.gz" > "$DIR.tar.gz.sha256"
-          ls -lh "$DIR.tar.gz"
+          tar -czf "out/$DIR.tar.gz" "$DIR"
+          (cd out && shasum -a 256 "$DIR.tar.gz" > "$DIR.tar.gz.sha256")
+          if [ -f dist/BitcoinVibes.dmg ]; then cp dist/BitcoinVibes.dmg mac-signing.txt out/; fi
+          ls -lh out
 
-      - uses: softprops/action-gh-release@v2
+      # The three ready-made experiments that change source each need a node
+      # built with that change. Building them here means a newcomer watches a
+      # real node refuse a real block without owning a compiler. Each is built
+      # from exactly one bundled patch on top of the release commit, checked to
+      # disagree with the unmodified node in the documented direction, and
+      # shipped beside the SHA-256 of the patch it was built from. These nodes
+      # do NOT follow Bitcoin's rules and the lab runs them only on a throwaway
+      # private chain, inside its sandbox.
+      - name: Build the changed nodes for the ready-made experiments
+        run: |
+          set -e
+          SHA=$(git rev-parse HEAD)
+          DIR="vibes-variants-${{ matrix.slug }}"
+          mkdir -p "$DIR" stock
+          cp build/bin/bitcoind stock/
+          printf '%s\n' "$SHA" > "$DIR/COMMIT"
+          : > "$DIR/PATCHES"
+          build_variant() {
+            name=$1; want=$2
+            git apply "contrib/vibes/experiments/$name.diff"
+            cmake --build build -j"$(getconf _NPROCESSORS_ONLN)" --target bitcoind
+            git checkout -- src/
+            mkdir -p "$DIR/$name" "candidate-$name" "lab-$name"
+            cp build/bin/bitcoind "candidate-$name/"
+            python3 -I contrib/vibes/lab_runner.py --scene compare --reference stock \
+              --candidate "candidate-$name" --workdir "lab-$name" --ports 18511,18512,18513,18514 > lab.out
+            got=$(python3 -c "import json; print([json.loads(l)['result']['verdict'] for l in open('lab.out') if '\"result\"' in l][0])")
+            echo "$name: expected $want, observed $got"
+            test "$got" = "$want"
+            strip -S "candidate-$name/bitcoind" || strip "candidate-$name/bitcoind"
+            cp "candidate-$name/bitcoind" "$DIR/$name/bitcoind"
+            printf '%s  %s\n' "$(shasum -a 256 "contrib/vibes/experiments/$name.diff" | cut -d' ' -f1)" "$name" >> "$DIR/PATCHES"
+          }
+          build_variant double-reward loosened
+          build_variant halve-reward tightened
+          build_variant faster-halving tightened
+          cat "$DIR/PATCHES"
+          tar -czf "out/$DIR.tar.gz" "$DIR"
+          (cd out && shasum -a 256 "$DIR.tar.gz" > "$DIR.tar.gz.sha256")
+          ls -lh out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: |
-            vibes-node-${{ matrix.slug }}.tar.gz
-            vibes-node-${{ matrix.slug }}.tar.gz.sha256
-            ${{ runner.os == 'macOS' && 'dist/BitcoinVibes.dmg' || '' }}
+          name: release-${{ matrix.slug }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # create the release
+      id-token: write        # sign the build provenance attestation
+      attestations: write    # store it
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+
+      # The installer published with a release installs that release. The tag
+      # is stamped in here; the line it replaces is empty in the repository.
+      - name: Stamp the installer with this release
+        run: |
+          set -e
+          test "$(grep -c '^PINNED_REF=""$' contrib/vibes/install.sh)" = "1" \
+            || { echo "::error::install.sh must contain exactly one line PINNED_REF=\"\""; exit 1; }
+          sed "s/^PINNED_REF=\"\"\$/PINNED_REF=\"$TAG\"/" contrib/vibes/install.sh > assets/install.sh
+          grep -n '^PINNED_REF=' assets/install.sh
+          sh -n assets/install.sh
+
+      - name: Checksums for every asset
+        run: |
+          set -e
+          cd assets
+          mv mac-signing.txt ../mac-signing.txt 2>/dev/null || echo "not built" > ../mac-signing.txt
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS .
+          cat SHA256SUMS
+
+      # Says which workflow run, on which commit of this repository, produced
+      # each file. Anyone can check one with:
+      #   gh attestation verify FILE --repo hotpixelgroup/bitcoin
+      # It ties a file to this repository's automation. It is not a maintainer's
+      # signature, and it does not vouch for the source itself.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: assets/*
+
+      # Signing the tag needs the maintainer's own key, which automation does
+      # not hold. Report what was found; do not fail on it.
+      - name: Is the tag signed?
+        run: |
+          if git cat-file -t "refs/tags/$TAG" 2>/dev/null | grep -q '^tag$' \
+             && git cat-file tag "refs/tags/$TAG" | grep -q -e '-----BEGIN PGP SIGNATURE-----' -e '-----BEGIN SSH SIGNATURE-----'; then
+            echo "signed" > tag-signing.txt
+          else
+            echo "not signed" > tag-signing.txt
+          fi
+          echo "Tag $TAG is $(cat tag-signing.txt)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release notes
+        run: |
+          COMMIT=$(git rev-parse "$TAG^{commit}")
+          UPSTREAM=$(sed -n 's/^commit=//p' contrib/vibes/UPSTREAM)
+          cat > notes.md <<EOF
+          ## Install
+
+          \`\`\`bash
+          curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/download/$TAG/install.sh | sh
+          \`\`\`
+
+          This installer installs exactly this release. On a Mac you can instead download \`BitcoinVibes.dmg\`.
+
+          ## What is here
+
+          | File | What it is |
+          |---|---|
+          | \`install.sh\` | The installer, pinned to this release |
+          | \`vibes-node-*.tar.gz\` | Ready-made node programs with unmodified Bitcoin Core consensus rules, one per platform |
+          | \`vibes-variants-*.tar.gz\` | Three nodes with one deliberately changed rule each, for the ready-made experiments. They do not follow Bitcoin's rules; the lab runs them only on a private test chain, inside its sandbox |
+          | \`BitcoinVibes.dmg\` | The Mac launcher app |
+          | \`SHA256SUMS\` | SHA-256 of every file above |
+
+          Built from commit \`$COMMIT\`, on Bitcoin Core \`$UPSTREAM\` (a development snapshot, not a Bitcoin Core release). Every platform passed Bitcoin Core's unit tests and this project's own tests before anything was published.
+
+          ## Verifying a download
+
+          \`\`\`bash
+          sha256sum --check --ignore-missing SHA256SUMS
+          gh attestation verify install.sh --repo hotpixelgroup/bitcoin
+          \`\`\`
+
+          The checksum detects a corrupted or swapped download. The attestation shows a file was built by this repository's release workflow from the commit above. Neither is a maintainer's signature: this release tag is **$(cat tag-signing.txt)**, and the Mac app is **$(cat mac-signing.txt)**.
+
+          ## Changes
+          EOF
+          cat notes.md
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: assets/*
+          body_path: notes.md
+          generate_release_notes: true
           fail_on_unmatched_files: true
