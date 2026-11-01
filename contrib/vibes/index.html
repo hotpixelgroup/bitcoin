@@ -14,7 +14,7 @@
 <script defer src="web/app.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to experiment</a>
+<a class="skip" href="#curated">Skip to experiments</a>
 
 <header class="topbar">
   <a class="brand" href="https://hotpixelgroup.github.io/bitcoin/"><span aria-hidden="true">✦</span> BITCOIN VIBES</a>
@@ -39,9 +39,10 @@
     <a href="#beliefs">✓ Check your thinking</a>
     <a href="#composer">✦ Your own experiment</a>
     <a href="#current">↳ Current experiment</a>
-    <a href="#playground">⛏ Private chain</a>
+    <a href="#node-controls" data-local-only>⚙ Your node</a>
+    <a href="#playground" data-local-only>⛏ Private chain</a>
     <a href="#history-section">⎌ Experiment history</a>
-    <a href="#settings-section">⚙ Node settings</a>
+    <a href="#settings-section" data-local-only>⚙ Node settings</a>
     <a href="#setup">? Setup &amp; help</a>
   </nav>
   <div class="sidebar-foot">Change one node.<br><span>Then ask a second one.</span></div>
@@ -49,120 +50,46 @@
 
 <main id="main">
 
-<section class="node-card" aria-labelledby="node-heading">
-  <div class="section-line">
-    <h2 id="node-heading">Your node</h2>
-    <span class="pill" id="node-health">Unknown</span>
-  </div>
-  <div id="node-alerts" role="alert" aria-live="assertive"></div>
-  <div class="node-grid">
-    <div><span class="metric-label">SOURCE REVISION</span><strong id="source">Unknown</strong><small id="source-note">Checking working tree</small></div>
-    <div><span class="metric-label">CHECKED BUILD</span><strong id="built">None yet</strong><small id="build-note">Build and check first</small></div>
-    <div><span class="metric-label">RUNNING REVISION</span><strong id="running">Unknown</strong><small id="node-summary">Waiting for node status</small></div>
-  </div>
-  <p id="chain-note" class="subtle"></p>
-  <div class="facts">
-    <div><span class="metric-label">CONFINEMENT</span><span id="sandbox-label">Checking…</span><small id="sandbox-detail"></small></div>
-    <div><span class="metric-label">UNMODIFIED REFERENCE NODE</span><span id="reference-label">Checking…</span><small id="reference-detail"></small></div>
-  </div>
-  <div class="toolbar">
-    <button id="node-start">Start node</button>
-    <button id="build">Build &amp; check</button>
-    <button id="activate">Start checked build</button>
-    <button id="restart">Restart node</button>
-    <button id="reference" hidden>Prepare reference node</button>
-    <button id="node-log" class="text-button">Node logs</button>
-  </div>
-  <p id="activation-block" class="notice danger" hidden></p>
-  <details id="node-log-detail" hidden>
-    <summary>Recent node logs</summary>
-    <pre id="node-log-content" tabindex="0"></pre>
-  </details>
-</section>
+<nav class="mobile-nav" aria-label="Lab sections on small screens">
+  <a href="#curated">Experiments</a>
+  <a href="#current">Results</a>
+  <a href="#beliefs">Your thinking</a>
+  <a href="#history-section">History</a>
+  <a href="#setup">Help</a>
+</nav>
+
+
 
 <div class="intro">
   <div class="eyebrow">ONE NODE ALONE PROVES NOTHING</div>
-  <h1>What shall Bitcoin become?</h1>
-  <p>Describe a change. The lab builds it and runs it beside an unmodified node.<br>You see what each one does with the other's blocks.</p>
+  <h1>Learn Bitcoin by changing one node.</h1>
+  <p id="intro-copy">Explore coins, fees, mining and the rules that nodes check. Start with a ready-made experiment; no AI account is needed.</p>
+  <ol class="learning-steps" aria-label="How the lab works">
+    <li><span aria-hidden="true">1</span><div><b>Make a prediction</b><small>Choose an experiment and say what you expect.</small></div></li>
+    <li><span aria-hidden="true">2</span><div><b>Inspect the evidence</b><small>Compare what the two nodes accepted or refused.</small></div></li>
+    <li><span aria-hidden="true">3</span><div><b>Test your understanding</b><small>Read the explanation, then try the follow-up.</small></div></li>
+  </ol>
 </div>
 
 <div id="blocker" class="notice" role="status" hidden></div>
 
-<section id="curated" class="panel" aria-labelledby="curated-heading">
+<section id="curated" class="panel" tabindex="-1" aria-labelledby="curated-heading">
   <div class="section-line">
     <h2 id="curated-heading">Start with a ready-made experiment</h2>
     <span class="subtle">No AI needed</span>
   </div>
-  <p class="subtle">Each one has a known outcome. You make a prediction first, then watch two real nodes on a private chain, then read why it went the way it did.</p>
+  <p id="curated-intro" class="subtle">These controlled experiments use two nodes on a throwaway private chain. New here? Start with coins and keys, then work through the groups in order.</p>
+  <div class="journey-line"><button id="start-learning" class="primary">Start with coins and keys</button><span id="journey-progress" class="subtle" role="status">Ten experiments to explore</span></div>
   <div id="curated-grid"></div>
   <p id="learning-summary" class="subtle"></p>
 </section>
 
-<section id="beliefs" class="panel" aria-labelledby="beliefs-heading">
-  <div class="section-line">
-    <h2 id="beliefs-heading">Check your thinking</h2>
-    <span id="beliefs-stage" class="subtle"></span>
-  </div>
-  <p id="beliefs-intro" class="subtle"></p>
-  <details id="beliefs-details">
-    <summary id="beliefs-summary">Ten statements: true or false?</summary>
-    <div id="beliefs-list"></div>
-    <div class="toolbar">
-      <button id="beliefs-save">Save my answers</button>
-      <button id="learning-export" class="text-button">Download my record</button>
-    </div>
-    <p id="beliefs-status" class="subtle" role="status"></p>
-  </details>
-</section>
-
-<section id="composer" class="composer panel" aria-labelledby="composer-heading">
-  <div class="section-line">
-    <h2 id="composer-heading">Your own experiment</h2>
-    <span class="subtle" id="engine-label">AI engine</span>
-  </div>
-  <div id="imported-note" class="notice" hidden></div>
-  <label class="wish-label" for="wish">What would you like to change?</label>
-  <textarea id="wish" maxlength="20000" rows="4" placeholder="e.g. Log a short haiku whenever a new block is accepted." aria-describedby="wish-help"></textarea>
-  <div class="section-line">
-    <small id="wish-help">Say what the node should do differently. An AI agent writes the change; it can edit files and nothing else.</small>
-    <small id="draft-status" role="status"></small>
-  </div>
-  <details class="examples">
-    <summary>Example requests</summary>
-    <div class="tabs" role="group" aria-label="Example category">
-      <button class="selected" data-category="Customize" aria-pressed="true">Customize</button>
-      <button data-category="Policy" aria-pressed="false">Policy</button>
-      <button data-category="Consensus" aria-pressed="false">Consensus</button>
-    </div>
-    <div id="examples" class="example-grid"></div>
-  </details>
-  <div class="composer-bottom">
-    <div>
-      <label for="mode" class="small-label">AFTER THE PROPOSAL IS BUILT AND COMPARED</label>
-      <select id="mode">
-        <option value="review">Wait for my review</option>
-        <option value="auto">Apply it if nothing is flagged</option>
-      </select>
-      <small id="mode-help"></small>
-    </div>
-    <button id="manifest" class="primary">Manifest ✦</button>
-  </div>
-  <details class="advanced">
-    <summary>Build preferences and agent limits</summary>
-    <div class="checks">
-      <label><input id="autobuild" type="checkbox" checked> Build and compare the proposal before I review it</label>
-      <label><input id="autorestart" type="checkbox"> Start the new build once it is applied</label>
-    </div>
-    <p class="subtle" id="agent-note"></p>
-  </details>
-</section>
-
-<section id="current" class="panel" aria-labelledby="current-heading">
+<section id="current" class="panel" tabindex="-1" aria-labelledby="current-heading">
   <div class="section-line">
     <h2 id="current-heading">Current experiment</h2>
     <span id="job-state" class="pill">No experiment yet</span>
   </div>
-  <ol class="pipeline" aria-label="Experiment progress">
+  <ol class="pipeline" aria-label="Experiment progress" hidden>
     <li data-step="agent">Propose</li>
     <li data-step="build">Build</li>
     <li data-step="test">Test</li>
@@ -172,8 +99,8 @@
   </ol>
   <div id="empty-current" class="empty">
     <span aria-hidden="true">✦</span>
-    <h3>A little less prophecy. A little more proof.</h3>
-    <p>Your request, the proposed change and what two nodes made of it will appear here.</p>
+    <h3>Choose an experiment to begin.</h3>
+    <p>Your prediction, the observations and an explanation will appear here.</p>
   </div>
   <div id="job-content" hidden>
     <div class="request">
@@ -212,7 +139,7 @@
           <p id="followup-result" role="status"></p>
         </fieldset>
         <div id="lesson-sources" class="subtle"></div>
-        <button id="try-again" hidden>Try a different share</button>
+        <div class="toolbar lesson-next"><button id="try-again" hidden>Try a different share</button><button id="next-experiment" class="primary" hidden>Next experiment →</button><a href="#curated">Choose another experiment</a></div>
       </div>
     </div>
 
@@ -251,12 +178,105 @@
   <p id="progress-message" class="subtle" role="status" aria-live="polite"></p>
 </section>
 
-<section id="playground" class="panel" aria-labelledby="playground-heading">
+<section id="beliefs" class="panel" aria-labelledby="beliefs-heading">
+  <div class="section-line">
+    <h2 id="beliefs-heading">Check your thinking</h2>
+    <span id="beliefs-stage" class="subtle"></span>
+  </div>
+  <p id="beliefs-intro" class="subtle"></p>
+  <p id="earlier-demo-note" class="subtle" hidden>The lessons have been updated, so this version starts a new demo record. Your earlier data is still available: <button id="earlier-demo-export" class="text-button">Download earlier demo record</button></p>
+  <details id="beliefs-details">
+    <summary id="beliefs-summary">Ten statements: true or false?</summary>
+    <div id="beliefs-list"></div>
+    <div class="toolbar">
+      <button id="beliefs-save">Save my answers</button>
+      <button id="learning-export" class="text-button">Download my record</button>
+    </div>
+    <p id="beliefs-status" class="subtle" role="status"></p>
+  </details>
+</section>
+
+<section id="composer" class="composer panel" aria-labelledby="composer-heading">
+  <div class="section-line">
+    <h2 id="composer-heading">Your own experiment</h2>
+    <span class="subtle" id="engine-label">AI engine</span>
+  </div>
+  <p id="demo-custom-note" class="notice" hidden>Custom requests need the installed lab and Claude Code. You can read or import a request here, then <a href="./#install">install the lab to run it</a>.</p>
+  <div id="imported-note" class="notice" hidden></div>
+  <label class="wish-label" for="wish">What would you like to change?</label>
+  <textarea id="wish" maxlength="20000" rows="4" placeholder="e.g. Log a short haiku whenever a new block is accepted." aria-describedby="wish-help"></textarea>
+  <div class="section-line">
+    <small id="wish-help">Say what the node should do differently. An AI agent writes the change; it can edit files and nothing else.</small>
+    <small id="draft-status" role="status"></small>
+  </div>
+  <p id="composer-status" class="subtle" role="status" hidden></p>
+  <details class="examples">
+    <summary>Example requests</summary>
+    <div class="tabs" role="group" aria-label="Example category">
+      <button class="selected" data-category="Customize" aria-pressed="true">Customize</button>
+      <button data-category="Policy" aria-pressed="false">Policy</button>
+      <button data-category="Consensus" aria-pressed="false">Consensus</button>
+    </div>
+    <div id="examples" class="example-grid"></div>
+  </details>
+  <div class="composer-bottom">
+    <div>
+      <label for="mode" class="small-label">AFTER THE PROPOSAL IS BUILT AND COMPARED</label>
+      <select id="mode">
+        <option value="review">Wait for my review</option>
+        <option value="auto">Apply it if nothing is flagged</option>
+      </select>
+      <small id="mode-help"></small>
+    </div>
+    <button id="manifest" class="primary">Propose a change</button>
+  </div>
+  <details class="advanced">
+    <summary>Build preferences and agent limits</summary>
+    <div class="checks">
+      <label><input id="autobuild" type="checkbox" checked> Build and compare the proposal before I review it</label>
+      <label><input id="autorestart" type="checkbox"> Start the new build once it is applied</label>
+    </div>
+    <p class="subtle" id="agent-note"></p>
+  </details>
+</section>
+
+<section id="node-controls" class="node-card" data-local-only aria-labelledby="node-heading">
+  <div class="section-line">
+    <h2 id="node-heading">Your node</h2>
+    <span class="pill" id="node-health">Unknown</span>
+  </div>
+  <div id="node-alerts" role="alert" aria-live="assertive"></div>
+  <div class="node-grid">
+    <div><span class="metric-label">SOURCE REVISION</span><strong id="source">Unknown</strong><small id="source-note">Checking working tree</small></div>
+    <div><span class="metric-label">CHECKED BUILD</span><strong id="built">None yet</strong><small id="build-note">Build and check first</small></div>
+    <div><span class="metric-label">RUNNING REVISION</span><strong id="running">Unknown</strong><small id="node-summary">Waiting for node status</small></div>
+  </div>
+  <p id="chain-note" class="subtle"></p>
+  <div class="facts">
+    <div><span class="metric-label">CONFINEMENT</span><span id="sandbox-label">Checking…</span><small id="sandbox-detail"></small></div>
+    <div><span class="metric-label">UNMODIFIED REFERENCE NODE</span><span id="reference-label">Checking…</span><small id="reference-detail"></small></div>
+  </div>
+  <div class="toolbar">
+    <button id="node-start">Start node</button>
+    <button id="build">Build &amp; check</button>
+    <button id="activate">Start checked build</button>
+    <button id="restart">Restart node</button>
+    <button id="reference" hidden>Prepare reference node</button>
+    <button id="node-log" class="text-button">Node logs</button>
+  </div>
+  <p id="activation-block" class="notice danger" hidden></p>
+  <details id="node-log-detail" hidden>
+    <summary>Recent node logs</summary>
+    <pre id="node-log-content" tabindex="0"></pre>
+  </details>
+</section>
+
+<section data-local-only id="playground" class="panel" aria-labelledby="playground-heading">
   <div class="section-line">
     <h2 id="playground-heading">Your private chain</h2>
     <span class="pill">REGTEST ONLY</span>
   </div>
-  <p>Produce blocks on demand on your own node's private chain. Producing a block here takes no real work, which is why its coins are worth nothing.</p>
+  <p>Produce blocks on demand on your own node's private chain. The deliberately easy proof of work makes this fast; these test coins are separate from Bitcoin and are not real funds.</p>
   <div class="toolbar">
     <label for="blocks">Blocks</label>
     <input id="blocks" type="number" min="1" max="150" value="1">
@@ -277,7 +297,7 @@
   <div id="history" class="history"></div>
 </section>
 
-<section id="settings-section" class="panel" aria-labelledby="settings-heading">
+<section data-local-only id="settings-section" class="panel" aria-labelledby="settings-heading">
   <div class="section-line">
     <h2 id="settings-heading">Node settings</h2>
     <button id="load-settings">Load settings</button>
@@ -293,6 +313,7 @@
 <section id="setup" class="panel help" aria-labelledby="setup-heading">
   <h2 id="setup-heading">Setup &amp; help</h2>
 
+  <div data-local-only>
   <h3>Undo and reset</h3>
   <div class="toolbar">
     <button id="restore">Restore the baseline source</button>
@@ -309,7 +330,7 @@
     <button id="check-upstream">How far behind Bitcoin Core is this?</button>
     <span id="upstream-status" class="subtle"></span>
   </div>
-  <p class="subtle">Like Bitcoin Core, this lab never updates by itself. Both buttons contact GitHub; nothing else does.</p>
+  <p class="subtle">The lab updates only when you ask. These controls contact GitHub; downloading ready-made nodes and making AI requests can also use the network.</p>
 
   <details>
     <summary>Compare with another node program</summary>
@@ -318,6 +339,7 @@
     <input id="external-path" type="text" placeholder="/Users/you/bitcoin-knots/bin/bitcoind">
     <button id="external-run">Compare</button>
   </details>
+  </div>
   <details>
     <summary>Import or share a request</summary>
     <p>A shared request is the sender's words, never their code. Words are still instructions to an AI agent, so an imported request is treated as untrusted: it is shown to you first, it always stops for your review, it is never applied or started automatically, and the agent that reads it can edit files and nothing else.</p>
@@ -333,7 +355,7 @@
   <details>
     <summary>Consensus rules, policy, and the two kinds of fork</summary>
     <p><b>Consensus rules</b> decide whether a block is valid at all. Every node checks them for itself, and a block that breaks them is refused however much mining power produced it. <b>Policy</b> is a node's local choice about which unconfirmed transactions to keep and pass on; it never applies to transactions already in a block.</p>
-    <p>Change a consensus rule and one of two things happens. <b>Tighten</b> it, and your node refuses blocks everyone else accepts: it stops following the network at the first such block. That shape of change is called a soft fork, and others follow it only if most mining power enforces it. <b>Loosen</b> it, and nothing visible happens until a block uses the looser rule, which every unmodified node then refuses. That shape is called a hard fork.</p>
+    <p><b>Tightening</b> the valid set is a soft fork: upgraded nodes reject some blocks that old nodes allow. Old nodes can follow a compatible chain without enforcing the new checks. <b>Loosening</b> the rules allows blocks that unchanged nodes reject and can cause a hard fork. Neither label predicts whether miners will produce a conflicting block, which chain people will use, or whether a split will persist. A change can also alter compatibility in both directions.</p>
   </details>
   <details>
     <summary>Which network am I on?</summary>
@@ -358,11 +380,11 @@
   </details>
 </section>
 
-<footer>Built by Harry Beckwith &amp; Jones Beckwith · <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>Built on Bitcoin Core. Nothing made here is offered to Bitcoin Core: every change stays on your machine.</footer>
+<footer>Built by Harry Beckwith &amp; Jones Beckwith · <a href="https://hotpixelgroup.com">Hot Pixel Group</a><br>Built on Bitcoin Core. Nothing made here is offered to Bitcoin Core: experiments run locally.</footer>
 </main>
 </div>
 
-<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+<dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-copy">
   <h2 id="confirm-title">Confirm action</h2>
   <p id="confirm-copy"></p>
   <form method="dialog" class="toolbar">
@@ -371,7 +393,7 @@
   </form>
 </dialog>
 
-<dialog id="predict-dialog" aria-labelledby="predict-title">
+<dialog id="predict-dialog" aria-labelledby="predict-title" aria-describedby="predict-summary">
   <h2 id="predict-title">Make a prediction first</h2>
   <p id="predict-summary" class="subtle"></p>
   <form method="dialog">
@@ -385,7 +407,7 @@
       <div id="predict-options"></div>
     </fieldset>
     <label id="predict-compile-row" class="choice" hidden><input id="predict-compile" type="checkbox"> <span id="predict-compile-text"></span></label>
-    <p class="subtle">People who commit to a prediction before watching learn more from what they see. Your answers stay on this machine.</p>
+    <p class="subtle">Choose a prediction to test your understanding, or run without answering. Your answers stay on this machine.</p>
     <div class="toolbar">
       <button value="cancel">Cancel</button>
       <button value="confirm" class="primary" id="predict-run">Run the experiment</button>

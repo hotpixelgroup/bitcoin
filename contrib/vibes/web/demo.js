@@ -1,79 +1,97 @@
 'use strict';
-// Browser demo. No AI, no node and no network requests.
-//
-// The ready-made experiments replay results that were recorded from real runs
-// of the lab (see demo-data.js). Nothing here pretends to write code: a typed
-// request is refused with an explanation, because inventing a plausible result
-// for it would teach the wrong thing.
+// A local replay of recorded node observations. No node, AI or API requests.
 (() => {
-const key = 'vibes-browser-demo-v3';
-const base = 'b17c01a0000000000000000000000000000000000000';
-const lessons = window.VibesLessons || {curated: []};
+const key = 'vibes-browser-demo-v4';
+const lessons = window.VibesLessons || {curated: [], beliefs: []};
 const recorded = window.VibesDemoData || {};
-
-const initial = () => ({experiments: [], records: {}, job: null, learning: []});
-let data;
-try {
-  data = JSON.parse(localStorage.getItem(key) || 'null');
-} catch {
-  data = null;
-}
-if (!data?.records) data = initial();
-
 const clone = value => JSON.parse(JSON.stringify(value));
+const initial = () => ({experiments: [], records: {}, job: null, learning: []});
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
+function validRecord(record) {
+  if (!isObject(record) || !isObject(record.summary) || !Array.isArray(record.events)) return false;
+  const job = record.summary;
+  if (typeof job.id !== 'string' || typeof job.prompt !== 'string' || !Number.isFinite(job.time) || job.state !== 'done') return false;
+  if (!isObject(job.compare) || typeof job.compare.verdict !== 'string' || typeof job.compare.headline !== 'string' || !Array.isArray(job.compare.rows)) return false;
+  if (!job.compare.rows.every(row => isObject(row) && ['title', 'plain', 'status'].every(field => typeof row[field] === 'string'))) return false;
+  const picture = job.compare.picture;
+  if (picture && (!isObject(picture) || !Array.isArray(picture.lanes) || !picture.lanes.every(lane =>
+    isObject(lane) && Array.isArray(lane.blocks) && lane.blocks.every(block =>
+      isObject(block) && typeof block.kind === 'string' && typeof block.state === 'string')))) return false;
+  return Array.isArray(job.files) && job.files.every(file => isObject(file) && typeof file.path === 'string') &&
+    strings(job.risk) && strings(job.sensitive) && strings(job.unit_failures) && Array.isArray(job.evidence) && job.evidence.every(isObject) && record.events.every(isObject);
+}
+let data;
+let earlierRecord = null;
+try {
+  const previous = JSON.parse(localStorage.getItem('vibes-browser-demo-v3') || 'null');
+  if (isObject(previous)) earlierRecord = previous;
+} catch { /* An unreadable earlier version does not affect the current visit. */ }
+try {
+  const saved = JSON.parse(localStorage.getItem(key) || 'null');
+  if (isObject(saved) && isObject(saved.records) && Array.isArray(saved.experiments) && Array.isArray(saved.learning) &&
+      Object.values(saved.records).every(validRecord) && saved.experiments.every(job => isObject(job) && typeof job.id === 'string' && Object.hasOwn(saved.records, job.id)) &&
+      saved.learning.every(entry => isObject(entry) && typeof entry.experiment === 'string' && typeof entry.choice === 'string' && typeof entry.correct === 'boolean' && ['prediction', 'followup', 'before', 'after'].includes(entry.stage))) data = saved;
+} catch { /* Damaged or inaccessible storage starts a usable, empty visit. */ }
+if (!data) data = initial();
+if (!data.job || !Object.hasOwn(data.records, data.job.id)) data.job = data.experiments[0] || null;
+let storageAvailable = true;
 function persist() {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-  } catch { /* storage unavailable: the demo still works for this visit */ }
+    storageAvailable = true;
+  } catch { storageAvailable = false; }
 }
 
 function status() {
   return {
-    chain: 'regtest', branch: 'demo', source: base, dirty: false, engine: 'demo',
-    chain_note: lessons.networks?.regtest || '',
-    engine_ready: {ok: true}, binary: true,
+    chain: 'regtest', branch: 'recorded demo', source: null, dirty: false, engine: 'demo',
+    chain_note: lessons.networks?.regtest || '', engine_ready: {ok: true}, binary: false,
     agent: {model: 'none', turns: 0, minutes: 0},
-    node: {running: true, health: 'healthy', blocks: 0, peers: 0, revision: base, wallet: false, listening: false, alerts: []},
-    build: {sha: base, verified: true, unit_failures: [], compare: {verdict: 'identical', headline: 'Same rules as the unmodified node'}},
-    baseline: {sha: base},
-    sandbox: {kind: 'demo', contained: true, label: 'Not applicable in the demo', detail: 'The real lab compiles and runs every proposal inside an operating-system sandbox.'},
-    reference: {ready: true, sha: base},
-    variants: {'double-reward': true, 'halve-reward': true, 'faster-halving': true},
-    activation_block: '', upstream: {}, update: {known: false},
+    node: {running: false, health: 'stopped', alerts: []}, build: {}, baseline: {},
+    sandbox: {kind: 'demo', contained: false, label: 'No code runs in the demo', detail: ''},
+    reference: {ready: false}, variants: {}, activation_block: '', upstream: {}, update: {known: false},
+    storage_available: storageAvailable,
     job: data.job, experiments: data.experiments, vibes: [],
   };
 }
 
-function runCurated(body) {
+function runCurated(body = {}) {
   const item = lessons.curated.find(entry => entry.id === body.id);
-  let result = recorded[body.id];
-  if (item?.slider) {
-    // Recorded at several shares; replay the nearest one to what was asked for.
-    const shares = Object.keys(recorded).filter(name => name.startsWith(body.id + '@')).map(name => Number(name.split('@')[1]));
-    const nearest = shares.sort((a, b) => Math.abs(a - body.share) - Math.abs(b - body.share))[0];
-    result = recorded[`${body.id}@${nearest}`];
+  if (!item) throw new Error('Unknown experiment.');
+  let result = recorded[item.id];
+  if (item.slider) {
+    const share = Number(body.share ?? item.slider.value);
+    if (!Number.isInteger(share) || share < item.slider.min || share > item.slider.max || (share - item.slider.min) % item.slider.step) throw new Error('Choose a share on the slider.');
+    result = recorded[`${item.id}@${share}`];
   }
-  if (!item || !result) throw new Error('This experiment has no recorded result in the demo.');
+  if (!result) throw new Error('There is no recording for this exact setting. Choose another share or install the lab to run it.');
+  const options = item.kind === 'scene' ? item.options : lessons.prediction.options;
+  if (body.prediction && body.prediction !== 'unsure' && !options.some(option => option.id === body.prediction)) throw new Error('Unknown prediction.');
   const id = Math.floor(Date.now() / 1000) + '-' + Array.from(crypto.getRandomValues(new Uint8Array(3)), n => n.toString(16).padStart(2, '0')).join('');
   const scene = item.kind === 'scene';
+  const tested = Array.isArray(result.unit_failures);
+  const ready = !!result.ready_made;
   const job = {
-    id, time: Date.now() / 1000, kind: scene ? 'scene' : 'vibe', prompt: item.title, state: 'done',
+    id, time: Date.now() / 1000, kind: scene ? 'scene' : 'ready', prompt: item.title, state: 'done',
     curated: item.id, prediction: body.prediction || null, origin: 'curated',
-    build_status: scene ? 'not run' : 'passed', test_status: scene ? 'passed' : result.unit_failures?.length ? 'findings' : 'passed',
+    build_status: result.build_status || (scene || ready ? 'not run' : 'passed'),
+    test_status: result.test_status || (scene || !tested ? 'not run' : result.unit_failures.length ? 'findings' : 'passed'),
+    ready_made: ready,
     unit_failures: result.unit_failures || [], activation: 'not activated',
-    compare: result.compare, compare_verdict: result.compare.headline,
+    compare: clone(result.compare), compare_verdict: result.compare.headline,
     explanation: item.summary, patch: result.patch || '', files: result.files || [],
     risk: result.risk || [], sensitive: result.sensitive || [],
     evidence: scene ? [] : [
-      {name: 'Compiled', status: 'passed', detail: 'Recorded from a real run.'},
-      {name: 'Bitcoin Core unit tests', status: result.unit_failures?.length ? 'failed' : 'passed',
-       detail: result.unit_failures?.length ? `${result.unit_failures.length} no longer pass: ${result.unit_failures.join(', ')}` : ''},
-      {name: 'Compared with an unmodified node', status: 'passed', detail: result.compare.headline},
+      {name: ready ? 'Ready-made node' : 'Compiled', status: 'passed', detail: ready ? 'The recorded run used a node built from the change shown below.' : 'Recorded from a real run; no build runs in your browser.'},
+      {name: 'Bitcoin Core unit tests', status: !tested ? 'skipped' : result.unit_failures.length ? 'failed' : 'passed',
+       detail: !tested ? 'Not recorded.' : result.unit_failures.length ? `${result.unit_failures.length} no longer pass: ${result.unit_failures.join(', ')}` : 'Recorded from a real run.'},
+      {name: 'Compared with an unmodified node', status: result.compare.verdict === 'inconclusive' ? 'skipped' : 'passed', detail: result.compare.headline},
     ],
   };
   const events = [
-    {t: 'phase', name: 'test', detail: 'Replaying a result recorded from a real run of the lab', seq: 1, ts: job.time},
-    {t: 'log', line: 'Recorded with two real nodes on a throwaway private chain. Block hashes in your own run will differ.', seq: 2, ts: job.time},
+    {t: 'phase', name: 'test', detail: 'Showing observations recorded from a real run of the lab', seq: 1, ts: job.time},
+    {t: 'log', line: 'Recorded with two real nodes on a throwaway private chain. No node runs in this browser.', seq: 2, ts: job.time},
     {t: 'phase', name: 'done', seq: 3, ts: job.time},
   ];
   data.records[id] = {summary: job, events};
@@ -82,6 +100,21 @@ function runCurated(body) {
   data.job = data.experiments[0];
   persist();
   return {job: clone(job)};
+}
+
+function recordAnswer(entry) {
+  // A retry or another page render cannot turn one answer into several attempts.
+  const previous = data.learning.find(row => row.stage === entry.stage &&
+    (entry.job ? row.job === entry.job : row.experiment === entry.experiment));
+  if (previous) return previous;
+  data.learning.push(entry);
+  return entry;
+}
+
+function beliefAnswer(stage, experiment, choice) {
+  const belief = lessons.beliefs.find(entry => entry.id === experiment);
+  if (!belief || !['true', 'false', 'unsure'].includes(choice)) throw new Error('Unknown statement or answer.');
+  return {experiment, stage, choice, correct: choice === String(belief.truth)};
 }
 
 function learning(body) {
@@ -95,70 +128,55 @@ function learning(body) {
       if (!['before', 'after'].includes(entry.stage)) continue;
       beliefs[entry.experiment] = {...beliefs[entry.experiment], [entry.stage]: {choice: entry.choice, correct: entry.correct}};
     }
-    return {summary: {prediction: tally('prediction'), followup: tally('followup'), before: tally('before'), after: tally('after')},
-            beliefs, entries: clone(data.learning)};
+    return {summary: {prediction: tally('prediction'), followup: tally('followup'), before: tally('before'), after: tally('after')}, beliefs, entries: clone(data.learning)};
   }
-  let correct;
-  let name = body.experiment;
-  if (['before', 'after'].includes(body.stage)) {
-    const belief = (lessons.beliefs || []).find(entry => entry.id === body.experiment);
-    if (!belief) throw new Error('Unknown statement');
-    correct = body.choice === String(belief.truth);
-  } else {
-    const item = lessons.curated.find(entry => entry.id === body.experiment);
-    if (!item) throw new Error('Unknown experiment');
-    name = item.id;
-    if (body.stage === 'followup') {
-      correct = body.choice === item.followup.answer;
-    } else if (item.answer_by_share) {
-      const share = data.records[body.job]?.summary.compare?.share || 0;
-      correct = body.choice === (share > item.answer_by_share.line ? item.answer_by_share.above : item.answer_by_share.below);
-    } else {
-      correct = body.choice === item.answer;
+  const stage = body.stage;
+  if (['before', 'after'].includes(stage)) {
+    const beforeComplete = lessons.beliefs.every(belief => data.learning.some(entry => entry.experiment === belief.id && entry.stage === 'before'));
+    if (stage === 'after' && !beforeComplete) throw new Error('Save your first answers before your second answers.');
+    if (Array.isArray(body.answers)) {
+      if (body.answers.length !== lessons.beliefs.length || new Set(body.answers.map(answer => answer?.experiment)).size !== lessons.beliefs.length) throw new Error('Answer every statement once.');
+      const entries = body.answers.map(answer => beliefAnswer(stage, answer.experiment, answer.choice));
+      entries.forEach(recordAnswer);
+      persist();
+      return {ok: true};
     }
+    const saved = recordAnswer(beliefAnswer(stage, body.experiment, body.choice));
+    persist();
+    return {correct: saved.correct, choice: saved.choice};
   }
-  data.learning.push({experiment: name, stage: body.stage, choice: body.choice, correct});
+  if (!['prediction', 'followup'].includes(stage)) throw new Error('Unknown answer stage.');
+  const item = lessons.curated.find(entry => entry.id === body.experiment);
+  const job = Object.hasOwn(data.records, body.job || '') && data.records[body.job].summary;
+  if (!item || !job || job.state !== 'done' || job.curated !== item.id || job.compare?.verdict === 'inconclusive') throw new Error('Choose a completed, matching experiment.');
+  const options = stage === 'followup' ? item.followup.options : item.kind === 'scene' ? item.options : lessons.prediction.options;
+  if (!options.some(option => option.id === body.choice)) throw new Error('Unknown answer.');
+  const expected = stage === 'followup' ? item.followup.answer : item.kind === 'scene' ? job.compare.observed_answer : job.compare.verdict === 'identical' ? 'none' : job.compare.verdict;
+  if (!expected || (stage === 'prediction' && body.choice !== job.prediction)) throw new Error('That prediction cannot be scored.');
+  const saved = recordAnswer({experiment: item.id, job: job.id, stage, choice: body.choice, correct: body.choice === expected});
   persist();
-  return {correct};
+  return {correct: saved.correct, choice: saved.choice};
 }
 
-const REAL_ONLY = 'The browser demo has no AI and no node, so it cannot do this. Try a ready-made experiment, which replays a result recorded from a real run, or install the lab to run your own.';
-
+const REAL_ONLY = 'This needs the installed lab. The browser demo only replays the ready-made experiments.';
 async function api(path, body) {
   const url = new URL(path, 'https://demo.invalid');
   switch (url.pathname) {
-    case '/api/status':
-      return status();
+    case '/api/status': return status();
     case '/api/experiment': {
-      const record = data.records[url.searchParams.get('id')];
-      if (!record) throw new Error('Experiment not found');
-      return clone(record);
+      const id = url.searchParams.get('id');
+      if (!Object.hasOwn(data.records, id)) throw new Error('Experiment not found');
+      return clone(data.records[id]);
     }
-    case '/api/curated':
-      return runCurated(body);
-    case '/api/learning':
-      return learning(body);
-    case '/api/settings':
-      if (body) throw new Error(REAL_ONLY);
-      return {groups: [{id: 'relay', title: 'What your node relays', blurb: 'In the real lab this list is read from the node itself.'}],
-              schema: [{key: 'datacarriersize', group: 'relay', label: 'Largest data payload', type: 'int', min: 0, max: 1000000, unit: 'bytes', default: 100000,
-                        help: 'The number the 2025 relay dispute was about.',
-                        tip: 'Relay policy: it governs what crosses your node, and your node accepts the same blocks whatever you choose.'}],
-              values: {datacarriersize: 100000}};
-    case '/api/diff':
-      return {patch: ''};
-    case '/api/node-log':
-      return {log: 'The browser demo runs no node.'};
-    default:
-      throw new Error(REAL_ONLY);
+    case '/api/curated': return runCurated(body);
+    case '/api/learning': return learning(body);
+    case '/api/earlier-record':
+      if (!earlierRecord) throw new Error('No earlier demo record is available.');
+      return clone(earlierRecord);
+    case '/api/diff': return {patch: ''};
+    case '/api/node-log': return {log: 'The browser demo runs no node.'};
+    default: throw new Error(REAL_ONLY);
   }
 }
-
-window.VibesDemo = {
-  api,
-  reset() {
-    data = initial();
-    persist();
-  },
-};
+window.VibesDemo = {api, hasEarlierRecord: !!earlierRecord, reset() { data = initial(); persist(); }};
 })();

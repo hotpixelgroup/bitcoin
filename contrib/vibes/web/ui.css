@@ -1437,3 +1437,159 @@ dialog form {
 #lesson-sources {
   margin: 12px 0;
 }
+
+/* Keep the learning journey ahead of the installed node's advanced controls. */
+.demo-mode [data-local-only],
+.demo-mode .composer-bottom,
+.demo-mode .composer .advanced,
+.demo-mode .composer .examples {
+  display: none !important;
+}
+
+.intro {
+  margin: 12px 0 28px;
+}
+
+.intro p {
+  max-width: 65ch;
+  font-size: 15px;
+}
+
+.learning-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  gap: 16px;
+  padding: 20px 0 0;
+  margin: 0;
+}
+
+.learning-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.learning-steps li > span {
+  align-items: center;
+  background: var(--green-soft);
+  border: 1px solid #b9cbbb;
+  border-radius: 50%;
+  color: var(--green);
+  display: inline-flex;
+  flex: none;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+  font: 12px var(--mono);
+}
+
+.learning-steps small {
+  display: block;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.journey-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 6px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.experiment-group + .experiment-group {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 4px;
+}
+
+#curated-grid h3 {
+  font: 20px/1.3 var(--serif);
+  margin-top: 22px;
+}
+
+.experiment-number {
+  color: var(--gold);
+  display: block;
+  font: 11px var(--mono);
+  margin-bottom: 8px;
+}
+
+.example.explored {
+  border-color: #8da48e;
+  box-shadow: inset 3px 0 var(--green);
+}
+
+.example.explored .experiment-number::after {
+  content: '  ✓ explored';
+}
+
+#current:focus {
+  outline: none;
+}
+
+#current:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.lesson-next {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.lesson-next a {
+  font-size: 13px;
+  padding: 10px 2px;
+}
+
+@media(max-width: 900px) {
+  .learning-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .learning-steps li > div {
+    display: flex;
+    flex-direction: column;
+  }
+  .intro {
+    margin-top: 4px;
+  }
+}
+
+.sidebar {
+  overflow-y: auto;
+}
+
+.mobile-nav {
+  display: none;
+}
+
+.example b {
+  font-size: 14px;
+}
+
+.example small {
+  font-size: 12px;
+}
+
+@media(max-width: 760px) {
+  .mobile-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 12px;
+  }
+}
