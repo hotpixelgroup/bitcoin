@@ -40,7 +40,12 @@ jobs:
         run: docker compose -f contrib/vibes/docker-compose.yml config --quiet
 
       - name: Build the image
-        run: docker compose -f contrib/vibes/docker-compose.yml build
+        run: |
+          jobs=$(nproc)
+          memory_jobs=$(awk '/^MemTotal:/ {print int($2 / 2097152)}' /proc/meminfo)
+          if [ "$memory_jobs" -lt 1 ]; then memory_jobs=1; fi
+          if [ "$jobs" -gt "$memory_jobs" ]; then jobs=$memory_jobs; fi
+          docker compose -f contrib/vibes/docker-compose.yml build --build-arg BUILD_JOBS="$jobs"
 
       # Start it with the mock engine and no node, and ask the console whether
       # it is alive. This exercises the entrypoint: first-start copy into the
