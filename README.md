@@ -56,16 +56,20 @@ VIBES_DRY_RUN=1 sh install.sh
 It honours `VIBES_DIR` (default `~/bitcoin-vibes`), `VIBES_REF` (a release tag
 or a branch), and `VIBES_REPO`.
 
-**On a Mac, and you would rather not see a terminal?**
+**On an Apple silicon Mac running macOS 15 or later, and you would rather not see a terminal?**
 [Download Bitcoin Vibes.app](https://github.com/hotpixelgroup/bitcoin/releases/latest),
 drag it to Applications, open it. It prepares the node and shows you what it is
 doing in your browser. It is not notarised by Apple yet, so macOS blocks the
-first launch: on macOS 15 and later, try to open it once, then choose **Open
-Anyway** under System Settings → Privacy & Security; on macOS 14 and earlier,
-right-click it and choose **Open**.
+first launch: try to open it once, then choose **Open Anyway** under System
+Settings → Privacy & Security.
 
-**You need:** macOS or Linux (on Windows, use WSL2), about 3 GB of disk, and
-one build. How long the build takes depends almost entirely on your core count:
+The prepared Mac app and node programs require Apple silicon and macOS 15 or
+later. Other Mac configurations, including Intel Macs, need a compatible
+source build and are not verified by this release workflow.
+
+**When a source build is needed:** macOS or Linux (on Windows, use WSL2),
+about 3 GB of disk, and the build tools listed below. A compatible prepared
+node skips the initial compile. Build time depends largely on your core count:
 
 | Machine | First build |
 |---|---|

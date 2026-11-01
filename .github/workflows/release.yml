@@ -94,13 +94,24 @@ jobs:
             libboost-dev libsqlite3-dev libcapnp-dev capnproto
 
       - name: Build
+        shell: bash
         run: |
+          set -euo pipefail
+          mac_args=()
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            SDK=$(xcrun --show-sdk-path)
+            test -f "$SDK/usr/lib/libsqlite3.tbd"
+            test -f "$SDK/usr/include/sqlite3.h"
+            mac_args=(-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+              "-DSQLite3_LIBRARY=$SDK/usr/lib/libsqlite3.tbd"
+              "-DSQLite3_INCLUDE_DIR=$SDK/usr/include")
+          fi
           # Release, not the default RelWithDebInfo: on Linux that embedded
           # 276MB of DWARF straight into the ELF (macOS hid the problem by
           # keeping debug info in a separate .dSYM).
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTS=ON -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
-            -DENABLE_IPC=OFF
+            -DENABLE_IPC=OFF "${mac_args[@]}"
           # Only the monolithic node and CLI are distributed. Disabling the
           # optional multiprocess target keeps bitcoin-cli independent of
           # builder-installed Cap'n Proto/KJ shared libraries.
@@ -158,6 +169,12 @@ jobs:
           fi
           ./build/bin/bitcoind -version
           ./build/bin/bitcoin-cli -version
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            otool -L build/bin/bitcoind build/bin/bitcoin-cli
+            otool -l build/bin/bitcoind build/bin/bitcoin-cli | grep -A5 LC_BUILD_VERSION
+          else
+            ldd build/bin/bitcoind build/bin/bitcoin-cli
+          fi
           ls -lh build/bin/bitcoind build/bin/bitcoin-cli
           # A Raspberry Pi on home broadband is the worst audience to hand a
           # bloated download, so make the bloat a red X on our run instead.
@@ -402,6 +419,7 @@ jobs:
           - Preserved build provenance through installer updates and made source updates explicitly require reopening the console.
           - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^v//;s/-/./')\`. Downloading a new launcher preserves an existing lab: use **Setup & help → Check for and take updates**, then close and reopen Bitcoin Vibes to load the new source. Saved experiments are replayed by the console update action.
           - Prepared archives contain the monolithic node and CLI with optional multiprocess IPC disabled, so no Cap'n Proto/KJ shared libraries from the builder are needed to run them.
+          - The prepared Mac app and programs require **Apple silicon and macOS 15 or later**. Their final load commands are checked for that minimum and for system-only libraries. Other Mac configurations require a compatible source build and are not verified by this release workflow.
           EOF
           cat notes.md
 

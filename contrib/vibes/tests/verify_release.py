@@ -25,6 +25,7 @@ import urllib.request
 SOURCE = Path(__file__).resolve().parents[1]
 PLATFORMS = ('linux-x86_64', 'linux-arm64', 'macos-arm64')
 PATCHES = ('double-reward', 'halve-reward', 'faster-halving')
+MACOS_MINIMUM = 15 << 16
 
 
 def require(condition, message):
@@ -73,6 +74,46 @@ def verify_pin(text, name, expected):
     require(values == [expected], f'{name} must be stamped exactly once as {expected}')
 
 
+def mac_runtime(data):
+    """Inspect load commands without loading or executing the Mach-O image."""
+    require(struct.unpack_from('<I', data, 12)[0] == 2, 'Mac program must be a Mach-O executable')
+    count, size = struct.unpack_from('<II', data, 16)
+    require(0 < count <= 4096 and 32 + size <= len(data), 'Truncated Mach-O load commands')
+    offset, end = 32, 32 + size
+    libraries, rpaths, minimums = [], [], []
+    for _ in range(count):
+        require(offset + 8 <= end, 'Truncated Mach-O load command')
+        command, length = struct.unpack_from('<II', data, offset)
+        require(length >= 8 and offset + length <= end, 'Invalid Mach-O load command size')
+        block = data[offset:offset + length]
+        kind = command & 0x7fffffff
+        if kind in (0xc, 0x18, 0x1f, 0x20, 0x23, 0x1c):
+            require(length >= (12 if kind == 0x1c else 24), 'Truncated Mach-O library/rpath command')
+            start = struct.unpack_from('<I', block, 8)[0]
+            require(0 < start < len(block) and b'\0' in block[start:], 'Invalid Mach-O library/rpath name')
+            value = block[start:].split(b'\0', 1)[0].decode()
+            (rpaths if kind == 0x1c else libraries).append(value)
+        elif kind == 0x32:
+            require(length >= 24, 'Truncated Mach-O build version')
+            platform, minimum = struct.unpack_from('<II', block, 8)
+            require(platform == 1, 'Expected a macOS program')
+            minimums.append(minimum)
+        elif kind == 0x24:
+            require(length >= 16, 'Truncated Mach-O minimum version')
+            minimums.append(struct.unpack_from('<I', block, 8)[0])
+        offset += length
+    require(offset == end, 'Mach-O load command sizes do not match the header')
+    require(minimums == [MACOS_MINIMUM], 'Mac program minimum OS must be exactly macOS 15.0')
+    def system_path(value):
+        return '..' not in PurePosixPath(value).parts and (
+            value == '/usr/lib' or value.startswith('/usr/lib/') or
+            value == '/System/Library' or value.startswith('/System/Library/'))
+    require(libraries and all(system_path(path) for path in libraries),
+            f'Mac programs must use system-only libraries: {libraries}')
+    require(all(system_path(path) for path in rpaths), f'Mac program has a non-system runtime search path: {rpaths}')
+    return {'minimum_macos': '15.0', 'libraries': libraries, 'rpaths': rpaths}
+
+
 def native_header(data, platform):
     require(len(data) >= 32, f'Truncated native program for {platform}')
     if platform.startswith('linux-'):
@@ -82,6 +123,7 @@ def native_header(data, platform):
     else:
         require(data[:4] == b'\xcf\xfa\xed\xfe', 'macos-arm64 needs a thin 64-bit Mach-O program')
         require(struct.unpack_from('<I', data, 4)[0] == 0x0100000c, 'Wrong Mach-O architecture for macos-arm64')
+        return mac_runtime(data)
 
 
 def verify_archive(path, kind, platform, commit, source=SOURCE):
@@ -124,7 +166,9 @@ def verify_archive(path, kind, platform, commit, source=SOURCE):
             require(published[patch] == digest(source / 'experiments' / (patch + '.diff')),
                     f'Patch digest does not match this source: {patch}')
     for program in programs:
-        native_header(files[program][:32], platform)
+        metadata = native_header(files[program], platform)
+        if metadata:
+            print(f'{program}: {json.dumps(metadata, sort_keys=True)}', flush=True)
     return {path: hashlib.sha256(data).hexdigest() for path, data in files.items()}
 
 
@@ -181,6 +225,7 @@ def verify_dmg(path, tag, commit):
             version = release_version(tag)
             require(info.get('CFBundleVersion') == version and info.get('CFBundleShortVersionString') == version,
                     f'Mac bundle must identify release {version}')
+            require(info.get('LSMinimumSystemVersion') == '15.0', 'Mac bundle must require macOS 15.0')
             launcher = app / 'Contents/MacOS' / info['CFBundleExecutable']
             require(launcher.stat().st_mode & 0o111, 'Mac launcher must be executable')
             text = launcher.read_text()

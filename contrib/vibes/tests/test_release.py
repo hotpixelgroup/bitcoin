@@ -36,26 +36,37 @@ class ReleaseAssetTests(unittest.TestCase):
         (self.assets / 'install.sh').write_text('#!/bin/sh\nPINNED_REF="v31.99-9"\n#' + 'x' * 1024 + '\n')
         self.write_manifest()
 
-    def program(self, platform):
+    def program(self, platform, library='/usr/lib/libSystem.B.dylib', minimum=15 << 16, rpath=None):
         data = bytearray(1024)
         if platform.startswith('linux'):
             data[:6] = b'\x7fELF\x02\x01'
             struct.pack_into('<H', data, 18, 62 if platform == 'linux-x86_64' else 183)
         else:
-            data[:4] = b'\xcf\xfa\xed\xfe'
-            struct.pack_into('<I', data, 4, 0x0100000c)
+            name = library.encode() + b'\0'
+            length = (24 + len(name) + 7) // 8 * 8
+            load = struct.pack('<IIIIII', 0xc, length, 24, 0, 0, 0) + name
+            load += bytes(length - len(load))
+            build = struct.pack('<IIIIII', 0x32, 24, 1, minimum, 26 << 16, 0)
+            commands = load + build
+            if rpath:
+                value = rpath.encode() + b'\0'
+                length = (12 + len(value) + 7) // 8 * 8
+                extra = struct.pack('<III', 0x8000001c, length, 12) + value
+                commands += extra + bytes(length - len(extra))
+            header = struct.pack('<IiiIIIII', 0xfeedfacf, 0x0100000c, 0, 2, 3 if rpath else 2, len(commands), 0, 0)
+            data[:len(header + commands)] = header + commands
         return bytes(data)
 
-    def make_archive(self, kind, platform, commit=None, patch_digest=None, extra=None, native_platform=None):
+    def make_archive(self, kind, platform, commit=None, patch_digest=None, extra=None, native_platform=None, program_data=None):
         name = f'vibes-{kind}-{platform}'
         members = {name + '/COMMIT': ((commit or self.commit) + '\n').encode()}
         if kind == 'node':
-            members.update({name + '/' + item: self.program(native_platform or platform) for item in ('bitcoind', 'bitcoin-cli')})
+            members.update({name + '/' + item: program_data or self.program(native_platform or platform) for item in ('bitcoind', 'bitcoin-cli')})
         else:
             members[name + '/PATCHES'] = ''.join(
                 f'{patch_digest or release.digest(self.source / "experiments" / (patch + ".diff"))}  {patch}\n'
                 for patch in release.PATCHES).encode()
-            members.update({f'{name}/{patch}/bitcoind': self.program(native_platform or platform) for patch in release.PATCHES})
+            members.update({f'{name}/{patch}/bitcoind': program_data or self.program(native_platform or platform) for patch in release.PATCHES})
         members.update(extra or {})
         archive = self.assets / (name + '.tar.gz')
         with tarfile.open(archive, 'w:gz') as target:
@@ -112,6 +123,28 @@ class ReleaseAssetTests(unittest.TestCase):
         self.make_archive('node', 'linux-x86_64', extra={'../escape': b'bad'})
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, 'Unsafe'):
+            self.verify()
+
+    def test_mac_archives_reject_homebrew_libraries_even_when_checksums_match(self):
+        program = self.program('macos-arm64', library='/opt/homebrew/opt/sqlite/lib/libsqlite3.0.dylib')
+        self.make_archive('node', 'macos-arm64', program_data=program)
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, 'system-only libraries'):
+            self.verify()
+
+    def test_mac_archives_require_the_documented_minimum_os(self):
+        for minimum in (12 << 16, 16 << 16):
+            program = self.program('macos-arm64', minimum=minimum)
+            self.make_archive('variants', 'macos-arm64', program_data=program)
+            self.write_manifest()
+            with self.assertRaisesRegex(ValueError, 'minimum OS'):
+                self.verify()
+
+    def test_mac_archives_reject_homebrew_runtime_search_paths(self):
+        program = self.program('macos-arm64', rpath='/opt/homebrew/lib')
+        self.make_archive('node', 'macos-arm64', program_data=program)
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, 'runtime search path'):
             self.verify()
 
     def test_installer_must_pin_this_exact_tag_and_checksums_cover_every_asset(self):

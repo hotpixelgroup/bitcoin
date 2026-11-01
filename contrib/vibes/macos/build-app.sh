@@ -39,7 +39,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>        <string>BitcoinVibes</string>
   <key>CFBundleIconFile</key>          <string>AppIcon</string>
   <key>CFBundlePackageType</key>       <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>    <string>12.0</string>
+  <key>LSMinimumSystemVersion</key>    <string>15.0</string>
   <key>LSApplicationCategoryType</key> <string>public.app-category.finance</string>
   <key>NSHumanReadableCopyright</key>  <string>MIT. A fork of Bitcoin Core, maintained by Hot Pixel Group.</string>
   <!-- The console is a local web app; the node runs headless behind it. -->

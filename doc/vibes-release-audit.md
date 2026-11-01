@@ -114,7 +114,7 @@ maximum first-line offset of 0.72 pixels. The enlarged cases model
 200%-equivalent reflow with half the CSS viewport and twice the output density;
 they do not automate browser zoom controls. Label clicks, keyboard operation,
 visible focus, the existing browser workflow and twelve axe audits also pass.
-The expanded local Python suite ran 184 tests: 176 passed and eight optional
+The expanded local Python suite ran 187 tests: 179 passed and eight optional
 real-node checks were skipped.
 
 | Before | After |
@@ -130,6 +130,11 @@ on the builder's Cap'n Proto/KJ shared libraries. Fresh-runner jobs then fetch
 the public release's installer and programs on all three supported platforms,
 verify provenance, start the installed console and private node, and exercise
 the three changed-node experiments. The Mac job also inspects the DMG read-only.
+The previous Mac programs declared a macOS 15 minimum while their launcher
+declared 12. The prepared Mac release now consistently requires Apple silicon
+and macOS 15 or later. Its build uses the Apple SDK's SQLite, and every archived
+Mac program must declare the documented minimum and load only system libraries.
+Regression fixtures reject Homebrew library/search paths and mismatched minima.
 See the release workflow for the publication and public-download results.
 
 ## Deployment
