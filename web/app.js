@@ -46,6 +46,8 @@ let beliefRenderKey = null;
 let historyRenderKey = null;
 let learningEntries = [];
 let beliefsSaving = false;
+let nodeAlertKey = null;
+let readinessTarget = 'node-controls';
 const recordingPredictions = new Set();
 const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
@@ -82,10 +84,14 @@ function toast(message) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 6500);
 }
 
+function setText(id, message) {
+  if ($(id).textContent !== message) $(id).textContent = message;
+}
+
 function setConnectionStatus(message) {
   // This is a live region. Replacing even identical text on every poll can
   // interrupt a screen reader, so announce only a meaningful status change.
-  if ($('connection').textContent !== message) $('connection').textContent = message;
+  setText('connection', message);
 }
 
 function confirmAction(heading, copy, label = 'Continue') {
@@ -124,6 +130,7 @@ async function api(path, body) {
     if (result.console_restart_required && status) {
       status.console_restart_required = true;
       $('console-restart-notice').hidden = false;
+      renderEntryState(status);
       updateControls();
     }
     throw new Error(result.error || `Request failed (${response.status})`);
@@ -264,6 +271,11 @@ async function refreshLearning() {
 
 // ----- ready-made experiments ------------------------------------------------
 
+function completedExperiments() {
+  const known = new Set(lessons.curated.map(item => item.id));
+  return new Set((status?.experiments || []).filter(job => job.state === 'done' && known.has(job.curated)).map(job => job.curated));
+}
+
 function renderCurated() {
   $('curated-grid').replaceChildren();
   let number = 0;
@@ -304,7 +316,8 @@ async function runCurated(item) {
 function renderBeliefs() {
   const before = lessons.beliefs.length && lessons.beliefs.every(belief => beliefState[belief.id]?.before);
   const after = lessons.beliefs.length && lessons.beliefs.every(belief => beliefState[belief.id]?.after);
-  const renderKey = JSON.stringify([lessons.beliefs, beliefState]);
+  const explored = completedExperiments().size > 0;
+  const renderKey = JSON.stringify([lessons.beliefs, beliefState, explored]);
   // Polling learning progress must not replace radio buttons while somebody is answering.
   if (renderKey === beliefRenderKey) return;
   const drafts = Object.fromEntries(Array.from($('beliefs-list').querySelectorAll('input:checked'), input => [input.name, input.value]));
@@ -317,7 +330,9 @@ function renderBeliefs() {
     ? 'Your answers from before and after, with what the lab shows.'
     : before
       ? 'Your first answers are saved and hidden. Run a few experiments, then answer the same statements again to see what changed.'
-      : 'Before you run anything, say what you think. You will be asked the same statements again later. Nothing is marked right or wrong until then, and your answers stay on this machine.';
+      : explored
+        ? 'Save what you think now, try more experiments, then answer again. These are your first answers to the questions, even if you have already started exploring. Your answers stay on this machine.'
+        : 'Before you run anything, say what you think. You will be asked the same statements again later. Nothing is marked right or wrong until then, and your answers stay on this machine.';
   $('beliefs-summary').textContent = after ? 'What changed' : before ? 'Answer the ten statements again' : 'Ten statements: true or false?';
   $('beliefs-save').textContent = before ? 'Save my second answers' : 'Save my answers';
   $('beliefs-save').hidden = !!after;
@@ -347,7 +362,7 @@ function renderBeliefs() {
   if (after) {
     const count = stage => lessons.beliefs.filter(belief => beliefState[belief.id]?.[stage]?.correct).length;
     $('beliefs-status').textContent = `Right before: ${count('before')} of ${lessons.beliefs.length}. Right after: ${count('after')} of ${lessons.beliefs.length}.`;
-  }
+  } else $('beliefs-status').textContent = '';
 }
 
 async function saveBeliefs() {
@@ -389,7 +404,7 @@ function saveDraft() {
   const draft = {prompt: $('wish').value, mode: $('mode').value, autobuild: $('autobuild').checked,
                  autorestart: $('autorestart').checked, imported};
   const saved = remember(storageKey, JSON.stringify(draft));
-  $('draft-status').textContent = $('wish').value ? (saved ? 'Draft saved on this device' : 'Draft available for this visit only') : '';
+  setText('draft-status', $('wish').value ? (saved ? 'Draft saved on this device' : 'Draft available for this visit only') : '');
 }
 
 function loadDraft() {
@@ -431,7 +446,7 @@ function renderImportedNote() {
   if (sender.ts) parts.push(`They saved it on ${new Date(sender.ts * 1000).toLocaleDateString()}.`);
   if (sender.c?.length) parts.push(`Their console flagged it as touching: ${sender.c.join(', ')}.`);
   if (sender.f?.length) parts.push(`On their machine it changed: ${sender.f.map(file => file[0]).join(', ')}.`);
-  parts.push('It will be handed to an AI agent as instructions, so it always stops for your review and is never applied or started automatically. Clear the box to write your own request instead.');
+  parts.push('When submitted in the installed lab, these words become instructions to an AI agent. The proposal always stops for your review and is never applied or started automatically. Clear the box to write your own request instead.');
   $('imported-note').textContent = parts.join(' ');
 }
 
@@ -480,7 +495,29 @@ async function manifest() {
 
 // ----- the node card ---------------------------------------------------------
 
+function renderEntryState(next) {
+  const card = $('lab-readiness');
+  card.hidden = demo || !!startupProblem || !!next?.binary || !!next?.console_restart_required;
+  if (card.hidden) return;
+  const job = next?.job;
+  const preparation = job && ['setup', 'build'].includes(job.kind);
+  const working = preparation && ['running', 'cancelling'].includes(job.state);
+  const needsAttention = preparation && ['error', 'cancelled'].includes(job.state);
+  setText('readiness-title', !next ? 'Connecting to your lab' : working ? 'Preparing your lab' : needsAttention ? 'Preparation needs attention' : 'Prepare a node to run experiments');
+  setText('readiness-copy', !next
+    ? 'Checking which node programs are ready. No experiment has started.'
+    : working
+      ? 'The node program is not ready yet. Follow the preparation details below; experiments become available when a program is ready. You can use the recorded browser demo while you wait.'
+      : needsAttention
+        ? 'Preparation did not finish, so experiments are unavailable. Open the details to see what stopped it and the next step. Your source and history are kept.'
+        : 'The console is open, but no node program is available. Open node setup to prepare one, or try the recorded browser experiments.');
+  $('readiness-action').hidden = !next;
+  readinessTarget = working || needsAttention ? 'current' : 'node-controls';
+  setText('readiness-action', working || needsAttention ? 'View preparation details' : 'Open node setup');
+}
+
 function renderNode(next) {
+  renderEntryState(next);
   $('environment').textContent = (demo ? 'DEMO · ' : '') + next.chain + ' · ' + next.branch;
   $('engine-label').textContent = demo ? 'No AI in the demo' : next.engine === 'mock' ? 'Mock engine (no AI)' : 'Claude Code';
   $('source').textContent = short(next.source);
@@ -493,21 +530,25 @@ function renderNode(next) {
   $('running').textContent = next.node.running ? (next.node.revision ? short(next.node.revision) : 'Unrecorded build') : 'Stopped';
   $('node-summary').textContent = next.node.running
     ? `Block ${next.node.blocks ?? '…'} · ${next.node.peers ?? 0} peers · wallet ${next.node.wallet ? 'on' : 'off'} · incoming connections ${next.node.listening ? 'on' : 'off'}`
-    : 'Start your node to use it';
+    : next.binary ? 'Start your node to use it' : 'No node program is available. Open node setup to prepare one.';
   const health = {healthy: 'Running', syncing: 'Synchronising', starting: 'Starting', stopped: 'Stopped', diverged: 'Refused a block'};
   $('node-health').textContent = health[next.node.health] || title(next.node.health);
   $('node-health').className = 'pill ' + (next.node.health === 'healthy' ? 'good' : next.node.health === 'diverged' ? 'bad' : '');
   $('node-start').textContent = next.node.running ? 'Stop node' : 'Start node';
   $('chain-note').textContent = next.chain_note || '';
 
-  $('node-alerts').replaceChildren();
-  for (const alert of next.node.alerts || []) {
-    $('node-alerts').append(el('div', {class: 'notice ' + (alert.level === 'danger' ? 'danger' : '')}, [
-      el('b', {text: alert.title + '. '}), el('span', {text: alert.detail})]));
-  }
-  if (next.source_problem) {
-    $('node-alerts').append(el('div', {class: 'notice danger'}, [
-      el('b', {text: 'Your source is not on your branch. '}), el('span', {text: next.source_problem})]));
+  const alertKey = JSON.stringify([next.node.alerts || [], next.source_problem || '']);
+  if (nodeAlertKey !== alertKey) {
+    nodeAlertKey = alertKey;
+    $('node-alerts').replaceChildren();
+    for (const alert of next.node.alerts || []) {
+      $('node-alerts').append(el('div', {class: 'notice ' + (alert.level === 'danger' ? 'danger' : '')}, [
+        el('b', {text: alert.title + '. '}), el('span', {text: alert.detail})]));
+    }
+    if (next.source_problem) {
+      $('node-alerts').append(el('div', {class: 'notice danger'}, [
+        el('b', {text: 'Your source is not on your branch. '}), el('span', {text: next.source_problem})]));
+    }
   }
 
   const sandbox = next.sandbox || {};
@@ -529,6 +570,7 @@ function renderNode(next) {
   $('activation-block').textContent = next.activation_block || '';
 
   $('blocker').hidden = true;
+  $('reconnect').hidden = true;
   $('console-restart-notice').hidden = demo || !next.console_restart_required;
   const agent = next.agent || {};
   $('agent-note').textContent = next.engine === 'claude'
@@ -567,7 +609,7 @@ function updateControls() {
       : !engineOk ? 'Custom requests: ' + (status?.engine_ready?.detail || 'The AI engine is unavailable.') +
         (status?.engine_ready?.fix ? ' ' + status.engine_ready.fix : '') : '';
   $('composer-status').hidden = !composerProblem;
-  $('composer-status').textContent = composerProblem;
+  setText('composer-status', composerProblem);
   $('manifest').textContent = actionPending ? 'Starting…' : busy ? 'Experiment in progress' : 'Propose a change';
   for (const id of ['node-start', 'build', 'restart', 'mine', 'mine-101', 'maturity', 'activate', 'update',
                     'save-settings', 'reference', 'restore', 'reset-chain', 'external-run']) {
@@ -706,7 +748,8 @@ function renderComparison(job) {
   // The written explanation, shown only once there is something to explain.
   const canExplain = item && observed && !['error', 'inconclusive'].includes(compare.verdict);
   $('lesson').hidden = !canExplain;
-  $('next-experiment').hidden = !canExplain || !lessons.curated[lessons.curated.indexOf(item) + 1];
+  $('next-experiment').hidden = !canExplain;
+  setText('next-experiment', lessons.curated[lessons.curated.indexOf(item) + 1] ? 'Next experiment →' : 'Check your thinking');
   if (!canExplain) $('try-again').hidden = true;
   if (canExplain) {
     $('lesson-belief').textContent = 'A common belief: ' + item.belief;
@@ -737,7 +780,7 @@ function restoreFollowup(job) {
   if (!input) return;
   input.checked = true;
   $('followup-options').querySelectorAll('input').forEach(input => { input.disabled = true; });
-  $('followup-result').textContent = (saved.correct ? 'Right. ' : `Not quite: ${optionText(item.followup.options, item.followup.answer)} `) + item.followup.why;
+  setText('followup-result', (saved.correct ? 'Right. ' : `Not quite: ${optionText(item.followup.options, item.followup.answer)} `) + item.followup.why);
   $('followup-check').disabled = true;
 }
 
@@ -847,7 +890,7 @@ function renderJob(value) {
   document.querySelector('.pipeline').hidden = job.kind !== 'vibe';
   document.querySelector('.outcomes').hidden = !builds;
   $('job-error').hidden = !job.error;
-  $('job-error').textContent = job.error || '';
+  setText('job-error', job.error || '');
   $('review-reason').hidden = job.state !== 'review' || !job.review_reason;
   $('review-reason').textContent = job.review_reason || '';
   const risks = [...(job.risk || []), ...(job.sensitive || [])];
@@ -894,7 +937,7 @@ function renderJob(value) {
   $('log-count').textContent = `(${events.length} events)`;
   const phases = events.filter(event => event.t === 'phase');
   const last = phases.at(-1);
-  $('progress-message').textContent = last?.detail || '';
+  setText('progress-message', last?.detail || '');
 
   const steps = ['agent', 'build', 'test', 'compare', 'review', 'restart'];
   let phase = last?.name;
@@ -968,6 +1011,7 @@ async function refresh() {
   if (startupProblem) return;
   if (inflight) return;
   inflight = true;
+  $('reconnect').disabled = true;
   try {
     const next = await api('/api/status');
     status = next;
@@ -984,22 +1028,27 @@ async function refresh() {
       openStream(next.job);
     }
     renderHistory();
-    const completed = new Set((next.experiments || []).filter(job => job.state === 'done' && job.curated).map(job => job.curated));
-    $('journey-progress').textContent = `${completed.size} of ${lessons.curated.length} experiments explored`;
+    const completed = completedExperiments();
+    setText('journey-progress', `${completed.size} of ${lessons.curated.length} experiments explored`);
+    setText('start-learning', completed.size === lessons.curated.length ? 'Explore experiments again' : completed.size ? 'Continue learning' : 'Start with coins and keys');
     document.querySelectorAll('[data-curated]').forEach(button => {
       button.classList.toggle('explored', completed.has(button.dataset.curated));
       const item = lessons.curated.find(entry => entry.id === button.dataset.curated);
       button.setAttribute('aria-label', (completed.has(button.dataset.curated) ? 'Explored: ' : '') + item.title);
     });
+    renderBeliefs();
     updateControls();
   } catch (error) {
     setConnectionStatus('Offline · reconnecting to the local console');
     $('blocker').hidden = false;
-    $('blocker').textContent = 'Cannot reach the local console. Check that ./vibes is still running. Reconnecting automatically.';
+    setText('blocker', 'Cannot reach the local console. Check that ./vibes is still running. Reconnecting automatically.');
+    $('reconnect').hidden = false;
+    $('lab-readiness').hidden = true;
     lastSuccess = 0;
     updateControls();
   } finally {
     inflight = false;
+    $('reconnect').disabled = false;
   }
 }
 
@@ -1055,7 +1104,8 @@ function renderHistory() {
     $('history').append(el('div', {class: 'history-row'}, [top, bottom]));
   }
   if (!rows.length) {
-    $('history').append(el('p', {class: 'history-empty', text: query ? 'No experiments match this search.' : 'No experiments yet. Start with a ready-made one above.'}));
+    $('history').append(el('p', {class: 'history-empty', text: query ? 'No experiments match this search.' : 'No experiments yet. Your lab notebook is still blank.'}));
+    if (!query) $('history').append(el('button', {class: 'text-button', text: 'Choose a ready-made experiment', onclick: () => showSection('curated', true)}));
   }
 }
 
@@ -1145,10 +1195,12 @@ async function importRequest(raw) {
     toast(error.message);
     return;
   }
+  const replacesDraft = $('wish').value.trim() && $('wish').value !== value.p;
   const ok = await confirmAction('A request from someone else',
     value.p + '\n\nThese are someone else\'s words. If you use them, they are handed to an AI agent as instructions. ' +
-    'The agent can only edit files in its own copy of the source, and whatever it proposes is built in a sandbox, compared with an unmodified node, and then waits for your review. It is never applied or started automatically.',
-    'Put it in my draft');
+    'The agent edits a separate source copy. The installed lab uses an operating-system sandbox where available and compares completed builds with an unmodified node. The proposal always stops for your review and is never applied or started automatically.' +
+    (replacesDraft ? '\n\nThis replaces the request currently in your draft.' : ''),
+    replacesDraft ? 'Replace my draft' : 'Put it in my draft');
   if (!ok) return;
   $('wish').value = value.p;
   imported = {sender: cleanSender(value)};
@@ -1223,12 +1275,23 @@ document.querySelectorAll('[data-category]').forEach(button => {
 });
 
 $('manifest').onclick = manifest;
-$('start-learning').onclick = () => runCurated(lessons.curated[0]);
+$('start-learning').onclick = () => {
+  const completed = completedExperiments();
+  const next = lessons.curated.find(item => !completed.has(item.id));
+  if (next) runCurated(next);
+  else showSection('curated', true);
+};
 $('next-experiment').onclick = () => {
   const item = selected && curatedItem(selected.summary);
   const next = lessons.curated[lessons.curated.indexOf(item) + 1];
   if (next) runCurated(next);
+  else {
+    $('beliefs-details').open = true;
+    showSection('beliefs', true);
+  }
 };
+$('readiness-action').onclick = () => showSection(readinessTarget, true);
+$('reconnect').onclick = refresh;
 $('beliefs-save').onclick = saveBeliefs;
 $('learning-export').onclick = exportLearning;
 $('earlier-demo-export').onclick = async () => {
@@ -1393,6 +1456,11 @@ $('reset-demo').onclick = async () => {
   $('empty-current').hidden = false;
   $('job-state').textContent = 'No experiment yet';
   $('feed').textContent = '';
+  $('log-count').textContent = '';
+  setText('progress-message', '');
+  setText('beliefs-status', '');
+  document.querySelector('.pipeline').hidden = true;
+  $('current').setAttribute('aria-busy', 'false');
   await refresh();
   refreshLearning();
 };
@@ -1413,6 +1481,7 @@ renderCurated();
 renderExamples('Customize');
 modeHelp();
 updateControls();
+renderEntryState(null);
 if (startupProblem) {
   setConnectionStatus('Page assets unavailable');
   $('blocker').hidden = false;

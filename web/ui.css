@@ -614,6 +614,24 @@ details details {
   border-color: #dfb2aa;
 }
 
+.readiness {
+  white-space: normal;
+}
+
+.readiness h2 {
+  margin: 0 0 8px;
+  color: inherit;
+  font-size: 18px;
+}
+
+.readiness p {
+  margin: 0 0 12px;
+}
+
+.readiness .toolbar {
+  align-items: center;
+}
+
 .evidence {
   margin-top: 12px;
 }

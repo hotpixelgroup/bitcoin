@@ -76,7 +76,7 @@ window.VibesLessons = {
   {
    "id": "money",
    "title": "Coins, keys and payments",
-   "blurb": "Where your bitcoin actually are, what a fee buys, and what a confirmation is."
+   "blurb": "What a wallet controls, what a fee buys, and what a confirmation means."
   },
   {
    "id": "rules",
@@ -98,7 +98,7 @@ window.VibesLessons = {
    "summary": "A wallet receives 50 BTC. Then the wallet is deleted. Then a backup of its keys is restored on a different node.",
    "needs": "No AI and no compiling. Runs in a few seconds.",
    "belief": "\"My bitcoin are stored in my wallet.\"",
-   "lesson": "Confirmed coins are recorded as unspent transaction outputs, with conditions for spending them; they are not files inside a wallet. This scene uses a single-signature wallet. Deleting it did not change the chain, and restoring its complete backup on node B recovered the ability to spend the 50 BTC. A wallet can hold private keys, or only watch for payments while a separate device signs. Recovery needs all required secrets and wallet information: a seed phrase alone may be insufficient when there is a passphrase, multiple signers or additional scripts. Treat a complete usable spending backup like the wallet itself. A custodial exchange balance is different: the exchange controls the on-chain spending keys and owes you a balance.",
+   "lesson": "Confirmed coins are recorded as unspent transaction outputs, with conditions for spending them; they are not files inside a wallet. This scene uses a single-signature wallet. Deleting it did not change the chain, and restoring its complete backup on node B recovered the ability to spend the 50 BTC. A wallet can hold private keys, or only watch for payments while a separate device signs. Recovery needs all required secrets and wallet information: a seed phrase alone may be insufficient when there is a passphrase, multiple signers or additional scripts. Treat a complete usable spending backup like the wallet itself. A custodial exchange balance is different: the exchange controls the on-chain spending keys and owes you a balance. The chain did not notice the wallet's dramatic exit.",
    "sources": [
     {
      "title": "BIP 39: recovery words and optional passphrase",
@@ -157,7 +157,7 @@ window.VibesLessons = {
    "summary": "Two payments wait for a block that has room for only one: 10 BTC paying a low fee, and 0.1 BTC paying a higher one.",
    "needs": "No AI and no compiling. Runs in a few seconds.",
    "belief": "\"The fee is a percentage of what you send, and the network sets it.\"",
-   "lesson": "A fee bids for block space, rather than being a percentage of the amount sent. The two transactions here have similar virtual sizes, so the configured miner selected the one paying the higher fee rate, measured in satoshis per virtual byte (sat/vB). Virtual size accounts for transaction weight; it is not the raw byte count. Miners choose their own transactions and may consider related transactions together, so a higher individual fee rate is not a universal priority guarantee. Relay and mining fee floors can also apply when blocks have room. Each node has its own waiting area, called a mempool: node B did not receive these unconfirmed payments because the nodes were disconnected.",
+   "lesson": "A fee bids for block space, rather than being a percentage of the amount sent. The two transactions here have similar virtual sizes, so the configured miner selected the one paying the higher fee rate, measured in satoshis per virtual byte (sat/vB). Virtual size accounts for transaction weight; it is not the raw byte count. Miners choose their own transactions and may consider related transactions together, so a higher individual fee rate is not a universal priority guarantee. Relay and mining fee floors can also apply when blocks have room. Each node has its own waiting area, called a mempool: node B did not receive these unconfirmed payments because the nodes were disconnected. The 10 BTC payment brought a bigger number, not a better bid.",
    "sources": [
     {
      "title": "Bitcoin developer guide: transaction fees",
@@ -216,7 +216,7 @@ window.VibesLessons = {
    "summary": "Two nodes share a chain. One confirms a payment in a block the other never sees; the other then builds a valid chain with more work and no conflicting spend.",
    "needs": "No AI and no compiling. Runs in a few seconds.",
    "belief": "\"A confirmation means the network approved my payment.\"",
-   "lesson": "One confirmation means the payment is in the active chain; each block built on top adds another. Nodes choose the chain with the most accumulated proof of work among chains their rules accept. In this scene, the replacement chain is valid, has more work and contains no conflicting spend, so the payment returns to zero confirmations and can be mined again. A conflicting spend could instead make it invalid. More confirmations generally make replacing that history harder; they are not an absolute guarantee. Six is a convention, not a consensus rule for ordinary payments.",
+   "lesson": "One confirmation means the payment is in the active chain; each block built on top adds another. Nodes choose the chain with the most accumulated proof of work among chains their rules accept. In this scene, the replacement chain is valid, has more work and contains no conflicting spend, so the payment returns to zero confirmations and can be mined again. A conflicting spend could instead make it invalid. More confirmations generally make replacing that history harder; they are not an absolute guarantee. Six is a convention, not a consensus rule for ordinary payments. That first confirmation comes without a lifetime appointment.",
    "sources": [
     {
      "title": "Bitcoin: A Peer-to-Peer Electronic Cash System",
@@ -271,7 +271,7 @@ window.VibesLessons = {
    "summary": "Two nodes with the same source. One uses the older 83-byte OP_RETURN script policy limit; the other accepts the larger test transaction.",
    "needs": "No AI and no compiling. Runs in a few seconds.",
    "belief": "\"If enough of us filter it, it stays off the chain.\"",
-   "lesson": "A relay filter is policy: a local choice about which unconfirmed transactions a node keeps and passes on. That relay policy is not used to decide whether a transaction already in a block is consensus-valid. Here the filtering node refused the unconfirmed transaction, then accepted the block containing it, and both nodes stayed on one chain. Filters affect propagation and can influence miners using those policies, but cannot guarantee exclusion: a miner can receive a consensus-valid transaction directly or through other peers. The scene establishes that distinction, not whether a particular filtering policy is useful.",
+   "lesson": "A relay filter is policy: a local choice about which unconfirmed transactions a node keeps and passes on. That relay policy is not used to decide whether a transaction already in a block is consensus-valid. Here the filtering node refused the unconfirmed transaction, then accepted the block containing it, and both nodes stayed on one chain. Filters affect propagation and can influence miners using those policies, but cannot guarantee exclusion: a miner can receive a consensus-valid transaction directly or through other peers. The scene establishes that distinction, not whether a particular filtering policy is useful. The transaction arrived in a block without an invitation to the filtering node's mempool.",
    "sources": [
     {
      "title": "Bitcoin Core: transaction relay policy",
@@ -326,7 +326,7 @@ window.VibesLessons = {
    "summary": "One line of source changes the new coins a miner may pay itself from 50 to 100 per block (on this private chain the starting reward is 50).",
    "needs": "No AI. Runs at once with a ready-made node, or compiles the change yourself.",
    "belief": "\"The developers could just change the 21 million limit.\"",
-   "lesson": "The subsidy is the new bitcoin a block may create; the total block reward also includes transaction fees. Mainnet starts at a 50 BTC subsidy and halves it every 210,000 blocks. The schedule, satoshi rounding and other validity checks constrain issuance. MAX_MONEY is a separate consensus range check, not a switch that raises the subsidy. This patch doubles the starting subsidy on your private chain, whose halvings occur every 150 blocks. Your node accepted its changed reward; the reference rejected an overpaying block with bad-cb-amount. Other nodes using unchanged rules reject it too. A software release cannot force them to accept the extra outputs; people must choose compatible rules for their own nodes.",
+   "lesson": "The subsidy is the new bitcoin a block may create; the total block reward also includes transaction fees. Mainnet starts at a 50 BTC subsidy and halves it every 210,000 blocks. The schedule, satoshi rounding and other validity checks constrain issuance. MAX_MONEY is a separate consensus range check, not a switch that raises the subsidy. This patch doubles the starting subsidy on your private chain, whose halvings occur every 150 blocks. Your node accepted its changed reward; the reference rejected an overpaying block with bad-cb-amount. Other nodes using unchanged rules reject it too. A software release cannot force them to accept the extra outputs; people must choose compatible rules for their own nodes. The reference node was not impressed by the larger number.",
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
@@ -393,7 +393,7 @@ window.VibesLessons = {
    "summary": "One line of source lowers the reward your node allows from 50 to 25 per block.",
    "needs": "No AI. Runs at once with a ready-made node, or compiles the change yourself.",
    "belief": "\"If my node enforces a stricter rule, the network has to follow it.\"",
-   "lesson": "This patch lowers the starting subsidy limit to 25 BTC. In the check, the reference miner claimed its full 50 BTC subsidy, so your node rejected the block. The reference accepts blocks claiming the smaller subsidy because miners may claim less than the maximum. Your node cannot make another node change its checks. It can follow a compatible branch if miners build one, or remain at its last accepted block if nobody does. A smaller mining share can still produce a growing branch; whether other nodes follow it depends on accumulated valid work and later miner behavior, not a vote by node count.",
+   "lesson": "This patch lowers the starting subsidy limit to 25 BTC. In the check, the reference miner claimed its full 50 BTC subsidy, so your node rejected the block. The reference accepts blocks claiming the smaller subsidy because miners may claim less than the maximum. Your node cannot make another node change its checks. It can follow a compatible branch if miners build one, or remain at its last accepted block if nobody does. A smaller mining share can still produce a growing branch; whether other nodes follow it depends on accumulated valid work and later miner behavior, not a vote by node count. A stricter rule does not arrive with a complimentary mining crew.",
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
@@ -460,7 +460,7 @@ window.VibesLessons = {
    "summary": "On this private chain the reward halves every 150 blocks. One line of source makes your node halve it every 75.",
    "needs": "No AI. Runs at once with a ready-made node, or compiles the change yourself.",
    "belief": "\"A rule change takes effect straight away, so I would notice at once.\"",
-   "lesson": "The nodes accepted the same first 74 reference blocks. At height 75 the changed node allowed at most half its earlier subsidy while the reference miner still claimed the old amount, so it rejected that block. A miner claiming less could have produced a block both accepted. Changed rules can remain invisible until a particular height, time or transaction exercises them. Successful checks therefore demonstrate only the behaviors tested, rather than proving that the builds have identical consensus rules.",
+   "lesson": "The nodes accepted the same first 74 reference blocks. At height 75 the changed node allowed at most half its earlier subsidy while the reference miner still claimed the old amount, so it rejected that block. A miner claiming less could have produced a block both accepted. Changed rules can remain invisible until a particular height, time or transaction exercises them. Successful checks therefore demonstrate only the behaviors tested, rather than proving that the builds have identical consensus rules. Block 75 was when the fine print stopped being theoretical.",
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
@@ -527,7 +527,7 @@ window.VibesLessons = {
    "summary": "A miner whose node pays itself 100 BTC per block produces 30 blocks. An honest miner produces 2. Both are offered to an unmodified node.",
    "needs": "No AI. Uses the ready-made node from \"Can you raise the block reward?\".",
    "belief": "\"Miners control Bitcoin\", and \"the longest chain wins.\"",
-   "lesson": "A node chooses the chain with the most proof of work among chains it considers valid. The reference refused the first overpaying block and the descendants built on it, even though the competing branch contained more work. Majority mining power can censor transactions or attempt to reorganize recent history, including double-spending the miner's own payments. It cannot make an over-subsidy block or an unauthorized signature pass an unchanged node's checks. This scene compares constructed branches at regtest difficulty; producing more blocks here is not a measurement of real mining power.",
+   "lesson": "A node chooses the chain with the most proof of work among chains it considers valid. The reference refused the first overpaying block and the descendants built on it, even though the competing branch contained more work. Majority mining power can censor transactions or attempt to reorganize recent history, including double-spending the miner's own payments. It cannot make an over-subsidy block or an unauthorized signature pass an unchanged node's checks. This scene compares constructed branches at regtest difficulty; producing more blocks here is not a measurement of real mining power. More hash power is not a permission slip to change another node's rules.",
    "sources": [
     {
      "title": "Bitcoin: A Peer-to-Peer Electronic Cash System",
@@ -555,7 +555,7 @@ window.VibesLessons = {
      }
     ],
     "answer": "reorder",
-    "why": "A majority miner can attempt censorship and reorganisations using valid blocks. It still cannot make an invalid block pass another node's checks. More hash power is not a permission slip to change another node's rules."
+    "why": "A majority miner can attempt censorship and reorganisations using valid blocks. It still cannot make an invalid block pass another node's checks."
    },
    "variant": "double-reward",
    "question": "The rule-breaking branch has more accumulated proof of work. Which chain does the unmodified node follow?",
@@ -583,7 +583,7 @@ window.VibesLessons = {
    "summary": "Forty discoveries are scheduled in the share you choose. Some miners enforce a 25 BTC subsidy limit; others may claim 50. Compare the active chains.",
    "needs": "No AI. Uses the ready-made node from \"What if your node demands a smaller reward?\".",
    "belief": "\"Nodes vote, and a rule takes effect when enough nodes want it.\"",
-   "lesson": "This is a controlled schedule of forty block discoveries, not a prediction of a real network. Miners using the stricter rule accept only the lower-subsidy branch; unmodified miners accept both kinds of block and follow whichever valid branch has more work. With this schedule, a larger enforcing share can make the reference switch to the stricter branch. It still does not check the new rule itself. Real discoveries are random, equal-work ties depend on which block arrives first, and miner choices can change. A forty-block outcome does not establish a universal activation threshold. Activation rules, signaling and ongoing enforcement are separate questions. Try different shares and compare the observed chains.",
+   "lesson": "This is a controlled schedule of forty block discoveries, not a prediction of a real network. Miners using the stricter rule accept only the lower-subsidy branch; unmodified miners accept both kinds of block and follow whichever valid branch has more work. With this schedule, a larger enforcing share can make the reference switch to the stricter branch. It still does not check the new rule itself. Real discoveries are random, equal-work ties depend on which block arrives first, and miner choices can change. A forty-block outcome does not establish a universal activation threshold. Activation rules, signaling and ongoing enforcement are separate questions. Try different shares and compare the observed chains. Following a stricter chain does not download the stricter rulebook.",
    "sources": [
     {
      "title": "Bitcoin developer guide: consensus and chain selection",
@@ -647,7 +647,7 @@ window.VibesLessons = {
    "summary": "A controlled demonstration of BIP 65, introduced in 2015. Two modern nodes differ in one check: only one enforces the time lock.",
    "needs": "No AI and no compiling. Runs in a few seconds.",
    "belief": "\"Old nodes are protected by a rule change even if they do not upgrade.\"",
-   "lesson": "BIP 65 gave the existing NOP2 instruction a new meaning: OP_CHECKLOCKTIMEVERIFY rejects spends that do not satisfy a specified transaction lock time. That is a soft fork because it invalidates some spends previously allowed. This scene uses two modern regtest nodes, with that check disabled on one; it demonstrates the rule difference rather than replaying the 2015 network. The disabled node accepted an early spend that the enforcing node rejected. An unupgraded node can still follow a valid stricter chain, but does not independently check the new condition. Following a compatible chain is different from validating every rule on it.",
+   "lesson": "BIP 65 gave the existing NOP2 instruction a new meaning: OP_CHECKLOCKTIMEVERIFY rejects spends that do not satisfy a specified transaction lock time. That is a soft fork because it invalidates some spends previously allowed. This scene uses two modern regtest nodes, with that check disabled on one; it demonstrates the rule difference rather than replaying the 2015 network. The disabled node accepted an early spend that the enforcing node rejected. An unupgraded node can still follow a valid stricter chain, but does not independently check the new condition. Following a compatible chain is different from validating every rule on it. The disabled check did exactly what 'disabled' advertised.",
    "sources": [
     {
      "title": "BIP 65: OP_CHECKLOCKTIMEVERIFY",
