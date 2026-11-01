@@ -1230,6 +1230,35 @@ class ReadyMadeTests(ConsoleCase):
         (folder / 'bitcoind').write_text('#!/bin/sh\nexit 0\n')
         (folder / 'bitcoind').chmod(0o755)
 
+    def test_prebuilt_checks_both_programs_before_replacing_an_installation(self):
+        for cli in ('broken', 'missing', 'working'):
+            with self.subTest(cli=cli):
+                src = self.served / 'unpacked' / 'vibes-node-test'
+                self.fake_node(src)
+                if cli != 'missing':
+                    (src / 'bitcoin-cli').write_text('candidate CLI')
+                head = self.git('rev-parse', 'HEAD')
+                (src / 'COMMIT').write_text(head + '\n')
+                dest = self.repo / 'build/bin'
+                dest.mkdir(parents=True, exist_ok=True)
+                for name in ('bitcoind', 'bitcoin-cli', 'COMMIT'):
+                    (dest / name).write_text('existing ' + name)
+                def probe(program, flag):
+                    self.assertEqual(program.parent, src)
+                    self.assertEqual(flag, '-version')
+                    self.assertEqual((dest / 'COMMIT').read_text(), 'existing COMMIT')
+                    return (1 if program.name == 'bitcoin-cli' and cli == 'broken' else 0, '', '')
+                with patch.object(self.console, '_fetch_release_archive', return_value=src), \
+                        patch.object(self.console, 'ask_node_program', side_effect=probe) as ask:
+                    self.assertEqual(self.console.try_prebuilt(vibes.Job('setup')), cli == 'working')
+                self.assertEqual(ask.call_count, 1 if cli == 'missing' else 2)
+                for name in ('bitcoind', 'bitcoin-cli', 'COMMIT'):
+                    if cli != 'working':
+                        self.assertEqual((dest / name).read_text(), 'existing ' + name)
+                if cli == 'working':
+                    self.assertEqual((dest / 'COMMIT').read_text().strip(), head)
+                self.served.mkdir(exist_ok=True)
+
     def publish(self, commit=None, digest=None, tamper=False):
         import hashlib
         import tarfile
@@ -1328,6 +1357,32 @@ class ReadyMadeTests(ConsoleCase):
         self.fake_node(self.repo / 'knots/bin')
         self.assertTrue(callable(self.console.external_runner(str(self.repo / 'knots/bin/bitcoind'))))
 
+
+class SetupTests(ConsoleCase):
+    def test_ready_node_does_not_install_compiler_dependencies(self):
+        with patch.object(self.console, 'try_prebuilt', return_value=True), \
+                patch.object(self.console, '_adopt_installed_reference'), \
+                patch.object(self.console, '_bootstrap_release'), \
+                patch.object(self.console, 'start_node', return_value=True), \
+                patch.object(self.console, 'install_deps') as deps, \
+                patch.object(self.console, '_build') as build:
+            self.console.start_job('setup', runner=self.console.setup_runner())
+            job = self.wait()
+        self.assertEqual(job.state, 'done')
+        deps.assert_not_called()
+        build.assert_not_called()
+        self.assertTrue(any(e.get('t') == 'result' and 'running' in e.get('detail', '') for e in job.events))
+
+    def test_failed_start_does_not_report_built_and_running(self):
+        with patch.object(self.console, 'try_prebuilt', return_value=False), \
+                patch.object(self.console, 'missing_deps', return_value=[]), \
+                patch.object(self.console, '_build', return_value=True), \
+                patch.object(self.console, 'start_node', return_value=False):
+            self.console.start_job('setup', runner=self.console.setup_runner())
+            job = self.wait()
+        self.assertEqual(job.state, 'error')
+        self.assertIn('did not start', job.meta['error'])
+        self.assertFalse(any(e.get('t') == 'result' for e in job.events))
 
 class SettingsTests(ConsoleCase):
     def test_hand_written_integer_prefixes_match_core(self):
@@ -1604,6 +1659,36 @@ class HealthTests(unittest.TestCase):
 
 
 class SandboxProfileTests(ConsoleCase):
+    def test_staged_program_probe_can_read_only_its_download_folder(self):
+        # Release archives are unpacked outside the repository, in a hidden
+        # temporary folder. Exercise the actual wrapper while mocking only
+        # process execution, so no host Bitcoin program is run.
+        with tempfile.TemporaryDirectory(prefix='vibes-download-profile-') as temporary:
+            folder = Path(temporary) / 'x/vibes-node-test'
+            folder.mkdir(parents=True)
+            program = folder / 'bitcoin-cli'
+            program.write_text('not executed')
+            sandbox = self.console.sandbox
+            for kind in ('seatbelt', 'bwrap'):
+                with self.subTest(kind=kind), patch.object(sandbox, 'kind', kind), \
+                        patch.object(sandbox, '_hidden_roots', return_value=[os.path.realpath(temporary)]), \
+                        patch.object(vibes, 'run', return_value=(0, 'version fixture', '')) as execute:
+                    self.assertEqual(self.console.ask_node_program(program, '-version')[0], 0)
+                argv = execute.call_args.args[0]
+                real_folder = os.path.realpath(folder)
+                if kind == 'seatbelt':
+                    profile = argv[2]
+                    self.assertIn('(subpath "' + real_folder + '")', profile.split('(allow file-read*')[1])
+                    self.assertNotIn(real_folder, profile.split('(allow file-write*')[1])
+                    self.assertIn('(deny network*)', profile)
+                else:
+                    read_bindings = [argv[i + 1] for i, value in enumerate(argv) if value == '--ro-bind']
+                    write_bindings = [argv[i + 1] for i, value in enumerate(argv) if value == '--bind']
+                    self.assertIn(real_folder, read_bindings)
+                    self.assertNotIn(real_folder, write_bindings)
+                    self.assertNotIn(os.path.realpath(temporary), read_bindings)
+                    self.assertIn('--unshare-net', argv)
+
     def test_seatbelt_profile_denies_home_secrets_writes_and_network(self):
         sandbox = self.console.sandbox
         work = self.repo / '.vibes/tmp/x'
@@ -1721,16 +1806,32 @@ class HttpTests(ConsoleCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.get('/api/experiment?id=../../key')
 
-    def test_key_leaves_the_address_bar(self):
-        class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, *args, **kwargs):
-                return None
-        opener = urllib.request.build_opener(NoRedirect)
-        with self.assertRaises(urllib.error.HTTPError) as err:
-            opener.open(self.url + '/?key=' + self.console.key)
-        self.assertEqual(err.exception.code, 303)
-        self.assertEqual(err.exception.headers['Location'], '/')
-        self.assertIn('HttpOnly', err.exception.headers['Set-Cookie'])
+    def test_key_entry_commits_a_same_origin_document_before_strict_cookie_navigation(self):
+        import http.cookiejar
+        jar = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+        page = opener.open(self.url + '/?key=' + self.console.key)
+        self.assertEqual(page.status, 200)
+        body = page.read()
+        self.assertIn(b'<script defer src="/web/session.js">', body)
+        self.assertNotIn(self.console.key.encode(), body)
+        self.assertIn('HttpOnly', page.headers['Set-Cookie'])
+        self.assertIn('SameSite=Strict', page.headers['Set-Cookie'])
+        self.assertEqual(page.headers['Referrer-Policy'], 'no-referrer')
+        self.assertNotIn('Location', page.headers)
+        self.assertEqual(len(jar), 1)
+        with opener.open(self.url + '/') as console:
+            self.assertIn(b'id="wish"', console.read())
+        script = self.get('/web/session.js', False).read()
+        self.assertIn(b"location.replace('/' + window.location.hash)", script)
+        self.assertNotIn(self.console.key.encode(), script)
+        self.assertEqual(self.get('/web/entry.css', False).status, 200)
+        # Entry assets reveal no private app or API without the cookie.
+        for path in ('/', '/?key=wrong', '/api/status', '/web/app.js'):
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                self.get(path, False)
+            self.assertEqual(err.exception.code, 403)
+            self.assertNotIn('Set-Cookie', err.exception.headers)
 
     def test_updated_console_blocks_mutation_until_process_restart(self):
         self.console.console_restart_required = True
@@ -1761,6 +1862,13 @@ class HttpTests(ConsoleCase):
         # Serving the page again is a browser reload, not a process restart.
         self.get('/').read()
         self.assertTrue(json.load(self.get('/api/status'))['console_restart_required'])
+
+    def test_failed_node_start_is_an_error_job(self):
+        with patch.object(self.console, 'start_node', return_value=False):
+            self.post('/api/node', {'action': 'start'})
+            job = self.wait()
+        self.assertEqual(job.state, 'error')
+        self.assertIn('did not start', job.meta['error'])
 
     def test_external_lab_update_blocks_http_before_a_status_poll(self):
         self.commit_cached_lab_change()

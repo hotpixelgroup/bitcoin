@@ -11,11 +11,13 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # -u keeps progress visible when the output is piped or redirected to a log.
 for py in python3 python; do
-  if command -v "$py" >/dev/null 2>&1; then
+  if command -v "$py" >/dev/null 2>&1 \
+      && "$py" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
     exec "$py" -u "$here/contrib/vibes/bitcoin-vibes" "$@"
   fi
 done
 
-echo "Bitcoin Vibes needs Python 3 (it ships with macOS and every Linux)." >&2
-echo "Install it, then run this again." >&2
+echo "Bitcoin Vibes needs working Python 3.8 or later." >&2
+echo "On macOS, run xcode-select --install, or install Python with Homebrew.
+On Linux, install python3 with your package manager, then run this again." >&2
 exit 1

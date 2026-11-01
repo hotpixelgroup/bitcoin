@@ -304,6 +304,14 @@ jobs:
             python3 contrib/vibes/tests/verify_release.py --dmg out/BitcoinVibes.dmg --tag "$TAG" --commit "$SHA"
           fi
 
+      # The tag exists before this run; the launcher fetches it normally.
+      # Programs come from the candidate archives, so publication is blocked
+      # if automatic first-run setup fails. No extra files enter out/.
+      - name: Verify full installer and cold shipped-app first launch
+        run: |
+          python3 contrib/vibes/tests/verify_release.py --first-launch-assets out --platform '${{ matrix.slug }}' \
+            --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$(git rev-parse HEAD)"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ matrix.slug }}
@@ -414,7 +422,10 @@ jobs:
 
           ## Changes
 
-          - Corrected the lessons, prediction scoring, saved learning records, node settings and exact browser-demo replays audited in PR #13.
+          - Made the console's humour consistent while keeping observations, errors and recovery instructions precise.
+          - Fixed first launch: prepared programs are tried before compiler dependencies, command-line-tool stubs are detected, and Mac source downloads proceed without a blocking dialog. Failed downloads can be retried without replacing existing files.
+          - Added release checks for the full noninteractive installer and real shipped app entry through automatic setup, strict-cookie authentication, HTML/assets, the first lesson, all three variants and relaunch persistence. The workflow exercises candidates before publication and public downloads afterward on fresh runners. Browser opening is suppressed; Finder/Gatekeeper permission prompts are not automated.
+          - Retains the lesson, scoring, saved learning, settings and exact demo improvements from [PR #13](https://github.com/hotpixelgroup/bitcoin/pull/13), and the layout and packaging fixes from [PR #14](https://github.com/hotpixelgroup/bitcoin/pull/14).
           - Improved the learning flow, mobile layout, long-text wrapping, and radio-button and checkbox alignment.
           - Preserved build provenance through installer updates and made source updates explicitly require reopening the console.
           - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^v//;s/-/./')\`. Downloading a new launcher preserves an existing lab: use **Setup & help → Check for and take updates**, then close and reopen Bitcoin Vibes to load the new source. Saved experiments are replayed by the console update action.
@@ -472,7 +483,7 @@ jobs:
           ref: ${{ env.TAG }}
       # A fresh runner, with no build/dependency installation. This uses the
       # actual public URLs and the release's pinned installer, never mock nodes.
-      - name: Verify public installer, programs, variants and private-chain startup
+      - name: Verify public full installer and cold shipped-app first launch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -53,6 +53,26 @@ class StaticChecks(unittest.TestCase):
         self.assertEqual(text.count('| bash'), 2)       # the printed command, and the guarded run
         self.assertIn('read -r reply < /dev/tty', text)
 
+    def test_shell_entry_uses_working_python_after_a_broken_stub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry = root / 'vibes'
+            entry.write_text((REPO_ROOT / 'vibes').read_text())
+            for name in ('python3', 'python'):
+                path = root / name
+                path.write_text('#!/bin/sh\n' + ('exit 69\n' if name == 'python3' else
+                    'if [ "$1" = "-c" ]; then exit 0; fi\nprintf "%s\\n" "$@" > "$ENTRY_LOG"\n'))
+                path.chmod(0o755)
+            log = root / 'entry.log'
+            env = {**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'], 'ENTRY_LOG': str(log)}
+            done = subprocess.run(['sh', entry, '--no-open'], capture_output=True, text=True, env=env)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(log.read_text().splitlines(), ['-u', str(root / 'contrib/vibes/bitcoin-vibes'), '--no-open'])
+            (root / 'python').write_text('#!/bin/sh\nexit 69\n')
+            done = subprocess.run(['sh', entry], capture_output=True, text=True, env=env)
+            self.assertNotEqual(done.returncode, 0)
+            self.assertIn('xcode-select --install', done.stderr)
+
     def test_dry_run_creates_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / 'never'
@@ -142,6 +162,30 @@ class UpdateTests(unittest.TestCase):
         self.install(VIBES_REF='v1.0-1')
         self.assertEqual(git(dest, 'rev-parse', '--abbrev-ref', 'HEAD'), 'vibes')
         self.assertEqual(git(dest, 'describe', '--tags', '--exact-match', 'HEAD'), 'v1.0-1')
+
+
+    def test_initial_download_failure_is_retryable_and_preserves_unrelated_files(self):
+        retry = Path(self.tmp.name) / 'retry'
+        env = {**os.environ, **GIT_ENV, 'VIBES_INSTALL_ONLY': 'fetch', 'VIBES_REF': 'master',
+               'VIBES_DIR': str(retry), 'VIBES_REPO': 'file://' + str(self.origin) + '-missing'}
+        done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True, env=env)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(retry.exists())
+        self.assertFalse(list(retry.parent.glob('retry.download.*')))
+        self.assertIn('re-run this installer to retry', done.stderr)
+        env['VIBES_REPO'] = 'file://' + str(self.origin)
+        done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True, env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue((retry / '.git').is_dir())
+        other = Path(self.tmp.name) / 'other'
+        other.mkdir()
+        (other / 'keep').write_text('my work')
+        env['VIBES_DIR'] = str(other)
+        done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True, env=env)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual((other / 'keep').read_text(), 'my work')
+        self.assertIn('Keep it safe', done.stderr)
+
 
 
 class PrebuiltTests(unittest.TestCase):
@@ -235,6 +279,77 @@ class PrebuiltTests(unittest.TestCase):
         code, out = self.run_installer()
         self.assertNotEqual(code, 0)
         self.assertFalse((Path(self.tmp.name) / 'outside').exists())
+
+
+class ColdInstallerTests(unittest.TestCase):
+    """Run the whole installer with a prepared program and no compiler tools."""
+    def setUp(self):
+        PrebuiltTests.setUp(self)
+        self.addCleanup(self.tmp.cleanup)
+        self.tools = Path(self.tmp.name) / 'tools'
+        self.tools.mkdir()
+        self.calls = Path(self.tmp.name) / 'unexpected-installs'
+        for name in ('apt-get', 'dnf', 'pacman', 'zypper', 'brew', 'cmake', 'claude'):
+            path = self.tools / name
+            path.write_text('#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$PACKAGE_LOG"\nexit 87\n')
+            path.chmod(0o755)
+
+    publish = PrebuiltTests.publish
+    run_installer = PrebuiltTests.run_installer
+
+    def test_full_noninteractive_install_uses_prepared_program_without_compiler_or_ai_install(self):
+        self.publish()
+        done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True,
+            env={**os.environ, **GIT_ENV, 'PATH': str(self.tools) + os.pathsep + os.environ['PATH'],
+                 'VIBES_DIR': str(self.dest), 'VIBES_PREBUILT_URL': 'file://' + str(self.served),
+                 'VIBES_NONINTERACTIVE': '1', 'PACKAGE_LOG': str(self.calls), 'NO_COLOR': '1'})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn('using a prebuilt node', done.stdout)
+        self.assertNotIn('Checking build dependencies', done.stdout)
+        if self.calls.exists():
+            self.assertTrue(all('claude auth status' in line for line in self.calls.read_text().splitlines()), self.calls.read_text())
+        self.assertIn('Ready-made lessons need no AI', done.stdout)
+
+    def test_broken_git_stub_is_detected_before_fetch_or_package_install(self):
+        stub = self.tools / 'git'
+        stub.write_text('#!/bin/sh\nexit 69\n')
+        stub.chmod(0o755)
+        # macOS exposes stubs that exist but fail when command-line tools are
+        # absent. Simulate that OS on Linux as well, without touching tools.
+        uname = self.tools / 'uname'
+        uname.write_text('#!/bin/sh\nprintf Darwin\n')
+        uname.chmod(0o755)
+        done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True,
+            env={**os.environ, 'PATH': str(self.tools) + os.pathsep + os.environ['PATH'],
+                 'VIBES_DIR': str(self.dest), 'VIBES_NONINTERACTIVE': '1', 'PACKAGE_LOG': str(self.calls)})
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn('Working git and Python', done.stderr)
+        self.assertIn('xcode-select --install', done.stderr)
+        self.assertFalse(self.calls.exists())
+        self.assertEqual((self.dest / 'file.txt').read_text(), 'source\n')
+
+    def test_unrunnable_prepared_cli_preserves_the_existing_build(self):
+        self.publish()
+        folder = f'vibes-node-{self.slug}'
+        stage = Path(self.tmp.name) / 'stage' / folder
+        (stage / 'bitcoin-cli').write_text('#!/bin/sh\nexit 1\n')
+        archive = self.served / (folder + '.tar.gz')
+        with tarfile.open(archive, 'w:gz') as target:
+            for path in stage.iterdir():
+                target.add(path, arcname=folder + '/' + path.name)
+        (self.served / (archive.name + '.sha256')).write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + '  ' + archive.name + '\n')
+        (self.dest / '.git/info/exclude').write_text('build/\n')
+        binary = self.dest / 'build/bin'
+        binary.mkdir(parents=True)
+        (binary / 'bitcoind').write_text('existing node')
+        (binary / 'bitcoin-cli').write_text('existing cli')
+        (binary / 'keep-other-build-file').write_text('keep')
+        code, out = self.run_installer()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn('node or CLI would not run', out)
+        self.assertEqual((binary / 'bitcoind').read_text(), 'existing node')
+        self.assertEqual((binary / 'bitcoin-cli').read_text(), 'existing cli')
+        self.assertEqual((binary / 'keep-other-build-file').read_text(), 'keep')
 
 
 if __name__ == '__main__':
