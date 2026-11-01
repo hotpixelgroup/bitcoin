@@ -1,5 +1,8 @@
 # Experiment lab QA: 12 October 2026
 
+Historical verification record. The full product audit and current results
+are in [the 31 October release audit](../../doc/vibes-release-audit.md).
+
 What was checked for the two-node lab, on one machine (macOS, Apple silicon
 toolchain as installed, the macOS sandbox). Read the last section first: it
 lists what was not checked.

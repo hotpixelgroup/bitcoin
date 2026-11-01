@@ -13,9 +13,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /vibes
 COPY . .
+# C++ compiler processes can each use over a gigabyte. Docker's CPU limit
+# often exceeds the memory available to its VM; make concurrency explicit.
+ARG BUILD_JOBS=2
 RUN cmake -B build -G Ninja \
         -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
-    && cmake --build build -j "$(nproc)"
+    && cmake --build build -j "${BUILD_JOBS}" \
+    && mkdir /tmp/node-programs \
+    && cp build/bin/bitcoind build/bin/bitcoin-cli /tmp/node-programs/ \
+    && rm -rf build \
+    && mkdir -p build/bin \
+    && cp /tmp/node-programs/* build/bin/
+
+# Only the programs can be moved to the working volume. CMake's cache and
+# Ninja's rules contain absolute /vibes paths, so shipping that build tree
+# makes the first experiment fail when it configures in /home/vibes/work.
 
 # The runtime keeps the full toolchain: this node rewrites and rebuilds itself,
 # so a slim runtime image would defeat the entire point.

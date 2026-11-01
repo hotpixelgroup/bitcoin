@@ -14,7 +14,7 @@
 # again.
 set -eu
 
-IMAGE=/opt/vibes-image
+IMAGE="${VIBES_IMAGE:-/opt/vibes-image}"
 WORK="${VIBES_WORK:-$HOME/work}"
 
 if [ ! -d "$WORK/.git" ]; then
@@ -24,6 +24,10 @@ if [ ! -d "$WORK/.git" ]; then
   git -C "$WORK" add -A
   git -C "$WORK" -c user.name="Bitcoin Vibes" -c user.email="vibes@localhost" \
       commit -q -m "Bitcoin Vibes: the unmodified source shipped in this image"
+  # The image has no .git directory. Its first commit identifies the source
+  # the shipped programs were built from, allowing the console to use that
+  # stock node as its reference without a second full compilation.
+  git -C "$WORK" rev-parse HEAD > "$WORK/build/bin/COMMIT"
 fi
 
 cd "$WORK"

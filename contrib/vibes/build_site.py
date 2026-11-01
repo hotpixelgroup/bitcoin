@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--out', required=True)
 args = parser.parse_args()
 out = Path(args.out).resolve()
-if out == root or root.is_relative_to(out):
+if out == root or root.is_relative_to(out) or out.is_relative_to(root):
     parser.error('Output must be a separate directory')
 out.mkdir(parents=True, exist_ok=True)
 shutil.copy2(root / 'site/index.html', out / 'index.html')
