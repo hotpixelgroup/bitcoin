@@ -1,6 +1,6 @@
 window.VibesLessons = {
  "prediction": {
-  "question": "Before you run it: what will an unmodified node do with this change?",
+  "question": "What do you expect the comparison to show?",
   "options": [
    {
     "id": "none",
@@ -12,15 +12,15 @@ window.VibesLessons = {
    },
    {
     "id": "loosened",
-    "text": "The unmodified node will refuse some blocks my node accepts."
+    "text": "Only the unmodified node will reject some of the other node's test blocks."
    },
    {
     "id": "tightened",
-    "text": "My node will refuse some blocks the unmodified node accepts."
+    "text": "Only my node will reject some of the other node's test blocks."
    },
    {
     "id": "split",
-    "text": "Block disagreements in both directions."
+    "text": "Both nodes will reject some of the other node's test blocks."
    },
    {
     "id": "unsure",
@@ -356,7 +356,7 @@ window.VibesLessons = {
     "answer": "run",
     "why": "Bitcoin Core has no automatic update, and a block that breaks a node's rules is refused however much mining power produced it. A rule changes only where people choose to run the changed software."
    },
-   "question": "Before you run it: what will an unmodified node do with this change?",
+   "question": "What do you expect the comparison to show?",
    "options": [
     {
      "id": "none",
@@ -368,15 +368,15 @@ window.VibesLessons = {
     },
     {
      "id": "loosened",
-     "text": "The unmodified node will refuse some blocks my node accepts."
+     "text": "Only the unmodified node will reject some of the other node's test blocks."
     },
     {
      "id": "tightened",
-     "text": "My node will refuse some blocks the unmodified node accepts."
+     "text": "Only my node will reject some of the other node's test blocks."
     },
     {
      "id": "split",
-     "text": "Block disagreements in both directions."
+     "text": "Both nodes will reject some of the other node's test blocks."
     },
     {
      "id": "unsure",
@@ -423,7 +423,7 @@ window.VibesLessons = {
     "answer": "stall",
     "why": "The nodes reject any chain containing a block that violates their rule. Their accepted branch can keep growing if miners produce compatible blocks."
    },
-   "question": "Before you run it: what will an unmodified node do with this change?",
+   "question": "What do you expect the comparison to show?",
    "options": [
     {
      "id": "none",
@@ -435,15 +435,15 @@ window.VibesLessons = {
     },
     {
      "id": "loosened",
-     "text": "The unmodified node will refuse some blocks my node accepts."
+     "text": "Only the unmodified node will reject some of the other node's test blocks."
     },
     {
      "id": "tightened",
-     "text": "My node will refuse some blocks the unmodified node accepts."
+     "text": "Only my node will reject some of the other node's test blocks."
     },
     {
      "id": "split",
-     "text": "Block disagreements in both directions."
+     "text": "Both nodes will reject some of the other node's test blocks."
     },
     {
      "id": "unsure",
@@ -480,7 +480,7 @@ window.VibesLessons = {
      },
      {
       "id": "limited",
-      "text": "Only that no block in that month exercised a rule it changed."
+      "text": "It accepted that month's blocks. Untested differences may still exist."
      },
      {
       "id": "nothing",
@@ -488,9 +488,9 @@ window.VibesLessons = {
      }
     ],
     "answer": "limited",
-    "why": "A node disagrees only when a block arrives that its changed rule treats differently. Agreement so far says the difference has not been exercised yet."
+    "why": "Agreement on that history shows that those blocks passed its checks. It does not establish that the two versions would accept every possible block."
    },
-   "question": "Before you run it: what will an unmodified node do with this change?",
+   "question": "What do you expect the comparison to show?",
    "options": [
     {
      "id": "none",
@@ -502,15 +502,15 @@ window.VibesLessons = {
     },
     {
      "id": "loosened",
-     "text": "The unmodified node will refuse some blocks my node accepts."
+     "text": "Only the unmodified node will reject some of the other node's test blocks."
     },
     {
      "id": "tightened",
-     "text": "My node will refuse some blocks the unmodified node accepts."
+     "text": "Only my node will reject some of the other node's test blocks."
     },
     {
      "id": "split",
-     "text": "Block disagreements in both directions."
+     "text": "Both nodes will reject some of the other node's test blocks."
     },
     {
      "id": "unsure",
@@ -551,11 +551,11 @@ window.VibesLessons = {
      },
      {
       "id": "reorder",
-      "text": "Leave out transactions, and undo its own recent payments."
+      "text": "Try to exclude transactions or replace its own recent payments with conflicting spends."
      }
     ],
     "answer": "reorder",
-    "why": "Majority mining power controls which valid blocks get built. It gives no power to make an invalid block valid, so it cannot forge coins or signatures."
+    "why": "A majority miner can attempt censorship and reorganisations using valid blocks. It still cannot make an invalid block pass another node's checks. More hash power is not a permission slip to change another node's rules."
    },
    "variant": "double-reward",
    "question": "The rule-breaking branch has more accumulated proof of work. Which chain does the unmodified node follow?",
