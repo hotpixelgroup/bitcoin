@@ -58,12 +58,18 @@
   <a href="#setup">Help</a>
 </nav>
 
+<div id="console-restart-notice" class="notice" role="alert" hidden>
+  <b>Restart Bitcoin Vibes to load the updated lab and lessons.</b>
+  Close and reopen the app, or stop <code>./vibes</code> and run it again.
+  Reloading this browser page is not enough. Your saved experiments and learning record are kept.
+</div>
 
 
 <div class="intro">
   <div class="eyebrow">ONE NODE ALONE PROVES NOTHING</div>
   <h1>Learn Bitcoin by changing one node.</h1>
   <p id="intro-copy">Explore coins, fees, mining and the rules that nodes check. Start with a ready-made experiment; no AI account is needed.</p>
+  <div class="journey-line intro-action"><button id="start-learning" class="primary">Start with coins and keys</button><span id="journey-progress" class="subtle" role="status">Ten experiments to explore</span></div>
   <ol class="learning-steps" aria-label="How the lab works">
     <li><span aria-hidden="true">1</span><div><b>Make a prediction</b><small>Choose an experiment and say what you expect.</small></div></li>
     <li><span aria-hidden="true">2</span><div><b>Inspect the evidence</b><small>Compare what the two nodes accepted or refused.</small></div></li>
@@ -79,7 +85,6 @@
     <span class="subtle">No AI needed</span>
   </div>
   <p id="curated-intro" class="subtle">These controlled experiments use two nodes on a throwaway private chain. New here? Start with coins and keys, then work through the groups in order.</p>
-  <div class="journey-line"><button id="start-learning" class="primary">Start with coins and keys</button><span id="journey-progress" class="subtle" role="status">Ten experiments to explore</span></div>
   <div id="curated-grid"></div>
   <p id="learning-summary" class="subtle"></p>
 </section>
@@ -334,7 +339,7 @@
 
   <details>
     <summary>Compare with another node program</summary>
-    <p>Run the unmodified node beside any other node program on this machine: another release, Bitcoin Knots, or a build of a proposed change. The lab gives both the same blocks and transactions and reports what each did. The program runs inside the sandbox, on a throwaway private chain. The lab never downloads one for you: get it from a source you trust and check its signature first.</p>
+    <p>Run the unmodified node beside any other node program on this machine: another release, Bitcoin Knots, or a build of a proposed change. The lab gives both the same blocks and transactions and reports what each did. The program runs on a throwaway private chain, using the operating-system sandbox when one is available. The lab never downloads one for you: get it from a source you trust and check its signature first.</p>
     <label for="external-path">Full path to its <code>bitcoind</code></label>
     <input id="external-path" type="text" placeholder="/Users/you/bitcoin-knots/bin/bitcoind">
     <button id="external-run">Compare</button>
@@ -363,7 +368,7 @@
   </details>
   <details>
     <summary>What do the checks prove?</summary>
-    <p>Compiled: the change builds. Unit tests: which of Bitcoin Core's own tests still pass; when a change alters a rule on purpose, the tests that pin that rule fail, and their names tell you what changed. Comparison: what an unmodified node did with this build's blocks and transactions, and the reverse. The comparison covers block rewards, one reward halving, two kinds of transaction and block exchange in both directions. A change to something it never exercises will show no difference. None of this proves a change is safe on a real network.</p>
+    <p>Compiled: the change builds. Unit tests: which of Bitcoin Core's own tests still pass. A deliberate rule change may make stock tests fail; a passing suite covers only the cases it exercises. Comparison: what an unmodified node did with this build's blocks and transactions, and the reverse. The comparison covers block rewards, one reward halving, two kinds of transaction and block exchange in both directions. A difference outside the tested cases may not appear. None of this proves a change is safe on a real network.</p>
   </details>
   <details>
     <summary>What if an experiment fails?</summary>

@@ -68,6 +68,13 @@ class ConsoleCase(unittest.TestCase):
         return subprocess.check_output(['git', '-C', str(self.repo), *args],
                                        stderr=subprocess.STDOUT).decode().strip()
 
+    def commit_cached_lab_change(self, relative='contrib/vibes/web/app.js'):
+        path = self.repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('updated lab fixture\n')
+        self.git('add', relative)
+        self.git('commit', '-m', 'Update lab fixture externally')
+
     def wait(self):
         job = self.console.job
         thread = getattr(job, 'thread', None)
@@ -111,6 +118,36 @@ class ConsoleCase(unittest.TestCase):
 
 
 class WorkflowTests(ConsoleCase):
+    def test_external_lab_asset_update_requires_restart_and_new_console_clears_it(self):
+        self.commit_cached_lab_change()
+        self.assertTrue(self.console.status()['console_restart_required'])
+        with self.assertRaisesRegex(RuntimeError, 'Close and reopen Bitcoin Vibes'):
+            self.console.start_job('build', runner=lambda job: None)
+        restarted = vibes.Console(self.opts)
+        self.assertFalse(restarted.status()['console_restart_required'])
+
+    def test_job_start_detects_external_backend_update_before_the_next_status_poll(self):
+        self.commit_cached_lab_change('contrib/vibes/lab_runner.py')
+        self.assertFalse(self.console.console_restart_required)
+        with self.assertRaisesRegex(RuntimeError, 'Reloading the browser page is not enough'):
+            self.console.start_job('scene', runner=lambda job: None)
+        self.assertTrue(self.console.console_restart_required)
+
+    def test_node_and_document_experiment_commits_do_not_require_a_lab_restart(self):
+        (self.repo / 'doc/vibes.md').write_text('# Changed lesson notes\n')
+        (self.repo / 'src').mkdir()
+        (self.repo / 'src/example.cpp').write_text('// experimental node change\n')
+        self.git('add', 'doc/vibes.md', 'src/example.cpp')
+        self.git('commit', '-m', 'vibe: change node and notes')
+        self.assertFalse(self.console.status()['console_restart_required'])
+        with patch.object(self.console, 'git', wraps=self.console.git) as commands:
+            self.assertFalse(self.console._check_console_revision())
+            self.assertFalse(self.console._check_console_revision())
+        self.assertFalse(any(call.args[0] == 'diff' for call in commands.call_args_list),
+                         'a checked HEAD must not repeat the lab tree comparison')
+        self.console.start_job('build', runner=lambda job: None)
+        self.assertEqual(self.wait().state, 'done')
+
     def test_review_apply_share_and_revert(self):
         before = self.git('rev-parse', 'HEAD')
         job = self.propose()
@@ -1099,6 +1136,39 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(job.state, 'done', job.meta.get('error'))
         self.assertTrue((self.repo / 'second.txt').exists())
         self.assertFalse(console.upstream_status(fetch=True)['available'])
+        self.assertTrue(console.console_restart_required)
+        self.assertTrue(console.status()['console_restart_required'])
+        self.assertTrue(any('Close and reopen Bitcoin Vibes' in event.get('detail', '')
+                            for event in job.events))
+        self.assertFalse(vibes.Console(console.opts).console_restart_required)
+
+    def test_already_current_does_not_require_a_console_restart(self):
+        console = self.install('master')
+        job = self.run_update(console)
+        self.assertEqual(job.state, 'done', job.meta.get('error'))
+        self.assertFalse(console.console_restart_required)
+
+    def test_failed_build_keeps_the_saved_update_and_requires_a_console_restart(self):
+        console = self.install('master')
+        self.upstream_commit('second')
+        seen = []
+
+        def fail_build(job):
+            seen.append(console.console_restart_required)
+            raise RuntimeError('compiler fixture failed')
+        with patch.object(console, '_build', fail_build):
+            console.start_job('update', runner=console.update_runner(autobuild=True, autorestart=False))
+            console.job.thread.join(30)
+        job = console.job
+        self.assertEqual(job.state, 'error')
+        self.assertEqual(seen, [True], 'restart state must be set before the build')
+        self.assertTrue((self.repo / 'second.txt').exists())
+        self.assertTrue(console.status()['console_restart_required'])
+        self.assertIn('source update is saved', job.meta['error'])
+        self.assertIn('Close and reopen Bitcoin Vibes', job.meta['error'])
+        self.assertIn('Reloading the browser page is not enough', job.meta['error'])
+        with self.assertRaisesRegex(RuntimeError, 'Close and reopen Bitcoin Vibes'):
+            console.start_job('build', runner=lambda job: None)
 
     def test_saved_experiments_are_replayed_on_top(self):
         console = self.install('master')
@@ -1112,6 +1182,7 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue((self.repo / 'mine.txt').exists())
         self.assertEqual(self.rg('log', '-1', '--format=%s'), 'vibe: my experiment')
         self.assertEqual(self.rg('log', '-1', '--format=%s', console.stock_rev()), 'second')
+        self.assertTrue(console.console_restart_required)
 
     def test_conflict_leaves_everything_as_it_was(self):
         console = self.install('master')
@@ -1123,6 +1194,7 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(job.state, 'error')
         self.assertEqual(self.rg('rev-parse', 'HEAD'), before)
         self.assertEqual(self.rg('status', '--porcelain'), '')
+        self.assertFalse(console.console_restart_required)
 
     def test_release_install_updates_to_the_newest_release_tag(self):
         self.og('tag', 'v31.99-7')
@@ -1637,6 +1709,7 @@ class HttpTests(ConsoleCase):
             self.assertIn(key, status)
         self.assertEqual(status['upstream']['commit'][:10], '6b059d9dbd')
         self.assertFalse(status['node']['wallet'])
+        self.assertFalse(status['console_restart_required'])
         catalogue = json.load(self.get('/api/lessons'))
         self.assertEqual(len(catalogue['curated']), len(lessons.CURATED))
         for value in ({'prompt': 123}, {'prompt': ''}, {'prompt': 'a' * 20001}, []):
@@ -1658,6 +1731,47 @@ class HttpTests(ConsoleCase):
         self.assertEqual(err.exception.code, 303)
         self.assertEqual(err.exception.headers['Location'], '/')
         self.assertIn('HttpOnly', err.exception.headers['Set-Cookie'])
+
+    def test_updated_console_blocks_mutation_until_process_restart(self):
+        self.console.console_restart_required = True
+        self.assertTrue(json.load(self.get('/api/status'))['console_restart_required'])
+
+        for path, payload in (('/api/build', {}), ('/api/vibe', {'prompt': 'request'}),
+                              ('/api/curated', {'id': 'keys'}), ('/api/update', {}),
+                              ('/api/apply', {'id': '1-abcdef'}), ('/api/settings', {'values': {}}),
+                              ('/api/reset-chain', {}), ('/api/node', {'action': 'start'}),
+                              ('/api/node', {'action': 'restart'}), ('/api/node', {'action': 'mine', 'blocks': 1})):
+            with patch.object(self.console, 'start_job') as start:
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    self.post(path, payload)
+                self.assertEqual(error.exception.code, 409)
+                message = json.load(error.exception)
+                self.assertTrue(message['console_restart_required'])
+                self.assertIn('Close and reopen Bitcoin Vibes', message['error'])
+                start.assert_not_called()
+        self.assertFalse(json.load(self.post('/api/cancel', {}))['cancelled'])
+        with patch.object(self.console, 'check_upstream', return_value={'checked': True}):
+            self.assertTrue(json.load(self.post('/api/check-upstream', {}))['checked'])
+        belief = lessons.BELIEFS[0]
+        json.load(self.post('/api/learning', {'experiment': belief['id'], 'stage': 'before', 'choice': 'unsure'}))
+        with patch.object(self.console, 'stop_node', return_value=True) as stop:
+            self.post('/api/node', {'action': 'stop'})
+            self.assertEqual(self.wait().state, 'done')
+            stop.assert_called_once()
+        # Serving the page again is a browser reload, not a process restart.
+        self.get('/').read()
+        self.assertTrue(json.load(self.get('/api/status'))['console_restart_required'])
+
+    def test_external_lab_update_blocks_http_before_a_status_poll(self):
+        self.commit_cached_lab_change()
+        with patch.object(self.console, 'start_job') as start:
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                self.post('/api/build', {})
+            self.assertEqual(error.exception.code, 409)
+            message = json.load(error.exception)
+            self.assertTrue(message['console_restart_required'])
+            self.assertIn('Close and reopen Bitcoin Vibes', message['error'])
+            start.assert_not_called()
 
     def test_imported_request_is_forced_into_review_by_the_server(self):
         self.post('/api/vibe', {'prompt': 'shared words', 'origin': 'imported', 'review': False,
@@ -1770,12 +1884,25 @@ class HttpTests(ConsoleCase):
         self.assertEqual(record['summary']['before']['answered'], len(lessons.BELIEFS))
 
     def test_malformed_json_cannot_trigger_default_actions(self):
-        for raw in (b'[]', b'{oops', b'null', b''):
+        for raw in (b'[]', b'{oops', b'null', b'', b'{"autobuild":NaN}',
+                    b'{"autobuild":Infinity}', b'{"autobuild":1e999}'):
             request = urllib.request.Request(self.url + '/api/build', data=raw,
                 headers={'X-Vibe-Key': self.console.key, 'Content-Type': 'application/json'})
             with patch.object(self.console, 'start_job') as start:
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     urllib.request.urlopen(request)
+                self.assertEqual(error.exception.code, 400)
+                start.assert_not_called()
+
+    def test_numeric_actions_never_round_or_coerce_inputs(self):
+        cases = [('/api/curated', {'id': 'power', 'share': value})
+                 for value in (10.5, '30', True, 64, None, [], {})]
+        cases += [('/api/node', {'action': 'mine', 'blocks': value})
+                  for value in (1.5, '10', True, 0, 151, None, [], {})]
+        for path, body in cases:
+            with self.subTest(path=path, body=body), patch.object(self.console, 'start_job') as start:
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    self.post(path, body)
                 self.assertEqual(error.exception.code, 400)
                 start.assert_not_called()
 

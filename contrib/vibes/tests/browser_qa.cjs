@@ -228,6 +228,10 @@ function token(value) {
         await page.goto(base + path);
         await page.waitForTimeout(300);
         assert.equal(await overflow(), false, `${path} overflows at ${width}px`);
+        if (path === '/demo.html') {
+          const start = await page.locator('#start-learning').boundingBox();
+          assert.ok(start && start.y >= 0 && start.y < 900, `the starting action is visible at ${width}px`);
+        }
         if (width === 390 && path === '/demo.html') await capture('demo-mobile.png');
       }
     }

@@ -69,11 +69,40 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.setViewportSize({width, height: 900});
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `live console overflow at ${width}px`);
     }
+
+    // An updated process cannot run more work with its old imported modules.
+    // Keep a usable node in the response so these checks exercise the restart
+    // guard rather than the fixture's deliberately missing node program.
+    let nodeRunning = true;
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const state = await response.json();
+      await route.fulfill({response, json: {...state, console_restart_required: true, binary: true,
+        node: {...state.node, running: nodeRunning, health: nodeRunning ? 'healthy' : 'stopped'}}});
+    });
+    await page.reload();
+    await page.locator('#console-restart-notice').filter({hasText: 'Restart Bitcoin Vibes'}).waitFor();
+    assert.match(await page.locator('#console-restart-notice').innerText(), /Reloading this browser page is not enough/);
+    await page.locator('#wish').fill('A request prepared for after restart');
+    for (const id of ['manifest', 'start-learning', 'build', 'restart', 'mine', 'mine-101', 'maturity',
+                      'activate', 'update', 'save-settings', 'reference', 'restore', 'reset-chain', 'external-run']) {
+      assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} waits for a new console process`);
+    }
+    assert.equal(await page.locator('[data-curated]:enabled').count(), 0);
+    assert.equal(await page.locator('#node-start').isEnabled(), true, 'an already-running node can still be stopped');
+    assert.equal(await page.locator('.history-top button').first().isEnabled(), true, 'history remains readable');
+    nodeRunning = false;
+    await page.reload();
+    await page.locator('#console-restart-notice').waitFor();
+    assert.equal(await page.locator('#node-start').isDisabled(), true, 'starting a node needs a new console process');
+    await page.unroute('**/api/status');
+    await page.reload();
+    await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
     assert.deepEqual(errors, []);
     fixture.kill('SIGTERM');
     await page.locator('#connection').filter({hasText: 'Offline'}).waitFor({timeout: 15000});
     assert.equal(await page.locator('#manifest').isDisabled(), true);
-    console.log('live console browser checks passed (review, discard, apply, reload, history, mobile, offline)');
+    console.log('live console browser checks passed (review, discard, apply, reload, history, mobile, restart required, offline)');
   } finally {
     if (browser) await browser.close();
     if (fixture.exitCode === null) fixture.kill('SIGTERM');

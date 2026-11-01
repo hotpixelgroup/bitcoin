@@ -6,6 +6,7 @@ directory. No node is started on a shared network and no source is applied.
 The console still checks patch digests and source identity before each run.
 """
 import argparse
+import hashlib
 from http.server import ThreadingHTTPServer
 import importlib.machinery
 import importlib.util
@@ -23,6 +24,24 @@ vibes = importlib.util.module_from_spec(spec)
 loader.exec_module(vibes)
 
 
+def prepare_reference(console, programs):
+    """Replace any auto-adopted build with the known stock program from CI."""
+    if not console.owns_lab:
+        raise RuntimeError('Another console owns this lab; no reference was changed')
+    source = Path(programs) / 'stock' / 'bitcoind'
+    expected = hashlib.sha256(source.read_bytes()).digest()
+    # Console initialization may have adopted build/bin, which CI most recently
+    # rebuilt as a changed variant. Matching metadata must not preserve it.
+    metadata = console.reference_dir / 'reference.json'
+    metadata.unlink(missing_ok=True)
+    if not console._capture_reference(console.stock_rev(), source.parent):
+        raise RuntimeError('The CI stock program could not be captured as the reference')
+    copied = console.reference_dir / 'bitcoind'
+    if not console.reference_state()['ready'] or hashlib.sha256(copied.read_bytes()).digest() != expected:
+        metadata.unlink(missing_ok=True)
+        raise RuntimeError('The CI reference does not match the supplied stock program')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--programs', type=Path, required=True)
@@ -33,7 +52,7 @@ def main():
     repo = args.repo.resolve()
     console = vibes.Console(SimpleNamespace(repo=str(repo), chain='regtest', engine='mock',
                                             claude=None, jobs=2, sandbox=None))
-    console._capture_reference(console.stock_rev(), programs / 'stock')
+    prepare_reference(console, programs)
     for item in vibes.lessons.CURATED:
         if item['kind'] == 'patch':
             console._keep_variant(item, programs / item['id'], 'CI: built from the bundled patch')

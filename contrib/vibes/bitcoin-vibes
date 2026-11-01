@@ -54,6 +54,14 @@ import lab_runner                              # noqa: E402
 from vibeslib import health, lessons           # noqa: E402
 from vibeslib.sandbox import Sandbox           # noqa: E402
 
+CONSOLE_RESTART_NOTE = ("Close and reopen Bitcoin Vibes, or stop and rerun ./vibes, to load the new "
+                        "lab version. Reloading the browser page is not enough.")
+# Only these paths feed modules, runtime copies or assets cached by a running
+# console. Ordinary node/doc experiment commits do not require a lab restart.
+CACHED_LAB_PATHS = ("contrib/vibes/bitcoin-vibes", "contrib/vibes/lab_runner.py",
+                    "contrib/vibes/vibeslib", "contrib/vibes/web",
+                    "contrib/vibes/index.html", "contrib/vibes/experiments")
+
 AGENT_SYSTEM_PROMPT = """\
 You are the coding agent inside Bitcoin Vibes, a fork of Bitcoin Core used as a
 learning lab. An operator describes a change to the node; you implement it as a
@@ -537,9 +545,13 @@ class Console:
         # "that port is MY console for THIS repo" apart from a stranger's socket.
         self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
         self.job = None
+        self.console_restart_required = False
         self.job_lock = threading.Lock()
         self.learning_lock = threading.RLock()
         self.git_mutex = threading.Lock()
+        _, startup_head, _ = self.git("rev-parse", "HEAD")
+        self._console_startup_head = startup_head.strip()
+        self._console_checked_head = self._console_startup_head
         self._engine_cache = None
         self._discovered = None
         self._upstream_cache = None
@@ -688,6 +700,25 @@ class Console:
             return run(["git", "-C", str(self.repo), *GIT_SAFE, *args], timeout=timeout,
                        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
 
+    def _check_console_revision(self, head=None):
+        """Notice committed installer/git updates outside this console too."""
+        if self.console_restart_required:
+            return True
+        if head is None:
+            code, head, _ = self.git("rev-parse", "HEAD")
+            if code:
+                return False
+        head = head.strip()
+        if not head or head == self._console_checked_head or not self._console_startup_head:
+            return False
+        code, _, _ = self.git("diff", "--quiet", *DIFF_AS_TEXT, self._console_startup_head, head,
+                              "--", *CACHED_LAB_PATHS)
+        if code == 1:
+            self.console_restart_required = True
+        if code in (0, 1):
+            self._console_checked_head = head
+        return self.console_restart_required
+
     def bin_path(self, name):
         for rel in (f"build/bin/{name}", f"build/src/{name}"):
             p = self.repo / rel
@@ -791,6 +822,7 @@ class Console:
             _, branch, _ = self.git("rev-parse", "--abbrev-ref", "HEAD")
             _, head, _ = self.git("rev-parse", "HEAD")
             _, dirty, _ = self.git("status", "--porcelain")
+        self._check_console_revision(head)
         info = self.rpc_json("getblockchaininfo")
         net = self.rpc_json("getnetworkinfo") if info else None
         running = info is not None or (self.node_proc is not None and self.node_proc.poll() is None)
@@ -821,6 +853,7 @@ class Console:
                 node["revision"] = self.running_state.get("sha")
                 node["compare"] = self.running_state.get("compare")
         return {"branch": branch.strip(), "source": head.strip(), "dirty": bool(dirty.strip()),
+                "console_restart_required": self.console_restart_required,
                 "chain": self.opts.chain, "chain_note": lessons.NETWORKS[self.opts.chain],
                 "engine": self.opts.engine,
                 "agent": {"model": self.opts.model, "turns": self.opts.agent_turns,
@@ -1438,18 +1471,32 @@ class Console:
                     return
                 job.emit(t="log", line="Your experiments were replayed on top of the new version")
 
+            # Imported Python modules, copied lab code and cached web assets
+            # still belong to the version this process started with. A browser
+            # reload cannot replace them. Set this before any follow-up build,
+            # so a failed or cancelled build cannot hide a successful update.
+            with self.job_lock:
+                self.console_restart_required = True
+            job.meta["console_restart_required"] = True
+            job.emit(t="warn", detail="The source update is saved. " + CONSOLE_RESTART_NOTE)
             self._upstream_cache = None
             self._rev_cache = {}
-            if autobuild:
-                if not self._build(job):
-                    return
-                if autorestart:
-                    self._restart_node(job)
+            try:
+                if autobuild:
+                    if not self._build(job):
+                        job.emit(t="result", detail="The source was updated, but its build did not finish. " +
+                                                    CONSOLE_RESTART_NOTE)
+                        return
+                    if autorestart:
+                        self._restart_node(job)
+            except Exception as error:
+                raise RuntimeError("The source update is saved, but the follow-up build or node start "
+                                   f"failed: {error} " + CONSOLE_RESTART_NOTE) from error
             job.emit(t="result",
                      detail=f"Updated: {n} new commit(s) taken in. " +
                             ("Your experiments now sit on a newer base, so the reference node "
-                             "must be prepared again before they can be compared."
-                             if d and not self.reference_state()["ready"] else ""))
+                             "must be prepared again before they can be compared. "
+                             if d and not self.reference_state()["ready"] else "") + CONSOLE_RESTART_NOTE)
         return go
 
     def vibe_history(self):
@@ -1516,8 +1563,11 @@ class Console:
                               "removed": int(rem) if rem.isdigit() else 0})
         return files
 
-    def start_job(self, kind, prompt="", runner=None, meta=None):
+    def start_job(self, kind, prompt="", runner=None, meta=None, allow_after_update=False):
         with self.job_lock:
+            self._check_console_revision()
+            if self.console_restart_required and not allow_after_update:
+                raise RuntimeError("The lab's files were updated. " + CONSOLE_RESTART_NOTE)
             if self.job and self.job.state in ("running", "cancelling", "review"):
                 return None
             self.job = Job(kind, prompt)
@@ -2611,8 +2661,10 @@ class Console:
         if code:
             job.meta["build_status"] = "failed"
             job.meta["build_errors"] = "\n".join(errors)[-4000:]
-            raise RuntimeError("The change did not compile. Your source and your running node are "
-                               "unchanged. The compiler's output is in the technical activity.")
+            raise RuntimeError(("The updated source did not compile. The update remains saved, and "
+                                "your running node was not replaced. " if job.kind == "update" else
+                                "The change did not compile. Your source and your running node are unchanged. ") +
+                               "The compiler's output is in the technical activity.")
         job.meta["build_status"] = "passed"
 
         job.meta["test_status"] = "running"
@@ -3595,8 +3647,13 @@ class Handler(BaseHTTPRequestHandler):
         if n <= 0 or n > 1_000_000:
             self.close_connection = True
             raise ValueError("Send a JSON object smaller than 1 MB")
+        def finite_number(text):
+            number = float(text)
+            if not math.isfinite(number):
+                raise ValueError("JSON numbers must be finite")
+            return number
         try:
-            value = json.loads(self.rfile.read(n))
+            value = json.loads(self.rfile.read(n), parse_float=finite_number, parse_constant=finite_number)
             if not isinstance(value, dict):
                 raise ValueError("Send a JSON object")
             return value
@@ -3694,6 +3751,13 @@ class Handler(BaseHTTPRequestHandler):
         c = self.console
         try:
             body = self._body()
+            c._check_console_revision()
+            after_update = path in ("/api/cancel", "/api/learning", "/api/check-upstream") or \
+                (path == "/api/node" and body.get("action") == "stop")
+            if c.console_restart_required and not after_update:
+                self._send(409, {"error": "The lab's files were updated. " + CONSOLE_RESTART_NOTE,
+                                 "console_restart_required": True})
+                return
             active = c.job and c.job.state in ("running", "cancelling", "review")
             passive = ("/api/cancel", "/api/apply", "/api/learning", "/api/check-upstream")
             if active and path not in passive:
@@ -3726,9 +3790,11 @@ class Handler(BaseHTTPRequestHandler):
                 if item["kind"] == "scene":
                     share = None
                     if item.get("slider"):
-                        share = int(body.get("share", item["slider"]["value"]))
-                        if not item["slider"]["min"] <= share <= item["slider"]["max"]:
-                            raise ValueError("Choose a share within the slider's range")
+                        slider = item["slider"]
+                        share = body.get("share", slider["value"])
+                        if (type(share) is not int or not slider["min"] <= share <= slider["max"]
+                                or (share - slider["min"]) % slider["step"]):
+                            raise ValueError("Choose a whole-number share on the slider")
                     self._job_reply(c.start_job("scene", item["title"],
                                                 c.scene_runner(item["scene"], item, prediction, share)))
                 elif body.get("compile"):
@@ -3763,6 +3829,9 @@ class Handler(BaseHTTPRequestHandler):
                 # first busy check and this write. Serialize the final check
                 # and merge with start_job and other settings saves.
                 with c.job_lock:
+                    c._check_console_revision()
+                    if c.console_restart_required:
+                        raise RuntimeError("The lab's files were updated. " + CONSOLE_RESTART_NOTE)
                     if c.job and c.job.state in ("running", "cancelling", "review"):
                         raise ValueError("Finish or discard the current experiment before changing settings")
                     problems, clean = c.validate_settings({**c.read_settings(), **values})
@@ -3795,9 +3864,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/node":
                 action = body.get("action")
                 if action == "mine":
-                    blocks = int(body.get("blocks", 1))
-                    if not 1 <= blocks <= 150:
-                        raise ValueError("Choose 1 to 150 blocks")
+                    blocks = body.get("blocks", 1)
+                    if type(blocks) is not int or not 1 <= blocks <= 150:
+                        raise ValueError("Choose a whole number from 1 to 150 blocks")
                     self._job_reply(c.start_job("playground", f"Produce {blocks} blocks on my private chain", c.playground_runner(blocks)))
                 elif action == "restart":
                     self._job_reply(c.start_job("activate", "Restart the checked build", c.activate_runner()))
@@ -3808,7 +3877,8 @@ class Handler(BaseHTTPRequestHandler):
                             c.start_node(job)
                         else:
                             c.stop_node(job)
-                    self._job_reply(c.start_job("node", action.title() + " node", lifecycle))
+                    self._job_reply(c.start_job("node", action.title() + " node", lifecycle,
+                                                allow_after_update=action == "stop"))
                 else:
                     raise ValueError("Unknown node action")
             else:

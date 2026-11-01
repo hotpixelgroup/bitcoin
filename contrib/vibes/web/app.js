@@ -114,7 +114,14 @@ async function api(path, body) {
     : {};
   const response = await fetch(path, {...options, signal: AbortSignal.timeout(30000)});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  if (!response.ok) {
+    if (result.console_restart_required && status) {
+      status.console_restart_required = true;
+      $('console-restart-notice').hidden = false;
+      updateControls();
+    }
+    throw new Error(result.error || `Request failed (${response.status})`);
+  }
   return result;
 }
 
@@ -516,6 +523,7 @@ function renderNode(next) {
   $('activation-block').textContent = next.activation_block || '';
 
   $('blocker').hidden = true;
+  $('console-restart-notice').hidden = demo || !next.console_restart_required;
   const agent = next.agent || {};
   $('agent-note').textContent = next.engine === 'claude'
     ? `The agent is Claude Code using the ${agent.model} model. It can read and edit files in its own copy of the source and do nothing else: no commands, no network. It stops after ${agent.turns} steps or ${agent.minutes} minutes. Your provider bills you for each request; the amount it reports is shown afterwards.`
@@ -543,11 +551,13 @@ function renderUpstream(facts) {
 
 function updateControls() {
   const busy = isBusy();
+  const restartRequired = !demo && !!status?.console_restart_required;
   const online = demo || (lastSuccess && Date.now() - lastSuccess < 15000);
   const engineOk = !!status?.engine_ready?.ok && !demo;
-  $('manifest').disabled = busy || !online || !engineOk || !!status?.dirty || !$('wish').value.trim();
+  $('manifest').disabled = busy || restartRequired || !online || !engineOk || !!status?.dirty || !$('wish').value.trim();
   const composerProblem = demo ? '' : !online ? 'Reconnect to the console before proposing a change.'
-    : status?.dirty ? 'Commit or stash your source edits before proposing a change.'
+    : restartRequired ? 'Restart Bitcoin Vibes to load the updated lab before proposing another change.'
+      : status?.dirty ? 'Commit or stash your source edits before proposing a change.'
       : !engineOk ? 'Custom requests: ' + (status?.engine_ready?.detail || 'The AI engine is unavailable.') +
         (status?.engine_ready?.fix ? ' ' + status.engine_ready.fix : '') : '';
   $('composer-status').hidden = !composerProblem;
@@ -555,9 +565,12 @@ function updateControls() {
   $('manifest').textContent = actionPending ? 'Starting…' : busy ? 'Experiment in progress' : 'Propose a change';
   for (const id of ['node-start', 'build', 'restart', 'mine', 'mine-101', 'maturity', 'activate', 'update',
                     'save-settings', 'reference', 'restore', 'reset-chain', 'external-run']) {
-    $(id).disabled = busy || !online || demo;
+    $(id).disabled = busy || restartRequired || !online || demo;
   }
-  document.querySelectorAll('[data-curated]').forEach(button => { button.disabled = busy || !online || (!demo && !status?.binary); });
+  // Stopping an already-running node remains available while the console
+  // waits for a restart. Starting or rebuilding it would use stale lab code.
+  if (restartRequired && status?.node?.running) $('node-start').disabled = busy || !online;
+  document.querySelectorAll('[data-curated]').forEach(button => { button.disabled = busy || restartRequired || !online || (!demo && !status?.binary); });
   $('node-start').disabled ||= !status?.binary && !status?.node?.running;
   const blocked = !!status?.activation_block;
   $('activate').disabled ||= !status?.build?.verified || blocked;
@@ -572,13 +585,13 @@ function updateControls() {
     ? 'Blocks can be produced on demand only on the private regtest chain.'
     : ready ? 'These blocks exist only on your own node.' : 'Start your node to produce blocks.';
   const current = selected && status?.job?.id === selected.summary.id;
-  $('apply').disabled = actionPending || !online || !current || selected?.summary.state !== 'review' || !!status?.dirty;
+  $('apply').disabled = actionPending || restartRequired || !online || !current || selected?.summary.state !== 'review' || !!status?.dirty;
   $('cancel').disabled = actionPending || !online || selected?.summary.state === 'cancelling';
-  $('retry').disabled = busy || !online;
-  $('repair').disabled = busy || !online || !engineOk;
-  $('start-learning').disabled = busy || !online || (!demo && !status?.binary);
-  $('next-experiment').disabled = busy || !online;
-  document.querySelectorAll('[data-node-action]').forEach(button => { button.disabled = busy || !online || demo; });
+  $('retry').disabled = busy || restartRequired || !online;
+  $('repair').disabled = busy || restartRequired || !online || !engineOk;
+  $('start-learning').disabled = busy || restartRequired || !online || (!demo && !status?.binary);
+  $('next-experiment').disabled = busy || restartRequired || !online;
+  document.querySelectorAll('[data-node-action]').forEach(button => { button.disabled = busy || restartRequired || !online || demo; });
   $('current').setAttribute('aria-busy', String(actionPending || ['running', 'cancelling'].includes(selected?.summary.state)));
 }
 

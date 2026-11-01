@@ -414,6 +414,10 @@ Like Bitcoin Core, this lab never updates by itself.
 **Check for and take updates** contacts origin, takes a newer version if one
 exists, replays your saved experiments on top where it can, and builds the
 result. A conflict stops the update and leaves everything as it was.
+After an update, close and reopen Bitcoin Vibes (or stop `./vibes` and run
+it again) to load the new lab and lessons. Reloading the browser alone does
+not restart the console. The lab blocks new changes until this restart;
+history and node stopping remain available.
 
 **How far behind Bitcoin Core is this?** asks GitHub how many changes Bitcoin
 Core's main line has made since the commit recorded in

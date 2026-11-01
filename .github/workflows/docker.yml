@@ -59,3 +59,14 @@ jobs:
           curl -fsS http://127.0.0.1:21212/api/ping
           run 'git -C "$HOME/work" log --oneline -1'
           run 'test "$VIBES_SANDBOX" = container'
+          run 'test ! -f "$HOME/work/build/CMakeCache.txt"'
+          run 'test "$(cat "$HOME/work/build/bin/COMMIT")" = "$(git -C "$HOME/work" rev-parse HEAD)"'
+          run 'test -x "$HOME/work/.vibes/reference/bitcoind"'
+          run 'echo retained > "$HOME/work/.vibes/qa-persistence"'
+          docker compose -f contrib/vibes/docker-compose.yml restart vibes
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:21212/api/ping >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:21212/api/ping
+          run 'test "$(cat "$HOME/work/.vibes/qa-persistence")" = retained'

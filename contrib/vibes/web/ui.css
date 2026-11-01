@@ -1500,6 +1500,11 @@ dialog form {
   border-bottom: 1px solid var(--line);
 }
 
+.intro-action {
+  border-bottom: 0;
+  padding: 12px 0 4px;
+}
+
 .experiment-group + .experiment-group {
   border-top: 1px solid var(--line);
   margin-top: 24px;
