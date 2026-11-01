@@ -1,84 +1,8 @@
 'use strict';
-// Results recorded from real runs of the lab on 12 October 2026: two real
-// nodes on a throwaway regtest chain. The unit test findings for the three
-// source changes come from compiling each one through the console.
-// Regenerate with contrib/vibes/record_demo.py.
-// Block hashes differ on every run; outcomes and reasons do not.
+// Results recorded from real runs of the lab on 2026-11-01T06:08:14+00:00: two real nodes on
+// a throwaway regtest chain. Regenerate with contrib/vibes/record_demo.py.
+// Each slider position has its own recording; no inputs are rounded.
 window.VibesDemoData = {
- "relay-filter": {
-  "compare": {
-   "rows": [
-    {
-     "id": "relay",
-     "title": "Would each node relay the data-carrying transaction?",
-     "status": "differs",
-     "reference": "would relay it",
-     "candidate": "refuses to relay it: the transaction carries more data than this node will relay (datacarrier)",
-     "plain": "The filtering node keeps the transaction out of its own waiting area and does not pass it on. The default node relays it."
-    },
-    {
-     "id": "block",
-     "title": "Does the filtering node accept the block that contains it?",
-     "status": "same",
-     "reference": "produced the block",
-     "candidate": "accepted the block",
-     "plain": "The filtering node accepted the block, and the transaction it refused to relay is now part of its own copy of the chain. A relay filter decides what a node passes along. It cannot decide what miners include."
-    },
-    {
-     "id": "chain",
-     "title": "Are the two nodes still on the same chain?",
-     "status": "same",
-     "reference": "block 102",
-     "candidate": "block 102",
-     "plain": "Yes. Nodes with different relay policy stay on one chain, because policy never applies to transactions that are already in a block."
-    }
-   ],
-   "verdict": "policy",
-   "headline": "Local policy only"
-  },
-  "patch": "",
-  "files": [],
-  "unit_failures": [],
-  "risk": [],
-  "sensitive": []
- },
- "reorg": {
-  "compare": {
-   "rows": [
-    {
-     "id": "confirmed",
-     "title": "Node A: is the payment confirmed?",
-     "status": "info",
-     "reference": "1 confirmation",
-     "candidate": "has not seen it",
-     "plain": "Node A's wallet shows the payment with one confirmation: one block has been built that includes it."
-    },
-    {
-     "id": "reorganised",
-     "title": "Node A: which chain does it follow now?",
-     "status": "differs",
-     "reference": "was at block 102 (0ed3182eb910)",
-     "candidate": "now at block 103 (022e822bbe49)",
-     "plain": "Node A switched to node B's chain because it contains more proof of work. The block that confirmed the payment is no longer part of the chain node A follows. This is called a reorganisation."
-    },
-    {
-     "id": "unconfirmed",
-     "title": "Node A: is the payment still confirmed?",
-     "status": "differs",
-     "reference": "1 confirmation before",
-     "candidate": "0 confirmations after",
-     "plain": "The payment is back to zero confirmations and is waiting in node A's mempool again. A confirmation is a block built on top of a payment, not an approval by anyone. Each further block makes reversal more expensive, which is why people wait for several, but no number of confirmations is a formal guarantee."
-    }
-   ],
-   "verdict": "none",
-   "headline": "A confirmation was reversed by a longer chain"
-  },
-  "patch": "",
-  "files": [],
-  "unit_failures": [],
-  "risk": [],
-  "sensitive": []
- },
  "double-reward": {
   "compare": {
    "rows": [
@@ -136,7 +60,7 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "refused block 153 (reward allowed: 25 BTC)",
      "candidate": "produced a block paying its miner 50 BTC",
-     "plain": "The unmodified node refused your node's block: the block pays its miner more than the rules allow (bad-cb-amount). Every node running the unmodified rules would do the same, so coins created this way exist only on your own node."
+     "plain": "The unmodified node refused your node's block: the block pays its miner more than the rules allow (bad-cb-amount). A node enforcing the same rules also rejects that block; a larger subsidy is spendable only on a chain whose participants accept it."
     },
     {
      "id": "settings",
@@ -152,12 +76,12 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "block 152",
      "candidate": "block 154",
-     "plain": "Connected directly, the nodes stayed apart: the unmodified node is at block 152 and yours is at block 154, on different chains. The unmodified node will never accept your node's chain, however long it grows. Your node still considers the unmodified chain valid."
+     "plain": "After the direct-connection attempt, the nodes remained apart: the unmodified node is at block 152 and yours is at block 154, on different chains. The unmodified node will never accept your node's chain, however long it grows. Your node still considers the unmodified chain valid."
     }
    ],
    "ref_rejects": {
     "height": 153,
-    "hash": "5e8f6275f742f24a",
+    "hash": "734a55b1fcb20f6c",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -169,22 +93,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 152,
-     "hash": "4f6600084034dfbbd21ad578e72c20ca3c49c3534e77b325c5fccada16144635"
+     "hash": "0e65685b93c0a524a29c687a201101e471028f7fe7144829d165c17a0ce3fbb2"
     },
     "candidate_tip": {
      "height": 154,
-     "hash": "429bf15578e48dfa68c848f9572db61c7ce1dc7ca7d1324316d899489af6b044"
+     "hash": "5aee53703f08d497fd56b1a33321e124cf6e042327046af67a0a5410ae7a0346"
     },
     "reference_chains": [
      {
       "height": 153,
-      "hash": "5e8f6275f742f24a",
+      "hash": "734a55b1fcb20f6c",
       "status": "invalid",
       "branchlen": 1
      },
      {
       "height": 152,
-      "hash": "4f6600084034dfbb",
+      "hash": "0e65685b93c0a524",
       "status": "active",
       "branchlen": 0
      }
@@ -192,7 +116,7 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 154,
-      "hash": "429bf15578e48dfa",
+      "hash": "5aee53703f08d497",
       "status": "active",
       "branchlen": 0
      }
@@ -261,37 +185,10 @@ window.VibesDemoData = {
     "removed": 1
    }
   ],
-  "unit_failures": [
-   "argsman_tests (did not finish within 30 seconds)",
-   "baseindex_tests/baseindex_no_commit_ahead_of_flush",
-   "blockchain_tests (did not finish within 30 seconds)",
-   "blockfilter_index_tests (did not finish within 30 seconds)",
-   "blockmanager_tests (did not finish within 30 seconds)",
-   "chainstate_write_tests/write_during_multiblock_activation",
-   "coinstatsindex_tests/coinstatsindex_initial_sync",
-   "coinstatsindex_tests/coinstatsindex_unclean_shutdown",
-   "disconnected_transactions/disconnectpool_memory_limits",
-   "interfaces_tests (did not finish within 30 seconds)",
-   "miner_tests/CreateNewBlock_validity",
-   "miniminer_tests (did not finish within 30 seconds)",
-   "rbf_tests (did not finish within 30 seconds)",
-   "spend_tests/SubtractFee",
-   "spend_tests/wallet_duplicated_preset_inputs_test",
-   "txdownload_tests/handle_missing_inputs",
-   "txdownload_tests/tx_rejection_types",
-   "txindex_tests/txindex_initial_sync",
-   "txospenderindex_tests/txospenderindex_initial_sync",
-   "txpackage_tests (did not finish within 30 seconds)",
-   "txvalidation_tests (did not finish within 30 seconds)",
-   "txvalidationcache_tests/checkinputs_test",
-   "txvalidationcache_tests/tx_mempool_block_doublespend",
-   "validation_chainstate_tests/chainstate_update_tip",
-   "validation_chainstate_tests/connect_tip_does_not_cache_inputs_on_failed_connect",
-   "validation_chainstatemanager_tests (did not finish within 30 seconds)",
-   "validation_tests/block_subsidy_test",
-   "validation_tests/subsidy_limit_test",
-   "wallet_tests (did not finish within 30 seconds)"
-  ],
+  "unit_failures": null,
+  "ready_made": true,
+  "build_status": "not run",
+  "test_status": "not run",
   "risk": [
    "the block subsidy"
   ],
@@ -316,7 +213,7 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "produced 110 valid blocks",
      "candidate": "refused block 1",
-     "plain": "Your node accepted 0 blocks, then refused block 1: the block pays its miner more than the rules allow (bad-cb-amount). From that block on it would stop following any network that still runs the unmodified rules."
+     "plain": "Your node accepted 0 blocks, then refused block 1: the block pays its miner more than the rules allow (bad-cb-amount). It will not build on this rejected block. The two nodes could still agree on a different history that both consider valid."
     },
     {
      "id": "produce",
@@ -324,7 +221,7 @@ window.VibesDemoData = {
      "status": "same",
      "reference": "judged both blocks valid, and ignored them",
      "candidate": "produced blocks paying their miner 25 BTC",
-     "plain": "The unmodified node considers your node's blocks valid, because a stricter rule never produces anything the looser rule forbids. It still ignores them: its own chain contains more proof of work. Other nodes would follow your stricter chain only if most mining power enforced your rule."
+     "plain": "The unmodified node considers your node's blocks valid, because a stricter rule permits these particular blocks under both rule sets. Its active chain contains more proof of work. It would switch to a stricter chain if that chain became its most-work valid chain; it would still not enforce the new rule itself."
     },
     {
      "id": "settings",
@@ -340,13 +237,13 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "block 110",
      "candidate": "block 2",
-     "plain": "Connected directly, the nodes stayed apart: the unmodified node is at block 110 and yours is at block 2, on different chains. Your node refuses the unmodified chain. The unmodified node sees your chain as valid but shorter, so it does not follow it."
+     "plain": "After the direct-connection attempt, the nodes remained apart: the unmodified node is at block 110 and yours is at block 2, on different chains. Your node refuses the unmodified chain. The unmodified node sees your chain as valid but shorter, so it does not follow it."
     }
    ],
    "ref_rejects": null,
    "cand_rejects": {
     "height": 1,
-    "hash": "5794a892c2cfacde",
+    "hash": "5841e9497f884d0c",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -357,22 +254,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 110,
-     "hash": "069b8719e3a04c1eb377f9259a1fc98f4ab9e1f8ef1ec2b38ce8b74397e46522"
+     "hash": "4a0cbac70ae159a4f48f550ae04ff5fde2e530d70dc7e70601dfbfc425f2710d"
     },
     "candidate_tip": {
      "height": 2,
-     "hash": "304a7debbb2cdee31f86e2ec8003edf5b003a69405700c4b4f161bf25a04a7c3"
+     "hash": "3838ebb91ac2e54ceafc41b08297292f57405ca3383c72ce09b5e20b94de0538"
     },
     "reference_chains": [
      {
       "height": 110,
-      "hash": "069b8719e3a04c1e",
+      "hash": "4a0cbac70ae159a4",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 2,
-      "hash": "304a7debbb2cdee3",
+      "hash": "3838ebb91ac2e54c",
       "status": "valid-fork",
       "branchlen": 2
      }
@@ -380,13 +277,13 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 2,
-      "hash": "304a7debbb2cdee3",
+      "hash": "3838ebb91ac2e54c",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 1,
-      "hash": "5794a892c2cfacde",
+      "hash": "5841e9497f884d0c",
       "status": "invalid",
       "branchlen": 1
      }
@@ -471,37 +368,10 @@ window.VibesDemoData = {
     "removed": 1
    }
   ],
-  "unit_failures": [
-   "argsman_tests (did not finish within 30 seconds)",
-   "baseindex_tests/baseindex_no_commit_ahead_of_flush",
-   "blockchain_tests (did not finish within 30 seconds)",
-   "blockfilter_index_tests (did not finish within 30 seconds)",
-   "blockmanager_tests (did not finish within 30 seconds)",
-   "chainstate_write_tests/write_during_multiblock_activation",
-   "coinstatsindex_tests/coinstatsindex_initial_sync",
-   "coinstatsindex_tests/coinstatsindex_unclean_shutdown",
-   "disconnected_transactions/disconnectpool_memory_limits",
-   "interfaces_tests (did not finish within 30 seconds)",
-   "miner_tests/CreateNewBlock_validity",
-   "miniminer_tests (did not finish within 30 seconds)",
-   "rbf_tests (did not finish within 30 seconds)",
-   "spend_tests/SubtractFee",
-   "spend_tests/wallet_duplicated_preset_inputs_test",
-   "txdownload_tests/handle_missing_inputs",
-   "txdownload_tests/tx_rejection_types",
-   "txindex_tests/txindex_initial_sync",
-   "txospenderindex_tests/txospenderindex_initial_sync",
-   "txpackage_tests (did not finish within 30 seconds)",
-   "txvalidation_tests (did not finish within 30 seconds)",
-   "txvalidationcache_tests/checkinputs_test",
-   "txvalidationcache_tests/tx_mempool_block_doublespend",
-   "validation_chainstate_tests/chainstate_update_tip",
-   "validation_chainstate_tests/connect_tip_does_not_cache_inputs_on_failed_connect",
-   "validation_chainstatemanager_tests (did not finish within 30 seconds)",
-   "validation_tests/block_subsidy_test",
-   "validation_tests/subsidy_limit_test",
-   "wallet_tests (did not finish within 30 seconds)"
-  ],
+  "unit_failures": null,
+  "ready_made": true,
+  "build_status": "not run",
+  "test_status": "not run",
   "risk": [
    "the block subsidy"
   ],
@@ -526,7 +396,7 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "produced 110 valid blocks",
      "candidate": "refused block 75",
-     "plain": "Your node accepted 74 blocks, then refused block 75: the block pays its miner more than the rules allow (bad-cb-amount). From that block on it would stop following any network that still runs the unmodified rules."
+     "plain": "Your node accepted 74 blocks, then refused block 75: the block pays its miner more than the rules allow (bad-cb-amount). It will not build on this rejected block. The two nodes could still agree on a different history that both consider valid."
     },
     {
      "id": "produce",
@@ -534,7 +404,7 @@ window.VibesDemoData = {
      "status": "same",
      "reference": "judged both blocks valid, and ignored them",
      "candidate": "produced blocks paying their miner 25 BTC",
-     "plain": "The unmodified node considers your node's blocks valid, because a stricter rule never produces anything the looser rule forbids. It still ignores them: its own chain contains more proof of work. Other nodes would follow your stricter chain only if most mining power enforced your rule."
+     "plain": "The unmodified node considers your node's blocks valid, because a stricter rule permits these particular blocks under both rule sets. Its active chain contains more proof of work. It would switch to a stricter chain if that chain became its most-work valid chain; it would still not enforce the new rule itself."
     },
     {
      "id": "settings",
@@ -550,13 +420,13 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "block 110",
      "candidate": "block 76",
-     "plain": "Connected directly, the nodes stayed apart: the unmodified node is at block 110 and yours is at block 76, on different chains. Your node refuses the unmodified chain. The unmodified node sees your chain as valid but shorter, so it does not follow it."
+     "plain": "After the direct-connection attempt, the nodes remained apart: the unmodified node is at block 110 and yours is at block 76, on different chains. Your node refuses the unmodified chain. The unmodified node sees your chain as valid but shorter, so it does not follow it."
     }
    ],
    "ref_rejects": null,
    "cand_rejects": {
     "height": 75,
-    "hash": "3a528a200e037cea",
+    "hash": "373c28ddb7c59de5",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -567,22 +437,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 110,
-     "hash": "41efc266cb6710465048f9c1e215e21ee88b6243cc3ce03f3dbb4194f226b8af"
+     "hash": "0a9fc8075de654b6e950805cb4a05b2bd6738813304109c5fe82d5df30ed8ee4"
     },
     "candidate_tip": {
      "height": 76,
-     "hash": "27268868183990bef72bbfabf0e3620e038863d7656735f62264e19fa0e5d824"
+     "hash": "3f8e1ea7d69bef8ddd8724e697f49fb8b888f1a464f972d4fa64dbf5670d6bab"
     },
     "reference_chains": [
      {
       "height": 110,
-      "hash": "41efc266cb671046",
+      "hash": "0a9fc8075de654b6",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 76,
-      "hash": "27268868183990be",
+      "hash": "3f8e1ea7d69bef8d",
       "status": "valid-fork",
       "branchlen": 2
      }
@@ -590,13 +460,13 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 76,
-      "hash": "27268868183990be",
+      "hash": "3f8e1ea7d69bef8d",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 75,
-      "hash": "3a528a200e037cea",
+      "hash": "373c28ddb7c59de5",
       "status": "invalid",
       "branchlen": 1
      }
@@ -705,34 +575,10 @@ window.VibesDemoData = {
     "removed": 1
    }
   ],
-  "unit_failures": [
-   "argsman_tests (did not finish within 30 seconds)",
-   "baseindex_tests/baseindex_no_commit_ahead_of_flush",
-   "blockchain_tests (did not finish within 30 seconds)",
-   "blockfilter_index_tests (did not finish within 30 seconds)",
-   "blockmanager_tests (did not finish within 30 seconds)",
-   "chainstate_write_tests/write_during_multiblock_activation",
-   "coinstatsindex_tests/coinstatsindex_initial_sync",
-   "coinstatsindex_tests/coinstatsindex_unclean_shutdown",
-   "disconnected_transactions/disconnectpool_memory_limits",
-   "interfaces_tests (did not finish within 30 seconds)",
-   "miniminer_tests (did not finish within 30 seconds)",
-   "rbf_tests (did not finish within 30 seconds)",
-   "spend_tests/SubtractFee",
-   "spend_tests/wallet_duplicated_preset_inputs_test",
-   "txdownload_tests/handle_missing_inputs",
-   "txdownload_tests/tx_rejection_types",
-   "txindex_tests/txindex_initial_sync",
-   "txospenderindex_tests/txospenderindex_initial_sync",
-   "txpackage_tests (did not finish within 30 seconds)",
-   "txvalidation_tests (did not finish within 30 seconds)",
-   "txvalidationcache_tests/checkinputs_test",
-   "txvalidationcache_tests/tx_mempool_block_doublespend",
-   "validation_chainstate_tests/chainstate_update_tip",
-   "validation_chainstate_tests/connect_tip_does_not_cache_inputs_on_failed_connect",
-   "validation_chainstatemanager_tests (did not finish within 30 seconds)",
-   "wallet_tests (did not finish within 30 seconds)"
-  ],
+  "unit_failures": null,
+  "ready_made": true,
+  "build_status": "not run",
+  "test_status": "not run",
   "risk": [
    "the block subsidy"
   ],
@@ -757,7 +603,7 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "wallet deleted",
      "candidate": "the chain still records 50.0 BTC at that address",
-     "plain": "Nothing on the chain changed. The coins were never inside the wallet. What was deleted is the only copy of the key that can move them."
+     "plain": "Nothing on the chain changed. The coins were never inside the wallet. The wallet file was deleted; the backup made earlier still holds its keys."
     },
     {
      "id": "stranger",
@@ -773,15 +619,19 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "wallet file gone from node A",
      "candidate": "restored on node B: 50.0 BTC, and it can spend",
-     "plain": "The same coins are spendable again, from a different machine, because the keys came back. A backup of a wallet is a backup of its keys (usually written as a list of words). Anyone who holds that backup holds the coins; anyone who shows you a balance without giving you the keys holds them for you."
+     "plain": "The same coins are spendable again, from a different machine, because the keys came back. This scene uses a single-key wallet with a private descriptor backup. Other wallets may also need a passphrase, multiple signers or recovery information. A displayed balance alone does not establish who can spend it."
     }
    ],
    "verdict": "none",
+   "observed_answer": "chain",
    "headline": "The coins were on the chain all along; the wallet held the keys"
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -792,8 +642,8 @@ window.VibesDemoData = {
      "id": "waiting",
      "title": "Two payments are waiting to be confirmed",
      "status": "info",
-     "reference": "10 BTC, paying a fee of 282 satoshis (2 per byte)",
-     "candidate": "0.1 BTC, paying a fee of 7050 satoshis (50 per byte)",
+     "reference": "10 BTC, paying a fee of 282 satoshis (2 sat/vB)",
+     "candidate": "0.1 BTC, paying a fee of 7050 satoshis (50 sat/vB)",
      "plain": "Both transactions take up almost exactly the same space in a block, although one moves a hundred times as much as the other."
     },
     {
@@ -802,7 +652,7 @@ window.VibesDemoData = {
      "status": "differs",
      "reference": "10 BTC payment: still waiting",
      "candidate": "0.1 BTC payment: in the block",
-     "plain": "The miner included the 0.1 BTC payment. A miner fills a block with whatever pays most per byte of space, because space is what is scarce. The amount being sent does not enter into it, and nobody set either fee but the sender."
+     "plain": "The miner included the 0.1 BTC payment. This node's block assembler prefers the higher fee per virtual byte (sat/vB) for these independent transactions. Miners can choose a different policy, and transaction dependencies can also matter. The amount being sent does not set the fee rate."
     },
     {
      "id": "second",
@@ -810,7 +660,7 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "confirmed one block later",
      "candidate": "",
-     "plain": "It waited for space. When blocks are full, a low fee means a longer wait, not a rejected payment. When blocks have room, almost any fee is enough."
+     "plain": "In this run the lower-fee payment waited for the next block. On a real network it may wait longer, be evicted from mempools or fail relay policy. A low fee provides no guarantee of eventual confirmation."
     },
     {
      "id": "mempool",
@@ -822,96 +672,97 @@ window.VibesDemoData = {
     }
    ],
    "verdict": "none",
-   "headline": "The smaller payment went first, because it paid more per byte"
+   "observed_answer": "small",
+   "headline": "The smaller payment went first, because it paid more per virtual byte"
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
- "softfork": {
+ "reorg": {
   "compare": {
    "rows": [
     {
-     "id": "locked",
-     "title": "A coin is locked until block 500",
+     "id": "confirmed",
+     "title": "Node A: is the payment confirmed?",
      "status": "info",
-     "reference": "both nodes are at block 102",
-     "candidate": "the lock uses a rule added to Bitcoin in 2015 (BIP 65)",
-     "plain": "Before 2015 the instruction this lock uses did nothing at all. The upgrade gave it a meaning: this coin cannot be spent before the stated block."
+     "reference": "1 confirmation",
+     "candidate": "has not seen it",
+     "plain": "Node A's wallet shows the payment with one confirmation: one block has been built that includes it."
     },
     {
-     "id": "early",
-     "title": "The coin is spent at block 103, in a block mined under the old rules",
+     "id": "reorganised",
+     "title": "Node A: which chain does it follow now?",
      "status": "differs",
-     "reference": "refused the block: a signature or script in the block fails the rules (block-script-verify-flag-failed (Locktime requirement not satisfied))",
-     "candidate": "accepted the block: to the old rules the lock is an instruction that does nothing",
-     "plain": "The same block is valid to the node that never upgraded and invalid to the node that did. This is what a soft fork is: the new rules forbid something the old rules allowed, so old nodes cannot see the difference."
+     "reference": "was at block 102 (7bf5c96f6650)",
+     "candidate": "now at block 103 (55b5f6dc76ee)",
+     "plain": "Node A switched to node B's chain because it contains more proof of work. The block that confirmed the payment is no longer part of the chain node A follows. This is called a reorganisation."
     },
     {
-     "id": "apart",
-     "title": "Are the two nodes still on the same chain?",
+     "id": "unconfirmed",
+     "title": "Node A: is the payment still confirmed?",
      "status": "differs",
-     "reference": "upgraded node: block 102",
-     "candidate": "node on the old rules: block 103",
-     "plain": "They have parted. The node on the old rules is following a block the rest of the network refuses. In 2015 this did not happen, because the new rule was switched on only after 95% of recent blocks came from miners who had said they would enforce it, so no block like this one was built on."
+     "reference": "1 confirmation before",
+     "candidate": "0 confirmations after",
+     "plain": "The payment is back to zero confirmations and is waiting in node A's mempool again. One confirmation counts the block containing the payment; each additional block adds one. A confirmation is not an approval by anyone. Each further block makes reversal more expensive, which is why people wait for several, but no number of confirmations is a formal guarantee."
     }
    ],
-   "verdict": "loosened",
-   "headline": "A node that never upgraded accepted a block the upgraded node refused",
-   "picture": {
-    "lanes": [
-     {
-      "label": "Chain the upgraded node follows",
-      "blocks": [
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "changed",
-        "state": "refused"
-       }
-      ],
-      "note": "102 shared blocks, then 0 of its own; it refused the other side's next block"
-     },
-     {
-      "label": "Chain the node on the old rules follows",
-      "blocks": [
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "shared",
-        "state": "kept"
-       },
-       {
-        "kind": "changed",
-        "state": "kept"
-       }
-      ],
-      "note": "102 shared blocks, then 1 of its own"
-     }
-    ]
-   }
+   "verdict": "none",
+   "observed_answer": "zero",
+   "headline": "A confirmation was reversed by a chain with more proof of work"
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "relay-filter": {
+  "compare": {
+   "rows": [
+    {
+     "id": "relay",
+     "title": "Would each node relay the data-carrying transaction?",
+     "status": "differs",
+     "reference": "would relay it",
+     "candidate": "refuses to relay it: the transaction carries more data than this node will relay (datacarrier)",
+     "plain": "The mempool-admission probe shows whether each node would accept this transaction into its waiting area. It does not measure propagation through a live network."
+    },
+    {
+     "id": "block",
+     "title": "Does the filtering node accept the block that contains it?",
+     "status": "same",
+     "reference": "produced the block",
+     "candidate": "accepted the block",
+     "plain": "The filtering node accepted the block, and the transaction it refused to relay is now part of its own copy of the chain. A relay filter decides what a node passes along. It cannot guarantee that miners exclude a transaction that can reach them by another route."
+    },
+    {
+     "id": "chain",
+     "title": "Are the two nodes still on the same chain?",
+     "status": "same",
+     "reference": "block 102",
+     "candidate": "block 102",
+     "plain": "Yes. Nodes with different relay policy stay on one chain, because policy never applies to transactions that are already in a block."
+    }
+   ],
+   "verdict": "policy",
+   "observed_answer": "accept",
+   "headline": "The filtering node accepted the block containing the transaction"
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -924,7 +775,7 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "honest miner: 2 blocks",
      "candidate": "rule-breaking miner: 30 blocks, each paying itself 100 BTC",
-     "plain": "The rule-breaking miner's chain holds about 6 times the proof of work of the honest one. If the chain with the most work simply won, it would win here."
+     "plain": "Including the shared 3-block beginning, the rule-breaking chain holds 5.7 times the proof of work of the honest chain. The separate branches contain 30 and 2 equally difficult blocks. These blocks were produced on demand; this is a controlled demonstration of chain selection, not a measurement of real hash rate."
     },
     {
      "id": "switch",
@@ -944,7 +795,8 @@ window.VibesDemoData = {
     }
    ],
    "verdict": "loosened",
-   "headline": "Thirty blocks of mining power, refused by one node that checked",
+   "observed_answer": "valid",
+   "headline": "Thirty rule-breaking blocks were refused by the unmodified node",
    "picture": {
     "lanes": [
      {
@@ -1040,7 +892,10 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -1053,32 +908,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 36 blocks",
      "candidate": "miners enforcing the stricter rule: 4 blocks",
-     "plain": "10% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 10% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
-     "reference": "their own, at block 36",
-     "candidate": "stricter nodes are alone at block 4",
-     "plain": "The stricter chain never became the longest, so no unmodified node ever switched to it. The nodes enforcing the stricter rule are on a shorter chain of their own, and the miners who enforced it earned rewards that exist only there. Enforcing a rule without most of the mining power splits you off; it does not bring anyone with you."
+     "reference": "its own chain, at block 36",
+     "candidate": "a separate stricter chain, at block 4",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 10,
-   "headline": "With 10% of mining power, the stricter nodes were left on their own chain",
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 10% of scheduled blocks, the nodes followed separate chains",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "stock",
@@ -1228,7 +1085,7 @@ window.VibesDemoData = {
       "note": "36 blocks; 0 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -1254,7 +1111,229 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@15": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 34 blocks",
+     "candidate": "miners enforcing the stricter rule: 6 blocks",
+     "plain": "The schedule assigns 15% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "its own chain, at block 34",
+     "candidate": "a separate stricter chain, at block 6",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 15,
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 15% of scheduled blocks, the nodes followed separate chains",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       }
+      ],
+      "note": "34 blocks; 0 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "6 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -1267,32 +1346,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 32 blocks",
      "candidate": "miners enforcing the stricter rule: 8 blocks",
-     "plain": "20% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 20% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
-     "reference": "their own, at block 32",
-     "candidate": "stricter nodes are alone at block 8",
-     "plain": "The stricter chain never became the longest, so no unmodified node ever switched to it. The nodes enforcing the stricter rule are on a shorter chain of their own, and the miners who enforced it earned rewards that exist only there. Enforcing a rule without most of the mining power splits you off; it does not bring anyone with you."
+     "reference": "its own chain, at block 32",
+     "candidate": "a separate stricter chain, at block 8",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 20,
-   "headline": "With 20% of mining power, the stricter nodes were left on their own chain",
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 20% of scheduled blocks, the nodes followed separate chains",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "stock",
@@ -1426,7 +1507,7 @@ window.VibesDemoData = {
       "note": "32 blocks; 0 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -1468,7 +1549,229 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@25": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 30 blocks",
+     "candidate": "miners enforcing the stricter rule: 10 blocks",
+     "plain": "The schedule assigns 25% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "its own chain, at block 30",
+     "candidate": "a separate stricter chain, at block 10",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 25,
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 25% of scheduled blocks, the nodes followed separate chains",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       }
+      ],
+      "note": "30 blocks; 0 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "10 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -1481,32 +1784,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 28 blocks",
      "candidate": "miners enforcing the stricter rule: 12 blocks",
-     "plain": "30% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 30% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
-     "reference": "their own, at block 28",
-     "candidate": "stricter nodes are alone at block 12",
-     "plain": "The stricter chain never became the longest, so no unmodified node ever switched to it. The nodes enforcing the stricter rule are on a shorter chain of their own, and the miners who enforced it earned rewards that exist only there. Enforcing a rule without most of the mining power splits you off; it does not bring anyone with you."
+     "reference": "its own chain, at block 28",
+     "candidate": "a separate stricter chain, at block 12",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 30,
-   "headline": "With 30% of mining power, the stricter nodes were left on their own chain",
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 30% of scheduled blocks, the nodes followed separate chains",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "stock",
@@ -1624,7 +1929,7 @@ window.VibesDemoData = {
       "note": "28 blocks; 0 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -1682,7 +1987,229 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@35": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 26 blocks",
+     "candidate": "miners enforcing the stricter rule: 14 blocks",
+     "plain": "The schedule assigns 35% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "its own chain, at block 26",
+     "candidate": "a separate stricter chain, at block 14",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 35,
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 35% of scheduled blocks, the nodes followed separate chains",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       }
+      ],
+      "note": "26 blocks; 0 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "14 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -1695,32 +2222,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 24 blocks",
      "candidate": "miners enforcing the stricter rule: 16 blocks",
-     "plain": "40% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 40% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
-     "reference": "their own, at block 24",
-     "candidate": "stricter nodes are alone at block 16",
-     "plain": "The stricter chain never became the longest, so no unmodified node ever switched to it. The nodes enforcing the stricter rule are on a shorter chain of their own, and the miners who enforced it earned rewards that exist only there. Enforcing a rule without most of the mining power splits you off; it does not bring anyone with you."
+     "reference": "its own chain, at block 24",
+     "candidate": "a separate stricter chain, at block 16",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 40,
-   "headline": "With 40% of mining power, the stricter nodes were left on their own chain",
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 40% of scheduled blocks, the nodes followed separate chains",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "stock",
@@ -1822,7 +2351,7 @@ window.VibesDemoData = {
       "note": "24 blocks; 0 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -1896,7 +2425,229 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@45": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 22 blocks",
+     "candidate": "miners enforcing the stricter rule: 18 blocks",
+     "plain": "The schedule assigns 45% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "its own chain, at block 22",
+     "candidate": "a separate stricter chain, at block 18",
+     "plain": "At the end of this schedule, the unmodified node's chain had more accumulated work than the separate stricter chain. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 45,
+   "observed_answer": "own",
+   "equal_work": false,
+   "headline": "With 45% of scheduled blocks, the nodes followed separate chains",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       },
+       {
+        "kind": "stock",
+        "state": "kept"
+       }
+      ],
+      "note": "22 blocks; 0 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "18 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -1909,32 +2660,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 20 blocks",
      "candidate": "miners enforcing the stricter rule: 20 blocks",
-     "plain": "50% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 50% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
-     "reference": "their own, at block 20",
-     "candidate": "stricter nodes are alone at block 20",
-     "plain": "The stricter chain never became the longest, so no unmodified node ever switched to it. The nodes enforcing the stricter rule are on a shorter chain of their own, and the miners who enforced it earned rewards that exist only there. Enforcing a rule without most of the mining power splits you off; it does not bring anyone with you."
+     "reference": "its own chain, at block 20",
+     "candidate": "a separate stricter chain, at block 20",
+     "plain": "The branches ended with equal accumulated work. The unmodified node kept its existing chain; equal-work ties do not force a switch. This is the observed outcome of this run, not a prediction that every real network with this hash-rate share must end the same way."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 50,
-   "headline": "With 50% of mining power, the stricter nodes were left on their own chain",
+   "observed_answer": "own",
+   "equal_work": true,
+   "headline": "With 50% of scheduled blocks, the nodes followed separate chains",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "stock",
@@ -2020,7 +2773,7 @@ window.VibesDemoData = {
       "note": "20 blocks; 0 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2110,7 +2863,10 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -2123,32 +2879,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 18 blocks",
      "candidate": "miners enforcing the stricter rule: 22 blocks",
-     "plain": "55% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 55% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
      "reference": "the stricter chain (block 22)",
      "candidate": "the stricter chain (block 22)",
-     "plain": "The stricter chain grew fastest, so the unmodified nodes kept switching to it (4 times), without being upgraded and without being asked. 18 of the 18 blocks from miners on the old rules were discarded, along with their rewards. This is how a soft fork takes effect for everyone: a majority of mining power refuses to build on anything else."
+     "plain": "In this schedule the unmodified node switched to the stricter chain (4 reorganisations). 18 of the 18 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 55,
-   "headline": "With 55% of mining power, the stricter rule became the rule for everyone",
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 55% of scheduled blocks, the unmodified node followed the stricter chain",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2242,7 +3000,7 @@ window.VibesDemoData = {
       "note": "22 blocks; 18 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2340,7 +3098,10 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -2353,32 +3114,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 16 blocks",
      "candidate": "miners enforcing the stricter rule: 24 blocks",
-     "plain": "60% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 60% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
      "reference": "the stricter chain (block 24)",
      "candidate": "the stricter chain (block 24)",
-     "plain": "The stricter chain grew fastest, so the unmodified nodes kept switching to it (8 times), without being upgraded and without being asked. 16 of the 16 blocks from miners on the old rules were discarded, along with their rewards. This is how a soft fork takes effect for everyone: a majority of mining power refuses to build on anything else."
+     "plain": "In this schedule the unmodified node switched to the stricter chain (8 reorganisations). 16 of the 16 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 60,
-   "headline": "With 60% of mining power, the stricter rule became the rule for everyone",
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 60% of scheduled blocks, the unmodified node followed the stricter chain",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2480,7 +3243,7 @@ window.VibesDemoData = {
       "note": "24 blocks; 16 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2586,7 +3349,277 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@65": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 14 blocks",
+     "candidate": "miners enforcing the stricter rule: 26 blocks",
+     "plain": "The schedule assigns 65% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "the stricter chain (block 26)",
+     "candidate": "the stricter chain (block 26)",
+     "plain": "In this schedule the unmodified node switched to the stricter chain (12 reorganisations). 14 of the 14 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 65,
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 65% of scheduled blocks, the unmodified node followed the stricter chain",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "26 blocks; 14 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "26 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -2599,32 +3632,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 12 blocks",
      "candidate": "miners enforcing the stricter rule: 28 blocks",
-     "plain": "70% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 70% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
      "reference": "the stricter chain (block 28)",
      "candidate": "the stricter chain (block 28)",
-     "plain": "The stricter chain grew fastest, so the unmodified nodes kept switching to it (12 times), without being upgraded and without being asked. 12 of the 12 blocks from miners on the old rules were discarded, along with their rewards. This is how a soft fork takes effect for everyone: a majority of mining power refuses to build on anything else."
+     "plain": "In this schedule the unmodified node switched to the stricter chain (12 reorganisations). 12 of the 12 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 70,
-   "headline": "With 70% of mining power, the stricter rule became the rule for everyone",
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 70% of scheduled blocks, the unmodified node followed the stricter chain",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2742,7 +3777,7 @@ window.VibesDemoData = {
       "note": "28 blocks; 12 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -2864,7 +3899,309 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@75": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 10 blocks",
+     "candidate": "miners enforcing the stricter rule: 30 blocks",
+     "plain": "The schedule assigns 75% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "the stricter chain (block 30)",
+     "candidate": "the stricter chain (block 30)",
+     "plain": "In this schedule the unmodified node switched to the stricter chain (10 reorganisations). 10 of the 10 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 75,
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 75% of scheduled blocks, the unmodified node followed the stricter chain",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "30 blocks; 10 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "30 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -2877,32 +4214,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 8 blocks",
      "candidate": "miners enforcing the stricter rule: 32 blocks",
-     "plain": "80% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 80% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
      "reference": "the stricter chain (block 32)",
      "candidate": "the stricter chain (block 32)",
-     "plain": "The stricter chain grew fastest, so the unmodified nodes kept switching to it (8 times), without being upgraded and without being asked. 8 of the 8 blocks from miners on the old rules were discarded, along with their rewards. This is how a soft fork takes effect for everyone: a majority of mining power refuses to build on anything else."
+     "plain": "In this schedule the unmodified node switched to the stricter chain (8 reorganisations). 8 of the 8 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 80,
-   "headline": "With 80% of mining power, the stricter rule became the rule for everyone",
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 80% of scheduled blocks, the unmodified node followed the stricter chain",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -3036,7 +4375,7 @@ window.VibesDemoData = {
       "note": "32 blocks; 8 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -3174,7 +4513,341 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "power@85": {
+  "compare": {
+   "rows": [
+    {
+     "id": "mined",
+     "title": "40 blocks were produced",
+     "status": "info",
+     "reference": "miners on the unmodified rules: 6 blocks",
+     "candidate": "miners enforcing the stricter rule: 34 blocks",
+     "plain": "The schedule assigns 85% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
+    },
+    {
+     "id": "outcome",
+     "title": "Which chain did the unmodified node end up following?",
+     "status": "differs",
+     "reference": "the stricter chain (block 34)",
+     "candidate": "the stricter chain (block 34)",
+     "plain": "In this schedule the unmodified node switched to the stricter chain (6 reorganisations). 6 of the 6 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
+    },
+    {
+     "id": "threshold",
+     "title": "Following a chain is different from enforcing its rules",
+     "status": "info",
+     "reference": "",
+     "candidate": "",
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
+    }
+   ],
+   "verdict": "tightened",
+   "share": 85,
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 85% of scheduled blocks, the unmodified node followed the stricter chain",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the unmodified node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "34 blocks; 6 blocks from unmodified miners were discarded"
+     },
+     {
+      "label": "Chain the stricter node follows",
+      "blocks": [
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "34 blocks, all from miners enforcing the stricter rule"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  },
@@ -3187,32 +4860,34 @@ window.VibesDemoData = {
      "status": "info",
      "reference": "miners on the unmodified rules: 4 blocks",
      "candidate": "miners enforcing the stricter rule: 36 blocks",
-     "plain": "90% of the mining power enforces the stricter rule. Its blocks are valid to every node. Blocks from the other miners are valid only to unmodified nodes. Here the two kinds of block arrive in an even pattern; on a real network they arrive at random, which makes the outcome near the halfway line a matter of luck."
+     "plain": "The schedule assigns 90% of block opportunities to the stricter miners. The stricter node refuses the higher subsidy claimed by the other miners. Block difficulty is constant here and the order is deterministic. Real block discovery is random, so a finite run cannot establish a universal threshold."
     },
     {
      "id": "outcome",
-     "title": "Which chain did the unmodified nodes end up following?",
+     "title": "Which chain did the unmodified node end up following?",
      "status": "differs",
      "reference": "the stricter chain (block 36)",
      "candidate": "the stricter chain (block 36)",
-     "plain": "The stricter chain grew fastest, so the unmodified nodes kept switching to it (4 times), without being upgraded and without being asked. 4 of the 4 blocks from miners on the old rules were discarded, along with their rewards. This is how a soft fork takes effect for everyone: a majority of mining power refuses to build on anything else."
+     "plain": "In this schedule the unmodified node switched to the stricter chain (4 reorganisations). 4 of the 4 blocks from the other miners were removed from its active chain. It follows that compatible history but still does not check the stricter subsidy rule itself; a later rule-breaking chain with more work could be accepted by the unmodified node."
     },
     {
      "id": "threshold",
-     "title": "Where is the line?",
+     "title": "Following a chain is different from enforcing its rules",
      "status": "info",
      "reference": "",
      "candidate": "",
-     "plain": "Just above half. With more than half the mining power the stricter chain outgrows any other; with half or less it does not. Real activations have waited for far more than half (95% in 2015, 90% in 2021), because near the line the two sides trade places for a long time and payments on the losing side are undone."
+     "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow a competing chain under fixed assumptions. Actual outcomes also depend on block discovery, miner behavior and which rules users enforce. Activation signalling thresholds are coordination mechanisms, not a rule that changes every node's software or makes old nodes validate a new condition."
     }
    ],
    "verdict": "tightened",
    "share": 90,
-   "headline": "With 90% of mining power, the stricter rule became the rule for everyone",
+   "observed_answer": "strict",
+   "equal_work": false,
+   "headline": "With 90% of scheduled blocks, the unmodified node followed the stricter chain",
    "picture": {
     "lanes": [
      {
-      "label": "Chain the unmodified nodes follow",
+      "label": "Chain the unmodified node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -3362,7 +5037,7 @@ window.VibesDemoData = {
       "note": "36 blocks; 4 blocks from unmodified miners were discarded"
      },
      {
-      "label": "Chain the stricter nodes follow",
+      "label": "Chain the stricter node follows",
       "blocks": [
        {
         "kind": "changed",
@@ -3516,7 +5191,99 @@ window.VibesDemoData = {
   },
   "patch": "",
   "files": [],
-  "unit_failures": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "softfork": {
+  "compare": {
+   "rows": [
+    {
+     "id": "locked",
+     "title": "A coin is locked until block 500",
+     "status": "info",
+     "reference": "both nodes are at block 102",
+     "candidate": "the lock uses a rule added to Bitcoin in 2015 (BIP 65)",
+     "plain": "BIP 65 gave OP_NOP2 the CHECKLOCKTIMEVERIFY meaning. This demonstration uses two modern nodes, with only that rule disabled on the second. It does not run historical 2015 software. The spend used here requires a transaction locktime of at least 500, so it can first confirm in block 501."
+    },
+    {
+     "id": "early",
+     "title": "The coin is spent at block 103, in a block mined under the old rules",
+     "status": "differs",
+     "reference": "refused the block: a signature or script in the block fails the rules (block-script-verify-flag-failed (Locktime requirement not satisfied))",
+     "candidate": "accepted the block: with CLTV disabled, that instruction is a no-op",
+     "plain": "The same block is accepted with CLTV disabled and refused with it enabled. This illustrates a soft fork: the new rule forbids some spends the older rule allowed. All the other modern rules remain enabled in this scene."
+    },
+    {
+     "id": "apart",
+     "title": "Are the two nodes still on the same chain?",
+     "status": "differs",
+     "reference": "upgraded node: block 102",
+     "candidate": "node on the old rules: block 103",
+     "plain": "They have parted. The node with CLTV disabled follows a block the CLTV-enforcing node refuses. During the BIP 65 deployment, block-version signalling coordinated enforcement. Signalling itself is not validation: a node needs the new rule implemented and active to check it independently."
+    }
+   ],
+   "verdict": "loosened",
+   "observed_answer": "accept",
+   "headline": "The node with CLTV disabled accepted a block the enforcing node refused",
+   "picture": {
+    "lanes": [
+     {
+      "label": "Chain the CLTV-enforcing node follows",
+      "blocks": [
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "refused"
+       }
+      ],
+      "note": "102 shared blocks, then 0 of its own; it refused the other side's next block"
+     },
+     {
+      "label": "Chain the node with CLTV disabled follows",
+      "blocks": [
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "shared",
+        "state": "kept"
+       },
+       {
+        "kind": "changed",
+        "state": "kept"
+       }
+      ],
+      "note": "102 shared blocks, then 1 of its own"
+     }
+    ]
+   }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
   "risk": [],
   "sensitive": []
  }

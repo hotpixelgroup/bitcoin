@@ -6,6 +6,10 @@
 const $ = id => document.getElementById(id);
 const demo = location.pathname.endsWith('demo.html') || new URLSearchParams(location.search).get('demo') === '1';
 const lessons = window.VibesLessons || {prediction: {question: '', options: []}, verdicts: {}, networks: {}, groups: [], curated: [], beliefs: []};
+const startupProblem = !window.VibesLessons || !Array.isArray(lessons.curated) || !lessons.curated.length
+  ? 'The experiment lessons did not load. Reload this page. If it continues, rebuild the site or restart the installed lab.'
+  : demo && (!window.VibesDemo || !window.VibesDemoData)
+    ? 'The demo recordings did not load. Reload this page or try again when the site has finished updating.' : '';
 const storageKey = demo ? 'vibes-demo-draft-v3' : 'vibes-draft-v3';
 
 const examples = {
@@ -38,6 +42,20 @@ let imported = null;        // {sender} while the draft holds someone else's req
 let diffFilter = null;
 let followupFor = null;
 let beliefState = {};
+let beliefRenderKey = null;
+let historyRenderKey = null;
+let learningEntries = [];
+let beliefsSaving = false;
+const recordingPredictions = new Set();
+const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
+document.body.classList.toggle('demo-mode', demo);
+
+function showSection(id, focus = false) {
+  const section = $(id);
+  section.scrollIntoView({behavior: scrollBehavior(), block: 'start'});
+  if (focus) section.focus({preventScroll: true});
+}
 
 // ----- small helpers ---------------------------------------------------------
 
@@ -64,8 +82,18 @@ function toast(message) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 6500);
 }
 
+function setConnectionStatus(message) {
+  // This is a live region. Replacing even identical text on every poll can
+  // interrupt a screen reader, so announce only a meaningful status change.
+  if ($('connection').textContent !== message) $('connection').textContent = message;
+}
+
 function confirmAction(heading, copy, label = 'Continue') {
   const dialog = $('confirm-dialog');
+  if (document.querySelector('dialog[open]')) {
+    toast('Finish or close the open dialog first, then try again.');
+    return Promise.resolve(false);
+  }
   $('confirm-title').textContent = heading;
   $('confirm-copy').textContent = copy;
   $('confirm-action').textContent = label;
@@ -80,6 +108,7 @@ function remember(key, value) {
   try {
     if (value === undefined) return localStorage.getItem(key);
     localStorage.setItem(key, value);
+    return true;
   } catch { /* storage unavailable: the page still works */ }
   return null;
 }
@@ -91,7 +120,14 @@ async function api(path, body) {
     : {};
   const response = await fetch(path, {...options, signal: AbortSignal.timeout(30000)});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  if (!response.ok) {
+    if (result.console_restart_required && status) {
+      status.console_restart_required = true;
+      $('console-restart-notice').hidden = false;
+      updateControls();
+    }
+    throw new Error(result.error || `Request failed (${response.status})`);
+  }
   return result;
 }
 
@@ -106,7 +142,7 @@ async function action(path, body) {
       selected = null;
       closeStream();
       streamSeq = 0;
-      $('current').scrollIntoView({behavior: 'smooth'});
+      showSection('current', true);
     }
     await refresh();
   } catch (error) {
@@ -139,6 +175,7 @@ function optionText(options, id) {
 // '' if skipped, or to null if the operator cancelled.
 function askPrediction(heading, summary, question, options, item) {
   const dialog = $('predict-dialog');
+  if (document.querySelector('dialog[open]')) return Promise.resolve(null);
   $('predict-title').textContent = heading;
   $('predict-summary').textContent = summary;
   $('predict-question').textContent = question;
@@ -190,11 +227,9 @@ function curatedItem(job) {
 // What was observed, expressed as one of the prediction's option ids.
 function observedAnswer(job) {
   const item = curatedItem(job);
-  if (item?.answer_by_share) {
-    const rule = item.answer_by_share;
-    return (job.compare?.share || 0) > rule.line ? rule.above : rule.below;
-  }
-  if (item?.kind === 'scene') return item.answer;
+  if (job.state !== 'done' && job.state !== 'review') return null;
+  if (item?.kind === 'scene') return item.options.some(option => option.id === job.compare?.observed_answer)
+    ? job.compare.observed_answer : null;
   const verdict = job.compare?.verdict;
   if (!verdict || verdict === 'inconclusive') return null;
   return verdict === 'identical' ? 'none' : verdict;
@@ -202,20 +237,25 @@ function observedAnswer(job) {
 
 async function recordPrediction(job) {
   const flag = `vibes-recorded-${job.id}`;
-  if (!job.prediction || job.prediction === 'unsure' || remember(flag)) return;
-  remember(flag, '1');
+  if (!job.prediction || job.prediction === 'unsure' || remember(flag) || recordingPredictions.has(job.id)) return;
+  recordingPredictions.add(job.id);
   try {
     await api('/api/learning', {experiment: job.curated || '', job: job.id, stage: 'prediction', choice: job.prediction});
+    remember(flag, '1');
     refreshLearning();
-  } catch { /* the lesson still shows; only the tally is missing */ }
+  } catch { /* A later render retries; no local flag is saved until the server accepts it. */ }
+  finally { recordingPredictions.delete(job.id); }
 }
 
 async function refreshLearning() {
+  if (startupProblem) return;
   try {
     const result = await api('/api/learning');
     const {prediction, followup} = result.summary;
+    learningEntries = result.entries || [];
     beliefState = result.beliefs || {};
     renderBeliefs();
+    if (selected) restoreFollowup(selected.summary);
     $('learning-summary').textContent = prediction.answered || followup.answered
       ? `Your record on this machine: ${prediction.correct} of ${prediction.answered} predictions right, ${followup.correct} of ${followup.answered} follow-up questions right.`
       : '';
@@ -226,20 +266,23 @@ async function refreshLearning() {
 
 function renderCurated() {
   $('curated-grid').replaceChildren();
+  let number = 0;
   for (const group of lessons.groups) {
     const items = lessons.curated.filter(item => item.group === group.id);
     if (!items.length) continue;
     const grid = el('div', {class: 'example-grid'});
     for (const item of items) {
+      number++;
       const button = el('button', {class: 'example', onclick: () => runCurated(item)}, [
+        el('span', {class: 'experiment-number', text: String(number).padStart(2, '0'), 'aria-hidden': 'true'}),
         el('b', {text: item.title}),
         el('small', {text: item.summary}),
-        el('small', {class: 'needs', text: item.needs}),
+        el('small', {class: 'needs', text: demo ? 'Recorded experiment · no installation needed' : item.needs}),
       ]);
       button.dataset.curated = item.id;
       grid.append(button);
     }
-    $('curated-grid').append(el('h3', {text: group.title}), el('p', {class: 'subtle', text: group.blurb}), grid);
+    $('curated-grid').append(el('div', {class: 'experiment-group'}, [el('h3', {text: group.title}), el('p', {class: 'subtle', text: group.blurb}), grid]));
   }
 }
 
@@ -259,9 +302,16 @@ async function runCurated(item) {
 // Until the second round is saved the answers are not shown, so the second
 // round measures what changed and not what was just read.
 function renderBeliefs() {
-  const answered = Object.keys(beliefState);
-  const before = answered.length && answered.every(id => beliefState[id].before);
+  const before = lessons.beliefs.length && lessons.beliefs.every(belief => beliefState[belief.id]?.before);
   const after = lessons.beliefs.length && lessons.beliefs.every(belief => beliefState[belief.id]?.after);
+  const renderKey = JSON.stringify([lessons.beliefs, beliefState]);
+  // Polling learning progress must not replace radio buttons while somebody is answering.
+  if (renderKey === beliefRenderKey) return;
+  const drafts = Object.fromEntries(Array.from($('beliefs-list').querySelectorAll('input:checked'), input => [input.name, input.value]));
+  const previousStage = $('beliefs-list').dataset.stage;
+  const stage = before ? 'after' : 'before';
+  beliefRenderKey = renderKey;
+  $('beliefs-list').dataset.stage = stage;
   $('beliefs-stage').textContent = after ? 'Answered before and after' : before ? 'First answers saved' : 'Not answered yet';
   $('beliefs-intro').textContent = after
     ? 'Your answers from before and after, with what the lab shows.'
@@ -287,6 +337,7 @@ function renderBeliefs() {
       const group = el('div', {class: 'belief-options'});
       for (const [value, text] of [['true', 'True'], ['false', 'False'], ['unsure', 'Not sure']]) {
         const input = el('input', {type: 'radio', name: 'belief-' + belief.id, value, id: `belief-${belief.id}-${value}`});
+        input.checked = previousStage === stage && drafts[input.name] === value;
         group.append(el('label', {class: 'choice', for: input.id}, [input, el('span', {text})]));
       }
       row.append(group);
@@ -300,14 +351,17 @@ function renderBeliefs() {
 }
 
 async function saveBeliefs() {
+  if (beliefsSaving) return;
   const stage = lessons.beliefs.every(belief => beliefState[belief.id]?.before) ? 'after' : 'before';
   const answers = lessons.beliefs.map(belief => [belief.id, chosen('belief-' + belief.id)]);
   if (answers.some(([, choice]) => !choice)) {
     toast('Answer every statement first. "Not sure" is a fine answer.');
     return;
   }
+  beliefsSaving = true;
+  $('beliefs-save').disabled = true;
   try {
-    for (const [id, choice] of answers) await api('/api/learning', {experiment: id, stage, choice});
+    await api('/api/learning', {stage, answers: answers.map(([experiment, choice]) => ({experiment, choice}))});
     await refreshLearning();
     if (stage === 'before') {
       $('beliefs-status').textContent = 'Saved. Now try an experiment or two.';
@@ -315,7 +369,7 @@ async function saveBeliefs() {
     }
   } catch (error) {
     toast(error.message);
-  }
+  } finally { beliefsSaving = false; $('beliefs-save').disabled = false; }
 }
 
 async function exportLearning() {
@@ -334,8 +388,8 @@ async function exportLearning() {
 function saveDraft() {
   const draft = {prompt: $('wish').value, mode: $('mode').value, autobuild: $('autobuild').checked,
                  autorestart: $('autorestart').checked, imported};
-  remember(storageKey, JSON.stringify(draft));
-  $('draft-status').textContent = $('wish').value ? 'Draft saved on this device' : '';
+  const saved = remember(storageKey, JSON.stringify(draft));
+  $('draft-status').textContent = $('wish').value ? (saved ? 'Draft saved on this device' : 'Draft available for this visit only') : '';
 }
 
 function loadDraft() {
@@ -474,8 +528,8 @@ function renderNode(next) {
   $('activation-block').hidden = !next.activation_block;
   $('activation-block').textContent = next.activation_block || '';
 
-  $('blocker').hidden = next.engine_ready.ok;
-  $('blocker').textContent = next.engine_ready.ok ? '' : next.engine_ready.detail + (next.engine_ready.fix ? '\nFix: ' + next.engine_ready.fix : '');
+  $('blocker').hidden = true;
+  $('console-restart-notice').hidden = demo || !next.console_restart_required;
   const agent = next.agent || {};
   $('agent-note').textContent = next.engine === 'claude'
     ? `The agent is Claude Code using the ${agent.model} model. It can read and edit files in its own copy of the source and do nothing else: no commands, no network. It stops after ${agent.turns} steps or ${agent.minutes} minutes. Your provider bills you for each request; the amount it reports is shown afterwards.`
@@ -503,15 +557,26 @@ function renderUpstream(facts) {
 
 function updateControls() {
   const busy = isBusy();
+  const restartRequired = !demo && !!status?.console_restart_required;
   const online = demo || (lastSuccess && Date.now() - lastSuccess < 15000);
   const engineOk = !!status?.engine_ready?.ok && !demo;
-  $('manifest').disabled = busy || !online || !engineOk || !$('wish').value.trim();
-  $('manifest').textContent = actionPending ? 'Starting…' : busy ? 'Experiment in progress' : 'Manifest ✦';
+  $('manifest').disabled = busy || restartRequired || !online || !engineOk || !!status?.dirty || !$('wish').value.trim();
+  const composerProblem = demo ? '' : !online ? 'Reconnect to the console before proposing a change.'
+    : restartRequired ? 'Restart Bitcoin Vibes to load the updated lab before proposing another change.'
+      : status?.dirty ? 'Commit or stash your source edits before proposing a change.'
+      : !engineOk ? 'Custom requests: ' + (status?.engine_ready?.detail || 'The AI engine is unavailable.') +
+        (status?.engine_ready?.fix ? ' ' + status.engine_ready.fix : '') : '';
+  $('composer-status').hidden = !composerProblem;
+  $('composer-status').textContent = composerProblem;
+  $('manifest').textContent = actionPending ? 'Starting…' : busy ? 'Experiment in progress' : 'Propose a change';
   for (const id of ['node-start', 'build', 'restart', 'mine', 'mine-101', 'maturity', 'activate', 'update',
                     'save-settings', 'reference', 'restore', 'reset-chain', 'external-run']) {
-    $(id).disabled = busy || !online || demo;
+    $(id).disabled = busy || restartRequired || !online || demo;
   }
-  document.querySelectorAll('[data-curated]').forEach(button => { button.disabled = busy || !online || (!demo && !status?.binary); });
+  // Stopping an already-running node remains available while the console
+  // waits for a restart. Starting or rebuilding it would use stale lab code.
+  if (restartRequired && status?.node?.running) $('node-start').disabled = busy || !online;
+  document.querySelectorAll('[data-curated]').forEach(button => { button.disabled = busy || restartRequired || !online || (!demo && !status?.binary); });
   $('node-start').disabled ||= !status?.binary && !status?.node?.running;
   const blocked = !!status?.activation_block;
   $('activate').disabled ||= !status?.build?.verified || blocked;
@@ -526,10 +591,14 @@ function updateControls() {
     ? 'Blocks can be produced on demand only on the private regtest chain.'
     : ready ? 'These blocks exist only on your own node.' : 'Start your node to produce blocks.';
   const current = selected && status?.job?.id === selected.summary.id;
-  $('apply').disabled = actionPending || !current || selected?.summary.state !== 'review' || !!status?.dirty;
-  $('cancel').disabled = actionPending || selected?.summary.state === 'cancelling';
-  $('retry').disabled = busy || !online;
-  $('repair').disabled = busy || !online || !engineOk;
+  $('apply').disabled = actionPending || restartRequired || !online || !current || selected?.summary.state !== 'review' || !!status?.dirty;
+  $('cancel').disabled = actionPending || !online || selected?.summary.state === 'cancelling';
+  $('retry').disabled = busy || restartRequired || !online;
+  $('repair').disabled = busy || restartRequired || !online || !engineOk;
+  $('start-learning').disabled = busy || restartRequired || !online || (!demo && !status?.binary);
+  $('next-experiment').disabled = busy || restartRequired || !online;
+  document.querySelectorAll('[data-node-action]').forEach(button => { button.disabled = busy || restartRequired || !online || demo; });
+  $('current').setAttribute('aria-busy', String(actionPending || ['running', 'cancelling'].includes(selected?.summary.state)));
 }
 
 // ----- the current experiment ------------------------------------------------
@@ -600,7 +669,8 @@ function renderComparison(job) {
   const labels = ROW_LABELS[job.external ? 'external' : scene ? item?.id : 'compare'] || ['', ''];
   $('ready-note').hidden = !(job.ready_made || job.external);
   if (job.external) $('ready-note').textContent = 'In the rows below, "your node" means the other program you pointed the lab at.';
-  else if (job.ready_made) $('ready-note').textContent = READY_NOTE;
+  else if (job.ready_made) $('ready-note').textContent = demo
+    ? 'The recorded run used a ready-made node built from the change shown below. It did not compile the proposal or run unit tests. Install the lab and choose "Compile it myself" to do those checks.' : READY_NOTE;
   renderPicture(compare.picture);
   $('comparison-rows').replaceChildren();
   for (const row of compare.rows || []) {
@@ -634,9 +704,11 @@ function renderComparison(job) {
   }
 
   // The written explanation, shown only once there is something to explain.
-  $('lesson').hidden = !item;
-  if (!item) $('try-again').hidden = true;
-  if (item) {
+  const canExplain = item && observed && !['error', 'inconclusive'].includes(compare.verdict);
+  $('lesson').hidden = !canExplain;
+  $('next-experiment').hidden = !canExplain || !lessons.curated[lessons.curated.indexOf(item) + 1];
+  if (!canExplain) $('try-again').hidden = true;
+  if (canExplain) {
     $('lesson-belief').textContent = 'A common belief: ' + item.belief;
     $('lesson-text').textContent = item.lesson;
     $('lesson-sources').replaceChildren(el('span', {text: 'Sources: '}));
@@ -653,7 +725,20 @@ function renderComparison(job) {
       $('followup-result').textContent = '';
       $('followup-check').disabled = false;
     }
+    restoreFollowup(job);
   }
+}
+
+function restoreFollowup(job) {
+  const item = curatedItem(job);
+  const saved = learningEntries.find(entry => entry.job === job.id && entry.stage === 'followup');
+  if (!item || !saved || followupFor !== job.id) return;
+  const input = Array.from($('followup-options').querySelectorAll('input')).find(input => input.value === saved.choice);
+  if (!input) return;
+  input.checked = true;
+  $('followup-options').querySelectorAll('input').forEach(input => { input.disabled = true; });
+  $('followup-result').textContent = (saved.correct ? 'Right. ' : `Not quite: ${optionText(item.followup.options, item.followup.answer)} `) + item.followup.why;
+  $('followup-check').disabled = true;
 }
 
 async function checkFollowup() {
@@ -663,13 +748,22 @@ async function checkFollowup() {
     toast('Choose an answer first.');
     return;
   }
-  const right = choice === item.followup.answer;
-  $('followup-result').textContent = (right ? 'Right. ' : `Not quite: ${optionText(item.followup.options, item.followup.answer)} `) + item.followup.why;
+  const jobId = selected.summary.id;
   $('followup-check').disabled = true;
   try {
-    await api('/api/learning', {experiment: item.id, stage: 'followup', choice});
+    const saved = await api('/api/learning', {experiment: item.id, job: jobId, stage: 'followup', choice});
+    if (selected?.summary.id !== jobId) return;
+    const savedChoice = saved.choice || choice;
+    $('followup-options').querySelectorAll('input').forEach(input => {
+      input.checked = input.value === savedChoice;
+      input.disabled = true;
+    });
+    $('followup-result').textContent = (saved.correct ? 'Right. ' : `Not quite: ${optionText(item.followup.options, item.followup.answer)} `) + item.followup.why;
     refreshLearning();
-  } catch { /* the explanation is already on screen */ }
+  } catch {
+    if (selected?.summary.id === jobId) $('followup-check').disabled = false;
+    toast('Your answer could not be saved. You can try again.');
+  }
 }
 
 function fileKind(path) {
@@ -738,7 +832,7 @@ function renderJob(value) {
   $('job-prompt').textContent = job.prompt;
   const origin = job.origin === 'imported' ? ' · imported from someone else' : job.curated ? ' · ready-made experiment' : '';
   const cost = typeof job.cost === 'number' ? ` · provider reported cost ${job.cost.toFixed(4)}` : '';
-  $('job-meta').textContent = `${new Date(job.time * 1000).toLocaleString()}${origin}${job.sha ? ' · ' + short(job.sha) : ''}${cost}`;
+  $('job-meta').textContent = `${demo ? 'Recorded result · viewed ' : ''}${new Date(job.time * 1000).toLocaleString()}${origin}${job.sha ? ' · ' + short(job.sha) : ''}${cost}`;
 
   $('outcome-build').textContent = {passed: 'Compiled', failed: 'Did not compile'}[job.build_status] || title(job.build_status);
   $('outcome-test').textContent = job.test_status === 'findings'
@@ -749,7 +843,7 @@ function renderJob(value) {
   $('outcome-active').textContent = {active: 'Running', refused: 'Refused on this network', 'rolled back': 'Went back to the previous build',
                                      failed: 'Would not start'}[job.activation] || 'Not started';
 
-  const builds = ['vibe', 'build', 'revert', 'update', 'setup'].includes(job.kind);
+  const builds = ['vibe', 'ready', 'build', 'revert', 'update', 'setup'].includes(job.kind);
   document.querySelector('.pipeline').hidden = job.kind !== 'vibe';
   document.querySelector('.outcomes').hidden = !builds;
   $('job-error').hidden = !job.error;
@@ -782,7 +876,7 @@ function renderJob(value) {
   $('download-diff').disabled = !job.patch;
 
   $('apply').hidden = job.state !== 'review';
-  $('apply').textContent = job.candidate ? 'Apply proposal' : 'Apply proposal, then build and compare';
+  $('apply').textContent = job.candidate ? 'Apply checked proposal' : 'Apply proposal';
   $('cancel').hidden = !(status?.job?.id === job.id && ['running', 'review', 'cancelling'].includes(job.state));
   $('cancel').textContent = job.state === 'review' ? 'Discard proposal' : job.state === 'cancelling' ? 'Stopping…' : 'Cancel experiment';
   $('refine').hidden = job.kind !== 'vibe' || !!job.curated;
@@ -856,7 +950,7 @@ function openStream(job) {
   };
   stream.onerror = () => {
     // EventSource resumes from Last-Event-ID by itself.
-    $('connection').textContent = 'Activity reconnecting…';
+    setConnectionStatus('Activity reconnecting…');
   };
 }
 
@@ -867,17 +961,20 @@ async function selectJob(id, scroll = true) {
   if (selectedId !== id) return;
   renderJob(value);
   if (status?.job?.id === id) openStream(status.job);
-  if (scroll) $('current').scrollIntoView({behavior: 'smooth'});
+  if (scroll) showSection('current', true);
 }
 
 async function refresh() {
+  if (startupProblem) return;
   if (inflight) return;
   inflight = true;
   try {
     const next = await api('/api/status');
     status = next;
     lastSuccess = Date.now();
-    $('connection').textContent = demo ? 'Demo · nothing leaves this page' : 'Connected · updated ' + new Date().toLocaleTimeString();
+    setConnectionStatus(demo
+      ? next.storage_available === false ? 'Demo · progress available for this visit only' : 'Demo · progress saved in this browser'
+      : 'Connected to the local console');
     renderNode(next);
     modeHelp();
     if (next.job && !selectedId) selectedId = next.job.id;
@@ -887,9 +984,16 @@ async function refresh() {
       openStream(next.job);
     }
     renderHistory();
+    const completed = new Set((next.experiments || []).filter(job => job.state === 'done' && job.curated).map(job => job.curated));
+    $('journey-progress').textContent = `${completed.size} of ${lessons.curated.length} experiments explored`;
+    document.querySelectorAll('[data-curated]').forEach(button => {
+      button.classList.toggle('explored', completed.has(button.dataset.curated));
+      const item = lessons.curated.find(entry => entry.id === button.dataset.curated);
+      button.setAttribute('aria-label', (completed.has(button.dataset.curated) ? 'Explored: ' : '') + item.title);
+    });
     updateControls();
   } catch (error) {
-    $('connection').textContent = 'Offline · ' + (lastSuccess ? 'last updated ' + new Date(lastSuccess).toLocaleTimeString() : 'console unavailable');
+    setConnectionStatus('Offline · reconnecting to the local console');
     $('blocker').hidden = false;
     $('blocker').textContent = 'Cannot reach the local console. Check that ./vibes is still running. Reconnecting automatically.';
     lastSuccess = 0;
@@ -908,11 +1012,14 @@ function renderHistory() {
   const legacy = (status?.vibes || []).filter(v => !known.has(v.sha))
     .map(v => ({id: null, sha: v.sha, prompt: v.subject, time: v.time, state: 'saved earlier', kind: 'vibe'}));
   const all = [...experiments, ...legacy].sort((a, b) => b.time - a.time);
+  const renderKey = JSON.stringify([query, all, status?.node?.revision]);
+  if (historyRenderKey === renderKey) return;
+  historyRenderKey = renderKey;
   const rows = all.filter(job => [job.prompt, job.sha, job.state, job.build_status, job.test_status].join(' ').toLowerCase().includes(query));
   $('history-count').textContent = `${rows.length} of ${all.length}`;
   $('history').replaceChildren();
   const reverted = new Set(experiments.filter(job => job.reverts && job.sha).map(job => job.reverts));
-  const restoredAll = experiments.some(job => job.reverts === 'all');
+  const lastRestore = Math.max(0, ...experiments.filter(job => job.reverts === 'all' && job.sha).map(job => job.time));
   for (const job of rows) {
     const open = () => {
       if (job.id) {
@@ -935,8 +1042,8 @@ function renderHistory() {
     const bottom = el('div', {class: 'history-bottom'}, [
       el('span', {text: `${new Date(job.time * 1000).toLocaleString()}${job.sha ? ' · ' + short(job.sha) : ''}${job.build_status ? ' · build: ' + job.build_status : ''}${outcome ? ' · ' + outcome : ''}`}),
     ]);
-    if (job.sha && job.kind === 'vibe' && !reverted.has(job.sha) && !restoredAll) {
-      bottom.append(el('button', {text: 'Revert change', onclick: async () => {
+    if (job.sha && job.kind === 'vibe' && !reverted.has(job.sha) && job.time > lastRestore) {
+      bottom.append(el('button', {'data-node-action': '', text: 'Revert change', onclick: async () => {
         const regtest = status?.chain === 'regtest';
         const ok = await confirmAction('Revert this change?',
           job.prompt + '\n\nThis adds a commit that undoes it, then builds and compares the result.' +
@@ -1020,9 +1127,12 @@ function decodeToken(raw) {
   const token = (raw.includes('#decree=') ? raw.split('#decree=')[1] : raw).trim();
   if (!/^vibe1\.[A-Za-z0-9_-]+$/.test(token) || token.length > 16000) throw new Error('That is not a valid sharing token.');
   const b64 = token.slice(6).replaceAll('-', '+').replaceAll('_', '/');
-  const binary = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
-  const value = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
-  if (value.v !== 1 || typeof value.p !== 'string' || !value.p.trim() || value.p.length > 4000) throw new Error('A shared request must contain 1 to 4,000 characters.');
+  let value;
+  try {
+    const binary = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+    value = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
+  } catch { throw new Error('That sharing token is damaged or is not valid UTF-8 text. Ask the sender for a new link.'); }
+  if (!value || typeof value !== 'object' || value.v !== 1 || typeof value.p !== 'string' || !value.p.trim() || value.p.length > 4000) throw new Error('A shared request must contain 1 to 4,000 characters.');
   if (HIDDEN_CHARACTERS.test(value.p)) throw new Error('This shared request contains invisible or control characters and was refused. Ask the sender to retype it as plain text.');
   return value;
 }
@@ -1113,8 +1223,22 @@ document.querySelectorAll('[data-category]').forEach(button => {
 });
 
 $('manifest').onclick = manifest;
+$('start-learning').onclick = () => runCurated(lessons.curated[0]);
+$('next-experiment').onclick = () => {
+  const item = selected && curatedItem(selected.summary);
+  const next = lessons.curated[lessons.curated.indexOf(item) + 1];
+  if (next) runCurated(next);
+};
 $('beliefs-save').onclick = saveBeliefs;
 $('learning-export').onclick = exportLearning;
+$('earlier-demo-export').onclick = async () => {
+  try {
+    const record = await api('/api/earlier-record');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(record, null, 2)], {type: 'application/json'}));
+    el('a', {href: url, download: 'bitcoin-vibes-earlier-demo-record.json'}).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { toast(error.message); }
+};
 $('try-again').onclick = () => {
   const item = selected && curatedItem(selected.summary);
   if (item) runCurated(item);
@@ -1137,7 +1261,8 @@ $('apply').onclick = async () => {
   const verdict = lessons.verdicts[job.compare?.verdict];
   const what = job.candidate
     ? `It was built and compared. Outcome: ${verdict?.title || 'not compared with an unmodified node'}.`
-    : 'It has not been built yet; applying it will build and compare it.';
+    : job.autobuild ? 'It has not been built or compared yet. Applying it will run those checks.'
+      : 'It has not been built or compared. Applying it saves the source only; use Build & check afterwards.';
   if (await confirmAction('Apply this proposal?', `${job.prompt}\n\n${what}\n\nThis saves the change to your source. You can revert it from the history.`, 'Apply')) {
     action('/api/apply', {id: job.id});
   }
@@ -1260,6 +1385,10 @@ $('reset-demo').onclick = async () => {
   window.VibesDemo.reset();
   selectedId = null;
   selected = null;
+  followupFor = null;
+  beliefRenderKey = null;
+  historyRenderKey = null;
+  learningEntries = [];
   $('job-content').hidden = true;
   $('empty-current').hidden = false;
   $('job-state').textContent = 'No experiment yet';
@@ -1269,13 +1398,27 @@ $('reset-demo').onclick = async () => {
 };
 
 $('networks-help').textContent = Object.entries(lessons.networks).map(([name, text]) => `${name}: ${text}`).join('\n\n');
-if (demo) $('demo-banner').hidden = false;
+if (demo) {
+  $('demo-banner').hidden = false;
+  $('demo-custom-note').hidden = false;
+  $('earlier-demo-note').hidden = !window.VibesDemo?.hasEarlierRecord;
+  $('intro-copy').textContent = 'Explore coins, fees, mining and the rules that nodes check. Make a prediction, then inspect observations recorded from two real nodes.';
+  $('curated-intro').textContent = 'These are recorded experiments, not live simulations. Start with coins and keys, then work through the groups in order. Install the lab to repeat them with real nodes.';
+  $('wish-help').textContent = 'Draft or inspect a request here. Running it requires the installed lab and a signed-in Claude Code account.';
+  $('predict-run').textContent = 'Show recorded result';
+}
 loadDraft();
 renderImportedNote();
 renderCurated();
 renderExamples('Customize');
 modeHelp();
 updateControls();
+if (startupProblem) {
+  setConnectionStatus('Page assets unavailable');
+  $('blocker').hidden = false;
+  $('blocker').textContent = startupProblem;
+  document.querySelectorAll('[data-curated], #start-learning, #beliefs-save').forEach(button => { button.disabled = true; });
+}
 refresh();
 refreshLearning();
 // A shared link can arrive on first load or while the console is already open.
