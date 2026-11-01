@@ -26,23 +26,35 @@ verification. Bitcoin Core consensus source under `src/` is unchanged.
 - Preserve unsaved questionnaire choices during polling, retry lost score writes,
   restore scored follow-ups reliably, prevent confirmation-dialog races and keep
   earlier demo records exportable. Show useful asset-loading and offline errors.
-- Require exact recorded slider inputs, refuse incomplete recordings, replace
+- Require exact recorded slider inputs and matching, scoreable observations; refuse incomplete recordings, replace
   fixtures atomically, and preserve the distinction between unrun and passing tests.
 - Reuse installed programs only when complete and attributable to clean matching
   source. Never stamp dirty or unreadable source as a release build. Remove stale
   CMake paths from container packages and establish the container reference from
   its initial source commit. Make container build concurrency configurable.
+- Require a lab restart after source updates so cached lessons and scene scripts
+  cannot silently continue on the new source. Keep stop and read-only operations
+  available while preventing further mutations.
 - Prevent the static-site output from overlapping its source tree. Add real HTTP
   browser coverage and retain the verified static site and real-node recordings
   as CI artifacts.
 
+## Independent review
+
+Separate agents reviewed the lessons, backend and interface. A second read-only
+review covered the integrated configuration, recording and packaging changes.
+It found additional quiz-migration, follow-up restoration, Core configuration,
+recorder-reference, metadata-validation, CI-assertion and installer-provenance
+defects; those findings were routed back to the owning implementation and fixed
+with regressions. This is independent AI review advice, not human approval.
+
 ## Verification
 
-The baseline Python suite passed 125 tests with eight optional real-node checks
-skipped. The original static browser workflow and axe audit also passed; those
+The baseline Python suite ran 125 tests: 117 passed and eight optional
+real-node checks were skipped. The original static browser workflow and axe audit also passed; those
 checks did not catch the content and real-console defects above.
 
-Local verification completed during integration:
+Verification completed during integration:
 
 | Check | Result |
 |---|---|
@@ -50,21 +62,40 @@ Local verification completed during integration:
 | Full stock Bitcoin Core suite | 784 test cases passed |
 | Three deliberately changed teaching-node builds | Passed |
 | Integrated app suite against real regtest nodes | 138 tests passed, no skips (integration snapshot) |
+| Final local app suite | 174 total: 166 passed and eight optional real-node checks skipped |
 | Stock validation suite and changed subsidy variants | Stock passes; doubled/halved subsidy produce expected stock-test findings; earlier regtest halving is not exercised by this suite |
 | Real authenticated console in Chrome | Review, discard, apply, reload, history, mobile and offline controls pass |
-| Expanded axe audit | Zero detected violations in four states at 1440, 390 and 320 pixels |
-| Packaging and recorder regressions | Six packaging checks and two recording checks pass |
+| Expanded axe audit | Zero detected violations in four states at 1440, 390 and 320 pixels, with fresh fixtures |
+| Static browser workflow | Passed with fresh fixtures: predictions, follow-ups, reloads, scoring retries, imports, modal focus, missing assets and narrow screens |
+| Exact replay/scoring contracts | All 26 recordings, including all 17 slider settings, passed |
+| Initial Linux node job | Core build/unit tests, real-node app suite (156 tests, no skips), sandbox, changed-node experiments and all 26 recordings passed |
+| Docker image build and unprivileged startup | Passed on Linux CI at `100d9062ed`; stronger provenance/restart checks run on the final branch |
+| Packaging and recorder regressions | Six packaging checks and twelve recording/reference checks pass |
 | Source/diff checks | Python and JavaScript parse; no whitespace errors; no `src/` changes |
 
-Final integrated browser, fixture and Linux CI results will be recorded here
-before this PR is marked ready.
+See [PR #13](https://github.com/hotpixelgroup/bitcoin/pull/13) for the final
+branch checks, exact commit, run links and generated recording/site artifacts.
+The table above distinguishes completed local checks and integration snapshots
+from those final branch checks.
 
 The host antivirus classified temporary Bitcoin node executables as CoinMiner
 and removed them during a recording run. The recorder rejected that run and
 preserved the previous fixtures. No antivirus settings were changed. Final
-recording verification is performed by the isolated Linux CI job. The local
+recording verification was completed by the isolated Linux CI job. The
+recording archive SHA-256 was checked before adoption; every case also passed
+the current recorder's exact-input and scoreable-observation validation. The local
 Docker build also stalled with its daemon unresponsive; no existing user
 containers were stopped or reset.
+
+## Interface evidence
+
+| Before | After |
+|---|---|
+| ![Original desktop demo](vibes-audit-images/before-desktop.png) | ![Updated desktop demo](vibes-audit-images/after-desktop.png) |
+
+[Updated mobile layout](vibes-audit-images/after-mobile.png) and
+[recorded experiment evidence](vibes-audit-images/experiment-result.png). The starting
+action is visible before the explanation on narrow screens.
 
 ## Deployment
 

@@ -30,7 +30,14 @@ function token(value) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('request', request => { if (new URL(request.url()).pathname.includes('/api/')) apiRequests++; });
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
-  const capture = async name => { if (screenshotDir) await page.screenshot({path: path.join(screenshotDir, name)}); };
+  const capture = async name => {
+    if (!screenshotDir) return;
+    if (name === 'experiment-result.png') {
+      await page.locator('#comparison').scrollIntoViewIfNeeded();
+      await page.locator('#verdict-title').scrollIntoViewIfNeeded();
+    }
+    await page.screenshot({path: path.join(screenshotDir, name), animations: 'disabled'});
+  };
 
   try {
     // Landing page.
@@ -102,7 +109,7 @@ function token(value) {
     await page.locator('#verdict-title').filter({hasText: 'Loosened'}).waitFor();
     assert.match(await page.locator('#prediction-result').innerText(), /You predicted this/);
     assert.match(await page.locator('#comparison-rows').innerText(), /bad-cb-amount/);
-    assert.match(await page.locator('#verdict-mainnet').innerText(), /hard fork/);
+    assert.match(await page.locator('#verdict-mainnet').innerText(), /hard[ -]fork/);
     assert.match(await page.locator('#outcome-test').innerText(), /Not run|no longer pass/);
     await capture('experiment-result.png');
     await page.locator('#diff-summary').click();
