@@ -159,6 +159,12 @@ class ReleaseAssetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'every other asset'):
             self.verify()
 
+    def test_native_first_launch_cannot_execute_on_a_developer_machine(self):
+        from unittest.mock import patch
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+            with self.assertRaisesRegex(ValueError, 'isolated GitHub Actions'):
+                release.first_launch_smoke(None, None, self.tag, self.commit, 'macos-arm64', 'hotpixelgroup/bitcoin', 'file:///tmp')
+
     def test_native_public_smoke_cannot_execute_on_a_developer_machine(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
@@ -186,7 +192,7 @@ class LauncherReleaseTests(unittest.TestCase):
         self.tools = self.root / 'tools'
         self.tools.mkdir()
         dialogs = self.tools / 'osascript'
-        dialogs.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DIALOG_LOG"\n')
+        dialogs.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DIALOG_LOG"\ncat >> "$DIALOG_LOG"\n')
         dialogs.chmod(0o755)
         self.launcher = self.root / 'launcher.sh'
         text = LAUNCHER.read_text().replace('PINNED_REF=""', 'PINNED_REF="v31.99-9"')
@@ -203,20 +209,22 @@ class LauncherReleaseTests(unittest.TestCase):
         git(self.origin, 'add', '.')
         git(self.origin, 'commit', '-q', '-m', version)
 
-    def launch(self):
+    def launch(self, expect=0, **extra):
         env = {**os.environ, **GIT_ENV, 'VIBES_HOME': str(self.support), 'VIBES_REPO': 'file://' + str(self.origin),
                'VIBES_TEST_PATH': str(self.tools) + os.pathsep + os.environ['PATH'],
-               'DIALOG_LOG': str(self.dialogs), 'LAUNCH_RESULT': str(self.result)}
+               'DIALOG_LOG': str(self.dialogs), 'LAUNCH_RESULT': str(self.result), **extra}
         env.pop('VIBES_REF', None)
         env.pop('VIBES_BRANCH', None)
         result = subprocess.run(['sh', self.launcher], capture_output=True, text=True, env=env)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + (self.support / 'launch.log').read_text())
-        return json.loads(self.result.read_text())
+        self.assertEqual(result.returncode, expect, result.stdout + result.stderr + ((self.support / 'launch.log').read_text() if (self.support / 'launch.log').exists() else ''))
+        return json.loads(self.result.read_text()) if self.result.exists() else None
 
     def test_fresh_app_fetches_its_release_and_opens_the_matching_console(self):
         self.assertEqual(self.launch(), 'new')
         self.assertEqual(git(self.support / 'source', 'rev-parse', 'HEAD'), self.new)
         self.assertNotIn('existing lab uses different source', self.dialogs.read_text())
+        self.assertIn('display notification', self.dialogs.read_text())
+        self.assertNotIn('display dialog', self.dialogs.read_text())
 
     def test_existing_lab_is_preserved_with_one_explicit_update_notice(self):
         self.support.mkdir()
@@ -243,6 +251,52 @@ class LauncherReleaseTests(unittest.TestCase):
         git(source, 'commit', '-q', '-m', 'vibe: my experiment')
         self.assertEqual(self.launch(), 'new')
         self.assertNotIn('existing lab uses different source', self.dialogs.read_text())
+
+
+    def test_unwritable_lab_folder_reports_a_native_error(self):
+        stub = self.tools / 'mkdir'
+        stub.write_text('#!/bin/sh\nexit 1\n')
+        stub.chmod(0o755)
+        self.launch(expect=1)
+        self.assertIn('Could not create the Bitcoin Vibes lab folder', self.dialogs.read_text())
+        self.assertFalse((self.support / 'source').exists())
+
+    def test_failed_clone_can_be_retried_without_a_partial_source_folder(self):
+        self.launch(expect=1, VIBES_REPO='file://' + str(self.origin) + '-missing')
+        self.assertFalse((self.support / 'source').exists())
+        self.assertFalse(list(self.support.glob('source.download.*')))
+        self.assertIn('reopen the app to retry', self.dialogs.read_text())
+        self.assertEqual(self.launch(), 'new')
+
+    def test_incomplete_existing_source_is_preserved(self):
+        source = self.support / 'source'
+        source.mkdir(parents=True)
+        (source / 'my-saved-work.txt').write_text('keep my work')
+        self.launch(expect=1)
+        self.assertEqual((source / 'my-saved-work.txt').read_text(), 'keep my work')
+        self.assertIn('Your files have been kept', self.dialogs.read_text())
+
+    def test_git_stub_on_path_is_not_mistaken_for_working_git(self):
+        stub = self.tools / 'git'
+        stub.write_text('#!/bin/sh\nexit 69\n')
+        stub.chmod(0o755)
+        self.launch(expect=1)
+        self.assertFalse((self.support / 'source').exists())
+        self.assertIn('needs working git', self.dialogs.read_text())
+        self.assertIn('xcode-select --install', self.dialogs.read_text())
+
+    def test_python_stub_on_path_is_not_mistaken_for_working_python(self):
+        stub = self.tools / 'python3'
+        stub.write_text('#!/bin/sh\nexit 69\n')
+        stub.chmod(0o755)
+        # Remove real fallback paths from the disposable copy only. The
+        # product tries them so a broken PATH tool need not prevent launch.
+        text = self.launcher.read_text()
+        text = text.replace(' /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3;', ';')
+        self.launcher.write_text(text)
+        self.launch(expect=1)
+        self.assertFalse((self.support / 'source').exists())
+        self.assertIn('needs working Python', self.dialogs.read_text())
 
 
 if __name__ == '__main__':

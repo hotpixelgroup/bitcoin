@@ -42,11 +42,11 @@
   </div>
   <div class="hero-preview" aria-label="A recorded experiment">
     <div class="section-line"><span class="eyebrow">ONE CHANGE. TWO NODES.</span><span class="pill">REGTEST</span></div>
-    <blockquote>“Raise the block reward to 100 BTC.”</blockquote>
-    <div class="preview-step"><span class="pass">✓</span> Your node produces a block paying 100 <small>It works here</small></div>
-    <div class="preview-step"><span class="fail">✕</span> The unmodified node refuses it: bad-cb-amount <small>And only here</small></div>
-    <div class="preview-step"><span class="pass">✓</span> You read why, then revert <small>Understand</small></div>
-    <p class="subtle">Recorded from a real run. Try it in the demo.</p>
+    <blockquote>“Double the starting block subsidy.”</blockquote>
+    <div class="preview-step"><span class="pass">✓</span> Changed node claims more subsidy than the reference allows <small>Its changed subsidy rule permits it</small></div>
+    <div class="preview-step"><span class="fail">✕</span> The unmodified node refuses it: bad-cb-amount <small>The extra coins did not impress the check</small></div>
+    <div class="preview-step"><span class="pass">✓</span> Compare the rejection with the source change <small>One changed node does not update the others</small></div>
+    <p class="subtle">Recorded from a real run. The demo replays this comparison; the installed lab lets you apply and revert changes.</p>
   </div>
 </div>
 
@@ -79,7 +79,7 @@
         <pre id="install-command" class="install-command">curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh | sh</pre>
         <button id="copy-install">Copy command</button>
       </div>
-      <p class="subtle">The installer published with the latest release. It installs that release, checks the ready-made node against its published SHA-256, and asks before running anyone else's installer. The first build takes several minutes or longer, depending on your machine.</p>
+      <p class="subtle">The installer published with the latest release. It installs that release, checks the ready-made node against its published SHA-256, and asks before running anyone else's installer. A matching prepared node avoids compilation. A first build from source takes several minutes or longer, depending on your machine.</p>
       <details>
         <summary>Read the installer first</summary>
         <pre>curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/latest/download/install.sh -o install.sh
@@ -92,7 +92,7 @@ VIBES_DRY_RUN=1 sh install.sh</pre>
     </div>
     <div class="panel">
       <h3>Prefer the Mac app?</h3>
-      <p>The prepared Mac app and node programs require Apple silicon and macOS 15 or later. The launcher reports progress in your browser. It is not notarised by Apple yet, so macOS asks you to allow it the first time.</p>
+      <p>The prepared Mac app and node programs require Apple silicon and macOS 15 or later. The initial source download reports progress through notifications and the launch log; node setup continues in your browser. The app is not notarised by Apple yet, so macOS may block the first launch. Read the manual below for opening instructions.</p>
       <p class="subtle">Other Mac configurations, including Intel Macs, need a compatible source build and are not verified by this release workflow.</p>
       <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/releases/latest">Download the latest release ↗</a>
       <h3>Run with Docker</h3>

@@ -58,6 +58,8 @@
   <a href="#setup">Help</a>
 </nav>
 
+<noscript><p class="notice">JavaScript is required for the interactive lab. Enable it and reload this page, or <a href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">read the manual</a>.</p></noscript>
+
 <div id="console-restart-notice" class="notice" role="alert" hidden>
   <b>Restart Bitcoin Vibes to load the updated lab and lessons.</b>
   Close and reopen the app, or stop <code>./vibes</code> and run it again.
@@ -78,6 +80,16 @@
 </div>
 
 <div id="blocker" class="notice" role="status" hidden></div>
+<button id="reconnect" class="text-button" hidden>Retry connection</button>
+
+<section id="lab-readiness" class="notice readiness" aria-labelledby="readiness-title" hidden>
+  <h2 id="readiness-title">Connecting to your lab</h2>
+  <p id="readiness-copy" role="status">Checking which node programs are ready. No experiment has started.</p>
+  <div class="toolbar">
+    <button id="readiness-action" hidden>View preparation</button>
+    <a href="https://hotpixelgroup.github.io/bitcoin/demo.html">Try recorded experiments in the browser</a>
+  </div>
+</section>
 
 <section id="curated" class="panel" tabindex="-1" aria-labelledby="curated-heading">
   <div class="section-line">
@@ -105,7 +117,7 @@
   <div id="empty-current" class="empty">
     <span aria-hidden="true">✦</span>
     <h3>Choose an experiment to begin.</h3>
-    <p>Your prediction, the observations and an explanation will appear here.</p>
+    <p>Your prediction, the observations and an explanation will appear here. The second node takes the rules very literally.</p>
   </div>
   <div id="job-content" hidden>
     <div class="request">
@@ -183,7 +195,7 @@
   <p id="progress-message" class="subtle" role="status" aria-live="polite"></p>
 </section>
 
-<section id="beliefs" class="panel" aria-labelledby="beliefs-heading">
+<section id="beliefs" class="panel" tabindex="-1" aria-labelledby="beliefs-heading">
   <div class="section-line">
     <h2 id="beliefs-heading">Check your thinking</h2>
     <span id="beliefs-stage" class="subtle"></span>
@@ -245,7 +257,7 @@
   </details>
 </section>
 
-<section id="node-controls" class="node-card" data-local-only aria-labelledby="node-heading">
+<section id="node-controls" class="node-card" tabindex="-1" data-local-only aria-labelledby="node-heading">
   <div class="section-line">
     <h2 id="node-heading">Your node</h2>
     <span class="pill" id="node-health">Unknown</span>
@@ -421,6 +433,5 @@
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<noscript><p class="notice">JavaScript is required for the interactive console. <a href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the manual</a>.</p></noscript>
 </body>
 </html>

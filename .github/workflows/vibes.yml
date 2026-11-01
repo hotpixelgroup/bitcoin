@@ -101,6 +101,8 @@ jobs:
           node contrib/vibes/tests/browser_qa.cjs
           node contrib/vibes/tests/accessibility_qa.cjs
           node contrib/vibes/tests/live_browser_qa.cjs
+          node contrib/vibes/tests/session_entry_qa.cjs
+          node contrib/vibes/tests/first_launch_qa.cjs
           node contrib/vibes/tests/form_layout_qa.cjs
 
       - name: Keep the verified site for deployment review

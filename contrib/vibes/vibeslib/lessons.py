@@ -197,7 +197,8 @@ CURATED = (
                   "device signs. Recovery needs all required secrets and wallet information: a seed phrase alone "
                   "may be insufficient when there is a passphrase, multiple signers or additional scripts. Treat "
                   "a complete usable spending backup like the wallet itself. A custodial exchange balance is "
-                  "different: the exchange controls the on-chain spending keys and owes you a balance.",
+                  "different: the exchange controls the on-chain spending keys and owes you a balance. "
+                  "The chain did not notice the wallet's dramatic exit.",
         "sources": [
             {"title": "BIP 39: recovery words and optional passphrase",
              "url": "https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki"},
@@ -241,7 +242,8 @@ CURATED = (
                   "consider related transactions together, so a higher individual fee rate is not a universal "
                   "priority guarantee. Relay and mining fee floors can also apply when blocks have room. Each "
                   "node has its own waiting area, called a mempool: node B did not receive these unconfirmed "
-                  "payments because the nodes were disconnected.",
+                  "payments because the nodes were disconnected. "
+                  "The 10 BTC payment brought a bigger number, not a better bid.",
         "sources": [
             {"title": "Bitcoin developer guide: transaction fees",
              "url": "https://developer.bitcoin.org/devguide/transactions.html#transaction-fees-and-change"},
@@ -281,7 +283,8 @@ CURATED = (
                   "conflicting spend, so the payment returns to zero confirmations and can be mined again. A "
                   "conflicting spend could instead make it invalid. More confirmations generally make replacing "
                   "that history harder; they are not an absolute guarantee. Six is a convention, not a consensus "
-                  "rule for ordinary payments.",
+                  "rule for ordinary payments. "
+                  "That first confirmation comes without a lifetime appointment.",
         "sources": [WHITEPAPER,
                     {"title": "Bitcoin developer guide: block chain",
                      "url": "https://developer.bitcoin.org/devguide/block_chain.html"}],
@@ -319,7 +322,8 @@ CURATED = (
                   "the block containing it, and both nodes stayed on one chain. Filters affect propagation and "
                   "can influence miners using those policies, but cannot guarantee exclusion: a miner can receive "
                   "a consensus-valid transaction directly or through other peers. The scene establishes that "
-                  "distinction, not whether a particular filtering policy is useful.",
+                  "distinction, not whether a particular filtering policy is useful. "
+                  "The transaction arrived in a block without an invitation to the filtering node's mempool.",
         "sources": [POLICY_DOC,
                     {"title": "Bitcoin Core 30.0 release notes", "url": "https://bitcoincore.org/en/releases/30.0/"}],
         "followup": {
@@ -352,7 +356,8 @@ CURATED = (
                   "starting subsidy on your private chain, whose halvings occur every 150 blocks. Your node "
                   "accepted its changed reward; the reference rejected an overpaying block with bad-cb-amount. "
                   "Other nodes using unchanged rules reject it too. A software release cannot force them to "
-                  "accept the extra outputs; people must choose compatible rules for their own nodes.",
+                  "accept the extra outputs; people must choose compatible rules for their own nodes. "
+                  "The reference node was not impressed by the larger number.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: MAX_MONEY is \"not the total money supply\"",
                      "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/consensus/amount.h"}],
@@ -385,7 +390,8 @@ CURATED = (
                   "make another node change its checks. It can follow a compatible branch if miners build one, or "
                   "remain at its last accepted block if nobody does. A smaller mining share can still produce a "
                   "growing branch; whether other nodes follow it depends on accumulated valid work and later "
-                  "miner behavior, not a vote by node count.",
+                  "miner behavior, not a vote by node count. "
+                  "A stricter rule does not arrive with a complimentary mining crew.",
         "sources": [VALIDATION_SRC, CHAIN_GUIDE],
         "followup": {
             "question": "A group of node operators starts rejecting blocks that most miners keep "
@@ -415,7 +421,8 @@ CURATED = (
                   "rejected that block. A miner claiming less could have produced a block both accepted. Changed "
                   "rules can remain invisible until a particular height, time or transaction exercises them. "
                   "Successful checks therefore demonstrate only the behaviors tested, rather than proving that "
-                  "the builds have identical consensus rules.",
+                  "the builds have identical consensus rules. "
+                  "Block 75 was when the fine print stopped being theoretical.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: regtest halves every 150 blocks (chainparams.cpp)",
                      "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/kernel/chainparams.cpp"}],
@@ -454,7 +461,8 @@ CURATED = (
                   "to reorganize recent history, including double-spending the miner's own payments. It cannot "
                   "make an over-subsidy block or an unauthorized signature pass an unchanged node's checks. This "
                   "scene compares constructed branches at regtest difficulty; producing more blocks here is not a "
-                  "measurement of real mining power.",
+                  "measurement of real mining power. "
+                  "More hash power is not a permission slip to change another node's rules.",
         "sources": [WHITEPAPER, CHAIN_GUIDE],
         "followup": {
             "question": "What can a miner with 60% of the mining power do?",
@@ -465,8 +473,7 @@ CURATED = (
             ],
             "answer": "reorder",
             "why": "A majority miner can attempt censorship and reorganisations using valid blocks. "
-                   "It still cannot make an invalid block pass another node's checks. More hash "
-                   "power is not a permission slip to change another node's rules.",
+                   "It still cannot make an invalid block pass another node's checks.",
         },
     },
     {
@@ -493,7 +500,8 @@ CURATED = (
                   "check the new rule itself. Real discoveries are random, equal-work ties depend on which block "
                   "arrives first, and miner choices can change. A forty-block outcome does not establish a "
                   "universal activation threshold. Activation rules, signaling and ongoing enforcement are "
-                  "separate questions. Try different shares and compare the observed chains.",
+                  "separate questions. Try different shares and compare the observed chains. "
+                  "Following a stricter chain does not download the stricter rulebook.",
         "sources": [CHAIN_GUIDE, ACTIVATION],
         "followup": {
             "question": "Ten thousand nodes enforce a stricter rule while miners keep producing blocks "
@@ -530,7 +538,8 @@ CURATED = (
                   "that check disabled on one; it demonstrates the rule difference rather than replaying the 2015 "
                   "network. The disabled node accepted an early spend that the enforcing node rejected. An "
                   "unupgraded node can still follow a valid stricter chain, but does not independently check the "
-                  "new condition. Following a compatible chain is different from validating every rule on it.",
+                  "new condition. Following a compatible chain is different from validating every rule on it. "
+                  "The disabled check did exactly what 'disabled' advertised.",
         "sources": [BIP65, ACTIVATION],
         "followup": {
             "question": "After a soft fork, what is a node that has not upgraded relying on?",

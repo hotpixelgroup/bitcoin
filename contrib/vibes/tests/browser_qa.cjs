@@ -167,6 +167,20 @@ function token(value) {
     await page.locator('#prediction-chain').check();
     await page.locator('#predict-run').click();
     await page.waitForFunction(async count => (await window.VibesDemo.api('/api/learning')).summary.prediction.answered === count + 1, attemptsBefore);
+    assert.equal(await page.locator('#start-learning').innerText(), 'Continue learning');
+    await page.locator('#start-learning').click();
+    assert.equal(await page.locator('#predict-title').innerText(), await page.evaluate(() => window.VibesLessons.curated.find(item => item.id === 'fees').title), 'continue skips experiments already explored');
+    await page.keyboard.press('Escape');
+    assert.match(await page.locator('#beliefs-intro').innerText(), /even if you have already started exploring/, 'late questionnaire does not claim to precede the experiments');
+
+    // The last lesson leads into reflection rather than ending without a next step.
+    await page.locator('[data-curated="softfork"]').click();
+    await page.locator('#predict-options input').first().check();
+    await page.locator('#predict-run').click();
+    await page.locator('#next-experiment').filter({hasText: 'Check your thinking'}).waitFor();
+    await page.locator('#next-experiment').click();
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'beliefs');
+    assert.equal(await page.locator('#beliefs-details').getAttribute('open'), '');
 
     // Before and after: answers are hidden until the second round is saved.
     if (await page.locator('#beliefs-details').getAttribute('open') === null) await page.locator('#beliefs-summary').click();
@@ -191,6 +205,15 @@ function token(value) {
     await page.locator('#confirm-action').click();
     await page.locator('#imported-note').filter({hasText: 'came from someone else'}).waitFor();
     assert.equal(await page.locator('#mode').inputValue(), 'review');
+
+    // A shared request explicitly asks before replacing work already in the draft.
+    await page.locator('#wish').fill('My existing request');
+    await page.evaluate(value => { location.hash = '#decree=' + value; }, token({v: 1, p: 'A replacement request'}));
+    await page.locator('#confirm-copy').filter({hasText: 'This replaces the request currently in your draft.'}).waitFor();
+    assert.equal(await page.locator('#confirm-action').innerText(), 'Replace my draft');
+    assert.match(await page.locator('#confirm-copy').innerText(), /sandbox where available/);
+    await page.locator('#confirm-dialog button[value="cancel"]').click();
+    assert.equal(await page.locator('#wish').inputValue(), 'My existing request', 'cancel preserves the draft');
 
     // Hidden control characters in a shared request are refused.
     await page.goto(base + '/demo.html');
@@ -227,6 +250,16 @@ function token(value) {
     await page.locator('#toast').filter({hasText: 'Finish or close the open dialog'}).waitFor();
     assert.equal(await page.locator('#confirm-title').innerText(), 'Reset the browser demo?');
     await page.locator('#confirm-dialog button[value="cancel"]').click();
+
+    // Reset clears every visible part of the old learning record.
+    await page.locator('#reset-demo').click();
+    await page.locator('#confirm-action').click();
+    await page.locator('#journey-progress').filter({hasText: '0 of 10'}).waitFor();
+    await page.locator('#beliefs-stage').filter({hasText: 'Not answered yet'}).waitFor();
+    assert.equal(await page.locator('#beliefs-status').innerText(), '');
+    assert.equal(await page.locator('#progress-message').innerText(), '');
+    assert.equal(await page.locator('#log-count').innerText(), '');
+    assert.equal(await page.locator('#start-learning').innerText(), 'Start with coins and keys');
 
     // Narrow screens.
     for (const width of [768, 390, 320]) {

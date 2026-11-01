@@ -20,41 +20,81 @@ REPO="${VIBES_REPO:-https://github.com/hotpixelgroup/bitcoin.git}"
 # VIBES_BRANCH (the older name), else master.
 REF="${VIBES_REF:-${PINNED_REF:-${VIBES_BRANCH:-master}}}"
 
-mkdir -p "$APP_SUPPORT"
-exec 2>>"$LOG"
-echo "--- launch $(date)" >>"$LOG"
-
 # Finder gives us a minimal PATH; put the usual homes for Homebrew and
 # user-installed tools back so git, cmake and claude can be found.
 PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH
 
-say() { osascript -e "display dialog \"$1\" with title \"Bitcoin Vibes\" buttons {\"OK\"} default button 1 with icon note" >/dev/null 2>&1; }
-die() { osascript -e "display dialog \"$1\" with title \"Bitcoin Vibes\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1; exit 1; }
+# Pass messages as arguments, so quotes or backslashes in a user's folder
+# name cannot turn a helpful dialog into broken AppleScript.
+alert() {
+  osascript - "$1" "$2" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  if item 2 of argv is "stop" then
+    display dialog (item 1 of argv) with title "Bitcoin Vibes" buttons {"OK"} default button 1 with icon stop
+  else
+    display dialog (item 1 of argv) with title "Bitcoin Vibes" buttons {"OK"} default button 1 with icon note
+  end if
+end run
+APPLESCRIPT
+}
+say() { alert "$(printf '%b' "$1")" note; }
+die() { printf '%b\n' "$1" >>"$LOG"; alert "$(printf '%b' "$1")" stop; exit 1; }
+progress() {
+  printf '%s\n' "$1" >>"$LOG"
+  osascript - "$1" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+on run argv
+  display notification (item 1 of argv) with title "Bitcoin Vibes"
+end run
+APPLESCRIPT
+}
 
-PY=$(command -v python3 || true)
-[ -n "$PY" ] || die "Bitcoin Vibes needs Python 3 from Apple's command line tools or Homebrew.\n\nOpen Terminal and run:  xcode-select --install\n\nReopen Bitcoin Vibes when the installation finishes."
+mkdir -p "$APP_SUPPORT" || die "Could not create the Bitcoin Vibes lab folder.\n\nCheck that you can write to $APP_SUPPORT, then reopen the app."
+if ! : >>"$LOG"; then
+  die "Could not write the Bitcoin Vibes launch log.\n\nCheck permissions for $APP_SUPPORT, then reopen the app."
+fi
+exec 2>>"$LOG"
+echo "--- launch $(date)" >>"$LOG"
+
+PY=''
+for candidate in "$(command -v python3 || true)" /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+  if [ -n "$candidate" ] && "$candidate" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
+    PY="$candidate"
+    break
+  fi
+done
+[ -n "$PY" ] || die "Bitcoin Vibes needs working Python 3.8+ from Apple's command line tools or Homebrew.\n\nOpen Terminal and run:  xcode-select --install\n\nReopen Bitcoin Vibes when the installation finishes."
+git --version >/dev/null 2>&1 || die "Bitcoin Vibes needs working git from Apple's command line tools or Homebrew.\n\nOpen Terminal and run:  xcode-select --install\n\nReopen Bitcoin Vibes when the installation finishes."
 
 # First run: fetch the source. Everything else assumes it is there.
 #
 # Later launches fetch nothing. Like Bitcoin Core, this never updates by
 # itself: the console tells the operator when a newer release exists and
 # updates only when they ask, replaying their saved experiments on top.
-if [ ! -d "$SRC/.git" ]; then
-  if ! command -v git >/dev/null 2>&1; then
-    osascript -e 'display dialog "Bitcoin Vibes needs Apple'"'"'s command line tools (they include git and the compiler).\n\nClick OK and macOS will offer to install them. Reopen Bitcoin Vibes once it finishes." with title "Bitcoin Vibes" buttons {"OK"} default button 1 with icon note' >/dev/null 2>&1
-    xcode-select --install >/dev/null 2>&1
-    exit 0
+if [ ! -e "$SRC/.git" ]; then
+  if [ -e "$SRC" ] && [ -n "$(ls -A "$SRC" 2>/dev/null)" ]; then
+    die "The Bitcoin Vibes source looks incomplete. Your files have been kept.\n\nBack up $SRC before repairing its git metadata, or choose a different lab folder.\n\nDetails: $LOG"
   fi
-  say "Bitcoin Vibes is fetching the node's source code.\n\nThis takes a minute. The console will open by itself when it is ready."
-  git -c advice.detachedHead=false clone --depth 1 --branch "$REF" "$REPO" "$SRC" >>"$LOG" 2>&1 \
-    || die "Could not download Bitcoin Vibes.\n\nCheck your internet connection and try again.\n\nDetails: $LOG"
-  # A release tag leaves HEAD detached, and the console saves experiments as
-  # commits on the current branch, so give it one.
-  if ! git -C "$SRC" symbolic-ref -q HEAD >/dev/null 2>&1; then
-    git -C "$SRC" checkout -q -b vibes >>"$LOG" 2>&1 \
+  progress "Downloading source. The console opens when it is ready; progress is in launch.log."
+  FETCH_TMP=$(mktemp -d "$APP_SUPPORT/source.download.XXXXXX") \
+    || die "Could not prepare a download folder.\n\nDetails: $LOG"
+  trap 'rm -rf "$FETCH_TMP"' 0
+  trap 'exit 1' 1 2 15
+  git -c advice.detachedHead=false clone --progress --depth 1 --branch "$REF" "$REPO" "$FETCH_TMP/source" >>"$LOG" 2>&1 \
+    || die "Could not download Bitcoin Vibes. Your existing files were kept.\n\nCheck your internet connection and reopen the app to retry.\n\nDetails: $LOG"
+  if [ -n "$PINNED_COMMIT" ] && [ "$REF" = "$PINNED_REF" ] \
+      && [ "$(git -C "$FETCH_TMP/source" rev-parse HEAD)" != "$PINNED_COMMIT" ]; then
+    die "The downloaded source does not match this launcher's release. It was not installed.\n\nDownload the app again from the official release page.\n\nDetails: $LOG"
+  fi
+  # A release tag leaves HEAD detached. Give saved experiments a branch.
+  if ! git -C "$FETCH_TMP/source" symbolic-ref -q HEAD >/dev/null 2>&1; then
+    git -C "$FETCH_TMP/source" checkout -q -b vibes >>"$LOG" 2>&1 \
       || die "Could not prepare the Bitcoin Vibes source.\n\nDetails: $LOG"
   fi
+  [ ! -d "$SRC" ] || rmdir "$SRC" || die "Could not prepare $SRC. Your files were kept.\n\nDetails: $LOG"
+  mv "$FETCH_TMP/source" "$SRC" || die "Could not install the source.\n\nDetails: $LOG"
+  rm -rf "$FETCH_TMP"
+  trap - 0 1 2 15
 fi
 
 # A new launcher does not replace an existing lab or its saved experiments.

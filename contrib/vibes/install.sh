@@ -15,8 +15,10 @@
 #
 # VIBES_REF=<tag or branch> chooses what to install. VIBES_BRANCH is the older
 # name for the same setting and still works.
+# VIBES_NONINTERACTIVE=1 skips optional prompts and never installs an AI engine.
 #
-# Installs build dependencies, fetches the source, builds the node, and opens
+# Fetches the source, uses a matching prepared node or installs build tools
+# and compiles it, then prints how to open
 # the Vibe Console. POSIX sh: works on macOS and mainstream Linux out of the box.
 set -eu
 
@@ -47,7 +49,7 @@ run()  { if [ "$DRY_RUN" = "1" ]; then printf '  %s$ %s%s\n' "$DIM" "$*" "$OFF";
 
 # Is there a terminal to ask a question on? Questions are read from /dev/tty,
 # not stdin: under `curl | sh` stdin is the script itself.
-have_tty() { ( : < /dev/tty ) 2>/dev/null; }
+have_tty() { [ "${VIBES_NONINTERACTIVE:-0}" != "1" ] && ( : < /dev/tty ) 2>/dev/null; }
 
 banner() {
   printf '\n'
@@ -81,6 +83,35 @@ sudo_if_needed() {
   elif command -v sudo >/dev/null 2>&1; then run sudo "$@";
   else die "need root to install packages, and sudo is not available.
    Install these yourself, then re-run: git cmake ninja boost capnproto"; fi
+}
+
+# Check working tools: macOS may expose command-line-tool stubs on PATH even
+# before those tools have been installed.
+working_python() { python3 -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; }
+
+install_runtime() {
+  step "Checking what the console needs"
+  if git --version >/dev/null 2>&1 && working_python && command -v curl >/dev/null 2>&1; then
+    note "git, Python and curl are ready"
+    return 0
+  fi
+  if [ "$PLATFORM" = "macos" ]; then
+    die "Working git and Python 3.8+ are needed. Run: xcode-select --install
+   Re-run this installer once Apple's command line tools finish installing.
+   Python from Homebrew also works."
+  fi
+  case "$PKG" in
+    apt)
+      sudo_if_needed apt-get update -qq
+      sudo_if_needed apt-get install -y --no-install-recommends git python3 curl ca-certificates ;;
+    dnf) sudo_if_needed dnf install -y git python3 curl ca-certificates ;;
+    pacman) sudo_if_needed pacman -S --needed --noconfirm git python curl ca-certificates ;;
+    zypper) sudo_if_needed zypper install -y git python3 curl ca-certificates ;;
+    *) die "Install working git, Python 3.8+ and curl, then re-run this installer." ;;
+  esac
+  if [ "$DRY_RUN" != "1" ]; then
+    git --version >/dev/null 2>&1 && working_python && command -v curl >/dev/null 2>&1 || die "git or Python still cannot run. See the package-manager output above."
+  fi
 }
 
 install_deps() {
@@ -240,14 +271,33 @@ update_source() {
 }
 
 fetch_source() {
-  if [ -d "$DEST/.git" ]; then
+  if [ -e "$DEST/.git" ]; then
     step "Updating existing checkout"
     note "$DEST"
     update_source
   else
     step "Fetching Bitcoin Vibes"
     note "$REPO_URL ($REF) -> $DEST"
-    run git -c advice.detachedHead=false clone --depth 1 --branch "$REF" "$REPO_URL" "$DEST"
+    if [ "$DRY_RUN" = "1" ]; then
+      run git -c advice.detachedHead=false clone --depth 1 --branch "$REF" "$REPO_URL" "$DEST"
+    else
+      if [ -e "$DEST" ] && [ -n "$(ls -A "$DEST" 2>/dev/null)" ]; then
+        die "The destination is not a checkout and is not empty: $DEST
+   Keep it safe. Choose a new folder with VIBES_DIR, or restore its git metadata."
+      fi
+      mkdir -p "$(dirname "$DEST")"
+      fetch_tmp=$(mktemp -d "${DEST}.download.XXXXXX")
+      trap 'rm -rf "$fetch_tmp"' 0
+      trap 'exit 1' 1 2 15
+      if ! git -c advice.detachedHead=false clone --depth 1 --branch "$REF" "$REPO_URL" "$fetch_tmp/source"; then
+        die "Could not fetch Bitcoin Vibes. Your destination was left unchanged.
+   Check your connection and re-run this installer to retry."
+      fi
+      [ ! -d "$DEST" ] || rmdir "$DEST"
+      mv "$fetch_tmp/source" "$DEST"
+      rm -rf "$fetch_tmp"
+      trap - 0 1 2 15
+    fi
     # A tag leaves HEAD detached, and the console saves experiments as commits
     # on the current branch, so give it one. A branch install already has one.
     if [ "$DRY_RUN" = "1" ]; then
@@ -376,8 +426,29 @@ try_prebuilt() {
     rm -rf "$tmp"; return 1
   fi
   mkdir "$tmp/x" || { rm -rf "$tmp"; return 1; }
-  if ! tar -xzf "$tmp/node.tar.gz" -C "$tmp/x" 2>/dev/null; then
-    note "the download was not readable: building instead"
+  if ! python3 - "$tmp/node.tar.gz" "$tmp/x" "vibes-node-$slug" 2>/dev/null <<'PYTHON'
+import pathlib, shutil, sys, tarfile
+archive, destination, folder = sys.argv[1:]
+wanted = {folder + '/' + name for name in ('COMMIT', 'bitcoind', 'bitcoin-cli')}
+with tarfile.open(archive, 'r:gz') as source:
+    files = {}
+    for member in source.getmembers():
+        if member.isdir() and member.name.rstrip('/') == folder:
+            continue
+        if not member.isfile() or member.name not in wanted or member.name in files or not 0 < member.size < 200 * 1024 * 1024:
+            raise ValueError('Unexpected archive member: ' + member.name)
+        files[member.name] = member
+    if set(files) != wanted:
+        raise ValueError('Incomplete prepared program archive')
+    for name, member in files.items():
+        target = pathlib.Path(destination) / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with source.extractfile(member) as original, target.open('wb') as output:
+            shutil.copyfileobj(original, output)
+        target.chmod(0o644 if name.endswith('/COMMIT') else 0o755)
+PYTHON
+  then
+    note "the download has unsafe or unexpected contents: building instead"
     rm -rf "$tmp"; return 1
   fi
   dir="$tmp/x/vibes-node-$slug"
@@ -394,18 +465,24 @@ try_prebuilt() {
     note "(published ${got%"${got#??????????}"}, yours ${want%"${want#??????????}"})"
     rm -rf "$tmp"; return 1
   fi
-  mkdir -p "$DEST/build/bin"
-  # Remove any earlier programs first, so the new ones are new files: macOS
-  # on Apple silicon kills a program that was overwritten in place after it
-  # had been run. COMMIT goes along as a note of what the program was built
-  # from; the console reads it when it adopts this node as its reference.
-  rm -f "$DEST/build/bin/bitcoind" "$DEST/build/bin/bitcoin-cli" "$DEST/build/bin/COMMIT"
-  cp "$dir/bitcoind" "$dir/bitcoin-cli" "$dir/COMMIT" "$DEST/build/bin/" || { rm -rf "$tmp"; return 1; }
-  chmod +x "$DEST/build/bin/bitcoind" "$DEST/build/bin/bitcoin-cli"
-  if ! "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1; then
-    note "the prebuilt node would not run here — building instead"
-    rm -rf "$tmp" "$DEST/build/bin"; return 1
+  # Check both programs before replacing anything from an existing build.
+  chmod +x "$dir/bitcoind" "$dir/bitcoin-cli"
+  if ! "$dir/bitcoind" -version >/dev/null 2>&1 \
+      || ! "$dir/bitcoin-cli" -version >/dev/null 2>&1; then
+    note "the prepared node or CLI would not run here — building instead"
+    rm -rf "$tmp"; return 1
   fi
+  mkdir -p "$DEST/build/bin"
+  # New files retain macOS signatures; overwriting a previously run inode can
+  # make macOS kill it. A failed download never removes the previous build.
+  stage=$(mktemp -d "$DEST/build/bin/.prepared.XXXXXX") || { rm -rf "$tmp"; return 1; }
+  if ! cp "$dir/bitcoind" "$dir/bitcoin-cli" "$dir/COMMIT" "$stage/"; then
+    rm -rf "$tmp" "$stage"; return 1
+  fi
+  for f in bitcoind bitcoin-cli COMMIT; do
+    mv -f "$stage/$f" "$DEST/build/bin/$f" || { rm -rf "$tmp" "$stage"; return 1; }
+  done
+  rmdir "$stage"
   rm -rf "$tmp"
   note "using a prebuilt node built from this exact source"
   note "the ready-made experiments need no compiling. A request in your own"
@@ -416,7 +493,7 @@ try_prebuilt() {
 build_node() {
   step "Building the node"
   plan_build
-  if [ -f "$DEST/build/bin/bitcoind" ]; then
+  if [ "$DRY_RUN" != "1" ] && [ -f "$DEST/build/bin/bitcoind" ]; then
     installed_from=$(cat "$DEST/build/bin/COMMIT" 2>/dev/null || true)
     current_source=$(git -C "$DEST" rev-parse HEAD 2>/dev/null || true)
     if [ "$UPDATED" != "1" ] && [ -n "$current_source" ] \
@@ -424,7 +501,8 @@ build_node() {
         && source_changes=$(git -C "$DEST" status --porcelain 2>/dev/null) \
         && [ -z "$source_changes" ] \
         && [ -x "$DEST/build/bin/bitcoin-cli" ] \
-        && "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1; then
+        && "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1 \
+        && "$DEST/build/bin/bitcoin-cli" -version >/dev/null 2>&1; then
       note "already built from this exact source: skipping"
       return 0
     fi
@@ -436,6 +514,8 @@ build_node() {
   elif try_prebuilt; then
     return 0
   fi
+  [ -n "${PLATFORM:-}" ] || detect_platform
+  install_deps
   note "$cores core(s), ${mem_gb}GB RAM — using $jobs parallel job(s)"
   note "expect roughly $low-$high minutes for a full build; later incremental builds are usually faster"
   if [ "$jobs" -lt "$cores" ]; then
@@ -450,7 +530,7 @@ build_node() {
   fi
   # shellcheck disable=SC2086
   run cmake -B "$DEST/build" -S "$DEST" $gen \
-      -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
+      -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF -DENABLE_IPC=OFF \
       || die "cmake configure failed (see output above)"
   run cmake --build "$DEST/build" -j "$jobs" \
       || die "build failed (see output above)"
@@ -548,8 +628,7 @@ main() {
 
   banner
   detect_platform
-  command -v git >/dev/null 2>&1 || [ "$PLATFORM" != "macos" ] || die "git not found. Run: xcode-select --install"
-  install_deps
+  install_runtime
   fetch_source
   build_node
   install_claude
@@ -560,13 +639,13 @@ main() {
   printf '\n'
 
   if [ "$CLAUDE_MISSING" = "1" ]; then
-    printf '  %sTwo things left, and only you can do them:%s\n' "$BOLD" "$OFF"
+    printf '  %sOptional: to make changes in your own words:%s\n' "$BOLD" "$OFF"
     printf '    %s%s%s\n' "$GOLD" "$CLAUDE_INSTALL" "$OFF"
     printf '    %sclaude auth login%s   %s(sign in; it opens your browser)%s\n' \
            "$GOLD" "$OFF" "$DIM" "$OFF"
     printf '\n'
   elif [ "$NEEDS_LOGIN" = "1" ]; then
-    printf '  %sOne thing left, and only you can do it:%s\n' "$BOLD" "$OFF"
+    printf '  %sOptional: to make changes in your own words:%s\n' "$BOLD" "$OFF"
     printf '    %s%s auth login%s   %s(sign in; it opens your browser)%s\n' \
            "$GOLD" "$CLAUDE_BIN" "$OFF" "$DIM" "$OFF"
     printf '\n'
@@ -581,12 +660,12 @@ main() {
   printf '  %sTo begin:%s\n' "$BOLD" "$OFF"
   printf '    %s%s/vibes%s\n' "$GOLD" "$DEST" "$OFF"
   printf '\n'
-  printf '  %sIt builds nothing further, wakes the node, and opens the console.%s\n' "$DIM" "$OFF"
+  printf '  %sThis starts your node and opens the console. Ready-made lessons need no AI.%s\n' "$DIM" "$OFF"
   printf '\n'
 
   # Read from the terminal, not stdin: under `curl | sh` stdin is the script
   # itself, so a plain `read` would eat the rest of this file.
-  if [ "$DRY_RUN" != "1" ] && [ "$NEEDS_LOGIN" != "1" ] && [ -r /dev/tty ]; then
+  if [ "$DRY_RUN" != "1" ] && [ "$NEEDS_LOGIN" != "1" ] && have_tty; then
     printf '  %sStart it now?%s [Y/n] ' "$BOLD" "$OFF"
     read -r reply < /dev/tty || reply=n
     case "$reply" in

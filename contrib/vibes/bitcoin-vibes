@@ -1917,7 +1917,7 @@ class Console:
         the sandbox rightly refuses."""
         scratch = self._own_folder(self.state_dir / "tmp" / "probe")
         argv = self.sandbox.wrap([str(bitcoind), f"-datadir={scratch}", flag],
-                                 write=[scratch], network="none")
+                                 write=[scratch], read=[Path(bitcoind).parent], network="none")
         return run(argv, cwd=self.repo, timeout=timeout, env=self.sandbox.clean_env(scratch))
 
     def _stream(self, job, cmd, write=(), network="none", timeout=5400, on_line=None, confined=True):
@@ -3322,7 +3322,8 @@ class Console:
             if not self._build(job):
                 return
             job.emit(t="phase", name="node", detail="Starting the node")
-            self.start_node(job)
+            if not self.start_node(job):
+                raise RuntimeError("The node did not start. Open Node logs for its reason, then try Start node again.")
             job.emit(t="result", detail="Your node is built and running.")
         return go
 
@@ -3377,6 +3378,13 @@ class Console:
                          line=f"The published node was built from {built_from[:10]}, "
                               f"your source is {head[:10]}; compiling instead")
                 return False
+            # Validate both programs before touching an existing installation.
+            # A working node with a broken CLI cannot answer console requests.
+            for name in ("bitcoind", "bitcoin-cli"):
+                program = src / name
+                if not program.is_file() or self.ask_node_program(program, "-version")[0] != 0:
+                    job.emit(t="log", line=f"The ready-made {name} would not run on this machine; compiling instead")
+                    return False
             dest = self.repo / "build" / "bin"
             dest.mkdir(parents=True, exist_ok=True)
             for name in ("bitcoind", "bitcoin-cli"):
@@ -3385,9 +3393,6 @@ class Console:
             # A note of the commit this program was built from, for adopting
             # it as the unmodified reference node.
             (dest / "COMMIT").write_text(built_from + "\n")
-            if self.ask_node_program(dest / "bitcoind", "-version")[0] != 0:
-                job.emit(t="log", line="It would not run on this machine; compiling instead")
-                return False
             job.emit(t="log", line="Using a ready-made node. It matches the SHA-256 published beside "
                                    "it and records the same commit as your source. The checksum comes "
                                    "from the same release page, so it is not an independent signature.")
@@ -3552,12 +3557,32 @@ class Handler(BaseHTTPRequestHandler):
 
     ASSET_TYPES = {"/": "text/html; charset=utf-8", "/web/app.js": "text/javascript",
                    "/web/demo.js": "text/javascript", "/web/demo-data.js": "text/javascript",
-                   "/web/import.js": "text/javascript", "/web/ui.css": "text/css"}
+                   "/web/import.js": "text/javascript", "/web/ui.css": "text/css",
+                   "/web/session.js": "text/javascript", "/web/entry.css": "text/css"}
     # Served without the key: they hold nothing private, and the import page
     # must load before the browser is allowed to send the console's cookie.
-    PUBLIC = ("/import", "/web/import.js")
+    PUBLIC = ("/import", "/web/import.js", "/web/session.js", "/web/entry.css")
     IMPORT_PAGE = (b"<!doctype html><meta charset=utf-8><title>Bitcoin Vibes</title>"
                    b"<script src=/web/import.js></script><p>Opening your console...</p>")
+    SESSION_PAGE = (b'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                    b'<meta name="viewport" content="width=device-width, initial-scale=1">'
+                    b'<title>Opening your lab - Bitcoin Vibes</title>'
+                    b'<link rel="stylesheet" href="/web/entry.css">'
+                    b'<script defer src="/web/session.js"></script></head><body><main>'
+                    b'<p class="eyebrow">Bitcoin Vibes</p><h1>Opening your local lab</h1>'
+                    b'<p>Your access link has been accepted. The lab will open automatically.</p>'
+                    b'<p><a id="session-open" href="/">Open your lab</a></p>'
+                    b'<noscript><p>Enable JavaScript for this local site to use the interactive lab.</p></noscript>'
+                    b'</main></body></html>')
+    ACCESS_PAGE = (b'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                   b'<meta name="viewport" content="width=device-width, initial-scale=1">'
+                   b'<title>Open your access link - Bitcoin Vibes</title>'
+                   b'<link rel="stylesheet" href="/web/entry.css"></head><body><main>'
+                   b'<p class="eyebrow">Bitcoin Vibes</p><h1>Open your lab with its access link</h1>'
+                   b'<p>This local console needs its access key. Reopen the Bitcoin Vibes app, '
+                   b'or use the full link printed in the terminal that started it.</p>'
+                   b'<p>If you just used that link, allow cookies for this local site and try it again. '
+                   b'Your key stays on this machine.</p></main></body></html>')
     # The page loads only its own scripts and styles and talks only to this
     # console, so injected markup has nothing to load and nowhere to send data.
     CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -3675,21 +3700,21 @@ class Handler(BaseHTTPRequestHandler):
             # from inside its own origin, which is allowed to carry it.
             self._send(200, self.IMPORT_PAGE, "text/html; charset=utf-8")
             return
-        if path == "/web/import.js":
+        if path in self.PUBLIC and path in self.ASSET_TYPES:
             body, ctype = self._asset(path)
             self._send(200, body, ctype)
             return
         if path == "/":
             if not self._authed():
-                self._send(403, "<h1>403</h1><p>This console needs its access key. Open the "
-                                "link printed in the terminal that started it, or reopen the "
-                                "Bitcoin Vibes app.</p>", "text/html")
+                self._send(403, self.ACCESS_PAGE, "text/html; charset=utf-8")
                 return
             cookie = f"{self._cookie_name()}={c.key}; HttpOnly; SameSite=Strict; Path=/"
             if "key" in query:
-                # Move the key out of the address bar and the browser history.
-                self._send(303, b"", "text/plain", extra={"Location": "/", "Set-Cookie": cookie,
-                                                          "Cache-Control": "no-store"})
+                # Commit a same-origin document before navigating again. A
+                # cross-site redirect chain can withhold SameSite=Strict
+                # cookies in WebKit even after a valid key has set one.
+                self._send(200, self.SESSION_PAGE, "text/html; charset=utf-8",
+                           extra={"Set-Cookie": cookie})
                 return
             body, ctype = self._asset("/")
             self._send(200, body, ctype, extra={"Set-Cookie": cookie, "Cache-Control": "no-store"})
@@ -3874,7 +3899,8 @@ class Handler(BaseHTTPRequestHandler):
                     def lifecycle(job):
                         job.emit(t="phase", name="node", detail="Starting the node" if action == "start" else "Stopping the node")
                         if action == "start":
-                            c.start_node(job)
+                            if not c.start_node(job):
+                                raise RuntimeError("The node did not start. Open Node logs for its reason, then try again.")
                         else:
                             c.stop_node(job)
                     self._job_reply(c.start_job("node", action.title() + " node", lifecycle,
@@ -4188,7 +4214,8 @@ def main():
         elif not console.node_running():
             def wake(job):
                 job.emit(t="phase", name="node", detail="Starting the node and waiting for it to answer")
-                console.start_node(job)
+                if not console.start_node(job):
+                    raise RuntimeError("The node did not start. Open Node logs for its reason, then try Start node again.")
             console.start_job("node", "Start local node", wake)
 
     if not opts.no_open:

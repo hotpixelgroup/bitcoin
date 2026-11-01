@@ -2,11 +2,13 @@
 """Check release contents without executing them; smoke public downloads only on CI.
 
 Pre-publication: --assets DIR --tag TAG --commit SHA [--platform SLUG]
+Candidate first launch (CI only): --first-launch-assets DIR --platform SLUG --tag TAG --commit SHA
 Post-publication: --public --platform SLUG --tag TAG --commit SHA
 All native execution is restricted to fresh GitHub Actions runners.
 """
 import argparse
 import hashlib
+import http.cookiejar
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -211,7 +213,7 @@ def command(args, **kwargs):
                           stderr=subprocess.STDOUT, timeout=kwargs.pop('timeout', 180), **kwargs).stdout
 
 
-def verify_dmg(path, tag, commit):
+def verify_dmg(path, tag, commit, copy_to=None):
     require(sys.platform == 'darwin', 'DMG verification needs a macOS runner')
     command(['hdiutil', 'verify', path])
     with tempfile.TemporaryDirectory(prefix='vibes-dmg-') as folder:
@@ -234,6 +236,9 @@ def verify_dmg(path, tag, commit):
             command(['sh', '-n', launcher])
             command(['codesign', '--verify', '--deep', '--strict', app])
             require((app / 'Contents/Resources/AppIcon.icns').stat().st_size > 0, 'Mac app icon is missing')
+            if copy_to is not None:
+                command(['ditto', app, copy_to])
+                command(['codesign', '--verify', '--deep', '--strict', copy_to])
         finally:
             command(['hdiutil', 'detach', mount])
     print(f'Verified read-only DMG contents, signature and release pins for {tag}', flush=True)
@@ -248,6 +253,184 @@ def free_ports(count):
     finally:
         for sock in sockets:
             sock.close()
+
+
+def native_smoke_guard():
+    require(os.environ.get('GITHUB_ACTIONS') == 'true', 'Native release execution is restricted to isolated GitHub Actions runners')
+
+
+def first_launch_smoke(installer, assets, tag, commit, platform, repository, prepared_base):
+    """Run the real installer and shipped entry, including automatic setup.
+
+    Browser opening is suppressed. macOS executes the bundle's real launcher,
+    not Finder/Gatekeeper; this does not assert notarisation or GUI permission
+    prompts. No HOME replacement, AI installation or paid engine is involved.
+    """
+    native_smoke_guard()
+    release_version(tag)
+    require(re.fullmatch(r'[0-9a-f]{40}', commit) is not None, 'Expected a full source commit')
+    require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository) is not None, 'Invalid repository')
+    with tempfile.TemporaryDirectory(prefix='vibes-first-launch-') as folder:
+        root = Path(folder)
+        checkout = root / 'installed'
+        env = {key: value for key, value in os.environ.items() if not key.startswith('VIBES_')}
+        env.update(VIBES_DIR=str(checkout), VIBES_REPO=f'https://github.com/{repository}.git',
+                   VIBES_PREBUILT_URL=prepared_base, VIBES_NONINTERACTIVE='1', NO_COLOR='1')
+        output = command(['sh', installer], env=env, stdin=subprocess.DEVNULL, timeout=600)
+        require('Checking build dependencies' not in output, 'The full installer installed compiler tools before using the prepared node')
+        require(command(['git', '-C', checkout, 'rev-parse', 'HEAD']).strip() == commit,
+                'Full installer did not fetch its stamped release commit')
+        require((checkout / 'build/bin/COMMIT').read_text().strip() == commit,
+                'Full installer did not prepare the matching node')
+        for name in ('bitcoind', 'bitcoin-cli'):
+            require('version' in command([checkout / 'build/bin' / name, '-version']).lower(),
+                    f'{name} did not report a version')
+        support = root / 'fresh-app'
+        if platform == 'macos-arm64':
+            app = root / 'Bitcoin Vibes.app'
+            verify_dmg(assets / 'BitcoinVibes.dmg', tag, commit, copy_to=app)
+            entry = app / 'Contents/MacOS/BitcoinVibes'
+            source = support / 'source'
+            env['VIBES_HOME'] = str(support)
+        else:
+            entry = checkout / 'vibes'
+            source = checkout
+        require(not (source / '.vibes').exists(), 'First launch must start with no prior lab state')
+        port = free_ports(1)[0]
+        log = root / 'console.log'
+        key = ''
+        cookies = http.cookiejar.CookieJar()
+        browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        base = f'http://127.0.0.1:{port}'
+        def page(path):
+            with browser.open(base + path, timeout=60) as response:
+                return response.read(), response
+        def api(path, body=None):
+            request = urllib.request.Request(base + path,
+                data=json.dumps(body).encode() if body is not None else None,
+                headers={'Content-Type': 'application/json'})
+            with browser.open(request, timeout=60) as response:
+                return json.load(response)
+        def wait_job(reply):
+            job_id = reply['job']['id']
+            deadline = time.monotonic() + 300
+            while time.monotonic() < deadline:
+                summary = api('/api/experiment?id=' + job_id)['summary']
+                if summary['state'] not in ('running', 'cancelling'):
+                    require(summary['state'] == 'done', f'First-launch job failed: {summary.get("error", summary["state"])}')
+                    return summary
+                time.sleep(0.2)
+            raise RuntimeError('First-launch job timed out')
+        def connect(proc):
+            nonlocal key
+            deadline = time.monotonic() + 420
+            while time.monotonic() < deadline:
+                require(proc.poll() is None, 'Shipped launcher exited during startup')
+                try:
+                    key = (source / '.vibes/key').read_text().strip()
+                    html, response = page('/?key=' + key)
+                    # A same-origin bootstrap document may precede the page.
+                    # The second request sends the HttpOnly cookie it set.
+                    if b'web/app.js' not in html:
+                        policy = response.headers.get('Content-Security-Policy', '')
+                        require("script-src 'self'" in policy and 'unsafe-inline' not in policy,
+                                'Session bootstrap weakened the content security policy')
+                        bootstrap_assets = re.findall(rb'(?:src|href)="(/?web/[^"#?]+)"', html)
+                        require(bootstrap_assets, 'Session bootstrap has no external assets')
+                        for asset in bootstrap_assets:
+                            with urllib.request.urlopen(base + '/' + asset.decode().lstrip('/'), timeout=60) as public:
+                                require(public.read() and 'text/html' not in public.headers.get('Content-Type', ''),
+                                        f'Public session asset failed: {asset!r}')
+                        html, response = page('/')
+                    require(b'web/app.js' in html and key.encode() not in html,
+                            'Authenticated HTML or key removal failed')
+                    require('key=' not in response.url, 'Access key remained in the page URL')
+                    require(any(cookie.value == key and cookie.has_nonstandard_attr('HttpOnly')
+                                and cookie.get_nonstandard_attr('SameSite') == 'Strict' for cookie in cookies),
+                            'Launcher bootstrap did not set a strict HttpOnly session cookie')
+                    for asset in re.findall(rb'(?:src|href)="(/?web/[^"#?]+)"', html):
+                        body, asset_response = page('/' + asset.decode().lstrip('/'))
+                        require(body and 'text/html' not in asset_response.headers.get('Content-Type', ''),
+                                f'Authenticated asset failed: {asset!r}')
+                    break
+                except OSError:
+                    time.sleep(0.25)
+            else:
+                raise RuntimeError('Shipped launcher did not serve the authenticated console')
+            while time.monotonic() < deadline:
+                status = api('/api/status')
+                job = status.get('job') or {}
+                if job.get('state') == 'error':
+                    raise RuntimeError('Automatic first-run setup failed: ' + str(job.get('error', job)))
+                if status['node']['health'] == 'healthy' and job.get('state') not in ('running', 'cancelling'):
+                    require(status['source'] == commit and status['reference']['ready'],
+                            'Automatic setup did not adopt the matching release reference')
+                    require(status['chain'] == 'regtest' and status['node'].get('peers', 0) == 0,
+                            'First-launch smoke must stay on an isolated private chain')
+                    return status
+                time.sleep(0.25)
+            raise RuntimeError('Automatic first-run setup did not start the node')
+        def stop(proc):
+            proc.terminate()
+            try:
+                proc.wait(timeout=75)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        args = [str(entry), '--chain', 'regtest', '--engine', 'mock', '--no-open', '--port', str(port), '--app']
+        failed = False
+        proc = None
+        lesson_id = None
+        try:
+            with log.open('w') as output:
+                proc = subprocess.Popen(args, stdout=output, stderr=subprocess.STDOUT, env=env, stdin=subprocess.DEVNULL)
+                connect(proc)
+                require(command(['git', '-C', source, 'rev-parse', 'HEAD']).strip() == commit,
+                        'App fetched source from a different release')
+                require((source / 'build/bin/COMMIT').read_text().strip() == commit,
+                        'App automatic setup did not prepare its matching release program')
+                wait_job(api('/api/node', {'action': 'mine', 'blocks': 1}))
+                require(api('/api/status')['node']['blocks'] == 1, 'Automatic node did not produce its first regtest block')
+                first = api('/api/lessons')['curated'][0]
+                prediction = first['answer']
+                require(first['kind'] == 'scene' and prediction, 'First lesson needs an observable scene answer')
+                lesson = wait_job(api('/api/curated', {'id': first['id'], 'prediction': prediction}))
+                lesson_id = lesson['id']
+                require(lesson.get('compare', {}).get('observed_answer') == prediction,
+                        'First lesson did not produce its documented observation')
+                score = api('/api/learning', {'experiment': first['id'], 'job': lesson_id,
+                            'stage': 'prediction', 'choice': prediction})
+                require(score['correct'], 'First lesson prediction did not save')
+                for item, verdict in (('double-reward', 'loosened'), ('halve-reward', 'tightened'), ('faster-halving', 'tightened')):
+                    result = wait_job(api('/api/curated', {'id': item}))
+                    require(result.get('compare', {}).get('verdict') == verdict,
+                            f'Downloaded variant {item} gave the wrong outcome')
+                require(all(api('/api/status')['variants'].values()), 'Not every published variant was installed')
+                stop(proc)
+                proc = None
+                # Relaunch the exact same shipped entry with automatic startup.
+                proc = subprocess.Popen(args, stdout=output, stderr=subprocess.STDOUT, env=env, stdin=subprocess.DEVNULL)
+                status = connect(proc)
+                require(status['node']['blocks'] == 1, 'Relaunch lost the first private-chain block')
+                require(api('/api/experiment?id=' + lesson_id)['summary']['state'] == 'done', 'Relaunch lost the first lesson result')
+                require(any(row.get('job') == lesson_id and row.get('stage') == 'prediction'
+                            for row in api('/api/learning')['entries']), 'Relaunch lost saved learning')
+                wait_job(api('/api/node', {'action': 'stop'}))
+        except Exception:
+            failed = True
+            raise
+        finally:
+            if proc is not None:
+                stop(proc)
+            if failed:
+                for path in (log, support / 'launch.log'):
+                    if path.exists():
+                        tail = path.read_text(errors='replace')[-12000:]
+                        if key:
+                            tail = tail.replace(key, '<redacted>')
+                        tail = re.sub(r'([?&]key=)[^\s&]+', r'\1<redacted>', tail)
+                        print(f'First-launch {path.name} tail (access key redacted):\n{tail}', file=sys.stderr)
+        print(f'First launch passed for {platform}: full installer, shipped entry, automatic setup, session/assets, first lesson, variants and persistent relaunch', flush=True)
 
 
 def public_smoke(tag, commit, platform, repository):
@@ -280,95 +463,19 @@ def public_smoke(tag, commit, platform, repository):
                      '--source-digest', commit, '--deny-self-hosted-runners'])
         verify_pin((assets / 'install.sh').read_text(), 'PINNED_REF', tag)
         command(['sh', '-n', assets / 'install.sh'])
-        checkout = root / 'installed'
-        env = {key: value for key, value in os.environ.items() if not key.startswith('VIBES_')}
-        env.update(VIBES_DIR=str(checkout), VIBES_REPO=f'https://github.com/{repository}.git', NO_COLOR='1')
-        command(['sh', assets / 'install.sh'], env={**env, 'VIBES_INSTALL_ONLY': 'fetch'}, timeout=300)
-        require(command(['git', '-C', checkout, 'rev-parse', 'HEAD']).strip() == commit, 'Published installer did not fetch its stamped release commit')
         for kind in ('node', 'variants'):
             name = f'vibes-{kind}-{platform}.tar.gz'
             side = checksum_entries((assets / (name + '.sha256')).read_text())
             require(side == {name: digest(assets / name)}, f'Public side checksum mismatch: {name}')
-            verify_archive(assets / name, kind, platform, commit, checkout / 'contrib/vibes')
-        command(['sh', assets / 'install.sh'], env={**env, 'VIBES_INSTALL_ONLY': 'prebuilt',
-                'VIBES_PREBUILT_URL': base}, timeout=400)
-        require((checkout / 'build/bin/COMMIT').read_text().strip() == commit, 'Installed program provenance does not match the tag')
-        for name in ('bitcoind', 'bitcoin-cli'):
-            output = command([checkout / 'build/bin' / name, '-version'])
-            require('version' in output.lower(), f'{name} did not report a version')
-        if platform == 'macos-arm64':
-            verify_dmg(assets / 'BitcoinVibes.dmg', tag, commit)
-        config = checkout / '.vibes/data/bitcoin.conf'
-        config.parent.mkdir(parents=True, exist_ok=True)
-        rpc_port, p2p_port, port = free_ports(3)
-        config.write_text(f'networkactive=0\n[regtest]\nrpcport={rpc_port}\nport={p2p_port}\n')
-        log = root / 'console.log'
-        with log.open('w') as output:
-            proc = subprocess.Popen([sys.executable, '-u', str(checkout / 'contrib/vibes/bitcoin-vibes'),
-                '--repo', str(checkout), '--chain', 'regtest', '--engine', 'mock', '--no-open', '--no-autostart',
-                '--port', str(port), '--app'], stdout=output, stderr=subprocess.STDOUT, env=env)
-            key = ''
-            failed = False
-            def api(path, body=None):
-                request = urllib.request.Request(f'http://127.0.0.1:{port}{path}',
-                    data=json.dumps(body).encode() if body is not None else None,
-                    headers={'X-Vibe-Key': key, 'Content-Type': 'application/json'})
-                with urllib.request.urlopen(request, timeout=60) as response:
-                    return json.load(response)
-            def wait_job(body):
-                job_id = body['job']['id']
-                deadline = time.monotonic() + 300
-                while time.monotonic() < deadline:
-                    summary = api('/api/experiment?id=' + job_id)['summary']
-                    if summary['state'] not in ('running', 'cancelling'):
-                        require(summary['state'] == 'done', f'Release smoke job failed: {summary.get("error", summary["state"])}')
-                        return summary
-                    time.sleep(0.2)
-                raise RuntimeError('Release smoke job timed out')
-            try:
-                deadline = time.monotonic() + 60
-                while time.monotonic() < deadline:
-                    require(proc.poll() is None, 'Downloaded console exited during startup')
-                    try:
-                        key = (checkout / '.vibes/key').read_text().strip()
-                        status = api('/api/status')
-                        break
-                    except OSError:
-                        time.sleep(0.2)
-                else:
-                    raise RuntimeError('Downloaded console never became ready')
-                require(status['source'] == commit and status['reference']['ready'], 'Downloaded console did not adopt the release reference')
-                wait_job(api('/api/node', {'action': 'start'}))
-                wait_job(api('/api/node', {'action': 'mine', 'blocks': 1}))
-                require(api('/api/status')['node']['blocks'] == 1, 'Downloaded node did not produce a private regtest block')
-                for item, verdict in (('double-reward', 'loosened'), ('halve-reward', 'tightened'), ('faster-halving', 'tightened')):
-                    result = wait_job(api('/api/curated', {'id': item}))
-                    require(result.get('compare', {}).get('verdict') == verdict, f'Downloaded variant {item} gave the wrong outcome')
-                require(all(api('/api/status')['variants'].values()), 'Not every published variant was installed')
-                wait_job(api('/api/node', {'action': 'stop'}))
-            except Exception:
-                failed = True
-                raise
-            finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=10)
-                if failed:
-                    tail = log.read_text(errors='replace')[-12000:]
-                    if key:
-                        tail = tail.replace(key, '<redacted>')
-                    tail = re.sub(r'([?&]key=)[^\s&]+', r'\1<redacted>', tail)
-                    print('Downloaded console log tail (access key redacted):\n' + tail, file=sys.stderr)
-        print(f'Public download smoke passed for {platform}: pinned installer, stock node, console, regtest and three variants', flush=True)
+            verify_archive(assets / name, kind, platform, commit)
+        first_launch_smoke(assets / 'install.sh', assets, tag, commit, platform, repository, base)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assets', type=Path)
     parser.add_argument('--public', action='store_true')
+    parser.add_argument('--first-launch-assets', type=Path, help='CI only: exercise packaged candidates before publication')
     parser.add_argument('--platform', choices=PLATFORMS)
     parser.add_argument('--tag', required=True)
     parser.add_argument('--commit', required=True)
@@ -376,12 +483,24 @@ def main():
     parser.add_argument('--source', type=Path, default=SOURCE)
     parser.add_argument('--dmg', type=Path)
     args = parser.parse_args()
-    require((args.assets or args.public or args.dmg) and not (args.public and (args.assets or args.dmg)),
-            'Choose assets/DMG inspection or public download verification')
+    require(sum(bool(value) for value in (args.assets or args.dmg, args.public, args.first_launch_assets)) == 1,
+            'Choose assets/DMG inspection, candidate first launch or public download verification')
     if args.assets:
         verify_assets(args.assets, args.tag, args.commit, args.source, args.platform)
     if args.dmg:
         verify_dmg(args.dmg, args.tag, args.commit)
+    if args.first_launch_assets:
+        native_smoke_guard()
+        require(args.platform is not None, 'Choose the native platform for first launch')
+        assets = args.first_launch_assets.resolve()
+        verify_assets(assets, args.tag, args.commit, args.source, args.platform)
+        with tempfile.TemporaryDirectory(prefix='vibes-candidate-installer-') as folder:
+            installer = Path(folder) / 'install.sh'
+            text = (args.source / 'install.sh').read_text()
+            require(text.count('\nPINNED_REF=""\n') == 1, 'Installer must have exactly one release stamp')
+            installer.write_text(text.replace('\nPINNED_REF=""\n', '\nPINNED_REF="' + args.tag + '"\n'))
+            verify_pin(installer.read_text(), 'PINNED_REF', args.tag)
+            first_launch_smoke(installer, assets, args.tag, args.commit, args.platform, args.repository, assets.as_uri())
     if args.public:
         require(args.platform is not None, 'Choose the native platform for public verification')
         public_smoke(args.tag, args.commit, args.platform, args.repository)
