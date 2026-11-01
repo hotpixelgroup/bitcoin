@@ -153,7 +153,7 @@ What that means here:
 # node. "slider" lets the operator choose a number before the scene runs.
 GROUPS = (
     {"id": "money", "title": "Coins, keys and payments",
-     "blurb": "Where your bitcoin actually are, what a fee buys, and what a confirmation is."},
+     "blurb": "What a wallet controls, what a fee buys, and what a confirmation means."},
     {"id": "rules", "title": "Rules, and who enforces them",
      "blurb": "Change a rule on one node and watch what a second node does about it."},
     {"id": "power", "title": "Mining power and upgrades",
