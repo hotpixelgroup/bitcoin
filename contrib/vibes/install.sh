@@ -53,8 +53,8 @@ banner() {
   printf '\n'
   printf '%s   ✦  B I T C O I N   V I B E S  ✦%s\n' "$GOLD" "$OFF"
   printf '%s   -------------------------------%s\n' "$DIM" "$OFF"
-  printf '%s   consensus is a social construct.%s\n' "$DIM" "$OFF"
-  printf '%s   you, however, are eternal.%s\n' "$DIM" "$OFF"
+  printf '%s   change one node.%s\n' "$DIM" "$OFF"
+  printf '%s   then get a second opinion.%s\n' "$DIM" "$OFF"
   printf '\n'
 }
 

@@ -93,7 +93,7 @@ jobs:
       - name: Browser workflows and accessibility
         run: |
           npm install --prefix /tmp/vibes-browser --no-audit --no-fund playwright axe-core
-          /tmp/vibes-browser/node_modules/.bin/playwright install --with-deps chromium
+          /tmp/vibes-browser/node_modules/.bin/playwright install --with-deps chromium webkit
           python3 -m http.server 21880 --bind 127.0.0.1 --directory /tmp/vibes-site > /tmp/vibes-http.log 2>&1 &
           VIBES_HTTP_PID=$!
           trap 'kill "$VIBES_HTTP_PID"' EXIT
@@ -101,6 +101,7 @@ jobs:
           node contrib/vibes/tests/browser_qa.cjs
           node contrib/vibes/tests/accessibility_qa.cjs
           node contrib/vibes/tests/live_browser_qa.cjs
+          node contrib/vibes/tests/form_layout_qa.cjs
 
       - name: Keep the verified site for deployment review
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

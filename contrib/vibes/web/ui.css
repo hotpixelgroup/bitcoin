@@ -87,7 +87,8 @@ button.primary:hover {
   color: var(--gold);
 }
 
-:focus-visible {
+/* WebKit can move native radio focus with arrow keys without :focus-visible. */
+:focus-visible,input[type=checkbox]:focus,input[type=radio]:focus {
   outline: 3px solid var(--gold);
   outline-offset: 3px;
 }
@@ -345,7 +346,7 @@ label {
   margin: 17px 0 7px;
 }
 
-textarea,input,select {
+textarea,input:not([type=checkbox]):not([type=radio]),select {
   border: 1px solid #c5c8bb;
   border-radius: 6px;
   background: #fff;
@@ -353,6 +354,18 @@ textarea,input,select {
   padding: 11px 13px;
   max-width: 100%;
   min-height: 44px;
+}
+
+/* Binary controls keep their native box. The associated labels provide the
+   larger click target; text-field padding/min-height moves native glyphs down. */
+input[type=checkbox],input[type=radio] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--green);
 }
 
 textarea {
@@ -480,13 +493,15 @@ input[type=number] {
 
 .checks label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  line-height: 1.65;
+  min-height: 44px;
+  max-width: 100%;
 }
 
 .checks input {
-  min-height: auto;
-  accent-color: var(--green);
+  margin-top: calc((1.65em - 18px) / 2);
 }
 
 summary {
@@ -764,6 +779,8 @@ dialog {
   padding: 28px;
   max-width: 500px;
   width: calc(100% - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   color: var(--ink);
   background: var(--panel);
 }
@@ -1094,6 +1111,18 @@ dialog form {
   width: 20px;
   height: 20px;
   accent-color: var(--green);
+  font-size: 13px;
+  margin-top: calc((1.65em - 20px) / 2);
+}
+
+/* Keep a boolean setting beside its label at narrow widths too, rather than
+   dropping the checkbox below all of its explanatory text. */
+.setting:has(> input[type=checkbox]) {
+  grid-template-columns: minmax(0,1fr) 20px;
+}
+
+.setting:has(> input[type=checkbox]) label {
+  min-height: 44px;
 }
 
 @media(max-width:550px) {
@@ -1149,11 +1178,15 @@ dialog form {
   border-radius: 8px;
   margin: 14px 0;
   padding: 12px 14px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .question legend {
   font-weight: 600;
   padding: 0 6px;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
 }
 
 .choice {
@@ -1163,12 +1196,18 @@ dialog form {
   gap: 10px;
   margin: 8px 0;
   font-weight: 400;
+  line-height: 1.65;
+  min-height: 44px;
 }
 
 .choice input {
   flex: none;
-  margin-top: 5px;
-  width: auto;
+  margin-top: calc((1.65em - 18px) / 2);
+}
+
+.choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 #followup-result {
