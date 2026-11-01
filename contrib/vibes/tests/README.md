@@ -24,11 +24,21 @@ python3 -m http.server 21880 --bind 127.0.0.1 --directory /tmp/vibes-site
 node contrib/vibes/tests/browser_qa.cjs
 node contrib/vibes/tests/accessibility_qa.cjs
 node contrib/vibes/tests/live_browser_qa.cjs
+# Install Playwright's Chromium and WebKit runtimes for this check:
+node contrib/vibes/tests/form_layout_qa.cjs
 ```
 
 `VIBES_QA_URL` overrides the test server. `VIBES_BROWSER_CHANNEL=chrome` uses
 installed Chrome. `PLAYWRIGHT_MODULE` and `AXE_MODULE` can point at existing
 installations.
+
+The form-layout check measures native radio/checkbox boxes against the first
+line of their labels, including wrapped answers, fieldsets, preferences and
+settings. It also checks label clicks, keyboard operation and visible focus in
+Chromium and WebKit. Desktop and narrow viewports include 200%-equivalent
+reflow cases (half the CSS viewport with twice the output pixel density),
+rather than automating a browser's zoom controls. `VIBES_FORM_ENGINES` selects
+engines, and `VIBES_FORM_SCREENSHOT_DIR` saves visual evidence.
 
 `node contrib/vibes/tests/demo_qa.cjs` checks the lesson payload, exact replay
 inputs, scoring, questionnaire persistence and damaged browser storage without
@@ -61,7 +71,7 @@ It does not require a running node or a paid AI session.
 | Sandbox profiles and the environment given to confined code | SandboxProfileTests | no |
 | HTTP: key handling, content security policy, cross-origin refusal, learning record | HttpTests | no |
 | Two real nodes: identical, policy-only, filter scene, reorganisation scene | RealNodeTests | yes |
-| Keys scene (restore from a backup on another node), fees scene, replay of the 2015 soft fork | RealNodeTests | yes |
+| Keys scene (restore from a backup on another node), fees scene, controlled CLTV demonstration using modern nodes | RealNodeTests | yes |
 | Ready-made changed nodes: kept after a build, stale when the change or the base moves, published ones refused unless they match | ReadyMadeTests | no |
 | Scenes that need a changed node or the reference say how to get one; an outside program must be a named executable | ReadyMadeTests | no |
 | Before-and-after statements scored per statement; the slider scene's answer depends on the share | HttpTests, LessonTests | no |
@@ -73,12 +83,27 @@ It does not require a running node or a paid AI session.
 | Real HTTP console in a browser: authentication, propose/review/discard/apply, reload, history, narrow screens and offline controls | `live_browser_qa.cjs` | no |
 | Exact recordings for all 17 slider positions; scoring and persistence contracts | `demo_qa.cjs` | no |
 | Installer build provenance and container first/repeated startup | `test_packaging.py` | no |
+| Native form alignment, wrapping, label targets and keyboard focus across browser engines | `form_layout_qa.cjs` | no |
+| Release completeness, checksums, architecture, source/patch provenance and existing-lab launcher notices | `test_release.py` | no |
 
 CI additionally builds the node and Bitcoin Core's unit tests from source,
 checks that `src/` differs from the upstream base in one file only, applies
 each ready-made source change to confirm an unmodified node disagrees in the
 documented direction, and runs the rule-breaking-miner scene and the
 mining-power scene (at 30% and 70%) with the nodes it has just built.
+
+The release workflow additionally verifies all 15 assets before publication,
+then downloads the published installer, stock node and variants on fresh
+Linux x86_64, Linux ARM64 and Apple-silicon runners. The pinned installer's
+fetch/prebuilt stages must install the tagged source and matching programs;
+the installed console must start, mine a private regtest block and produce the
+documented outcomes with all three changed nodes. The Mac check mounts the DMG
+read-only and verifies its version, launcher release pins, icon and signature.
+
+`verify_release.py --assets DIR --tag TAG --commit FULL_SHA` inspects the full
+download set without running its programs. Its `--public --platform SLUG`
+mode performs native execution only in GitHub Actions. These checks make no
+paid AI calls and do not change an existing installed lab.
 
 ## What is not covered by automated tests
 
@@ -87,8 +112,9 @@ mining-power scene (at 30% and 70%) with the nodes it has just built.
 - The Linux sandbox (`bubblewrap`) anywhere but GitHub's Ubuntu machines,
   where the CI job fails unless the sandbox starts, recompiles part of the
   node and links it inside it, and runs these tests inside it with real nodes.
-- The Mac app, notarisation, and the Docker image beyond "it builds and the
-  console answers".
+- Apple Gatekeeper's first-launch experience and notarisation with maintainer
+  credentials. The Mac release checks cover package contents and native
+  programs; they do not establish an approved Developer ID or notarisation.
 - A real AI proposal and compiler-driven proposal in the browser. The live
   browser suite drives the real console and mock-agent source workflow;
   compilation, activation and recovery are exercised by the Python real-node

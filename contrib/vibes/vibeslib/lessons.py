@@ -15,13 +15,13 @@ then give the mechanism. Never claim more than the lab observed.
 # The question asked before any experiment that changes the node's source.
 # Option ids are the comparison verdicts the lab can observe.
 PREDICTION = {
-    "question": "Before you run it: what will an unmodified node do with this change?",
+    "question": "What do you expect the comparison to show?",
     "options": [
         {"id": "none", "text": "No difference in the tested blocks and transactions."},
         {"id": "policy", "text": "Different transaction policy, with no block disagreement in these checks."},
-        {"id": "loosened", "text": "The unmodified node will refuse some blocks my node accepts."},
-        {"id": "tightened", "text": "My node will refuse some blocks the unmodified node accepts."},
-        {"id": "split", "text": "Block disagreements in both directions."},
+        {"id": "loosened", "text": "Only the unmodified node will reject some of the other node's test blocks."},
+        {"id": "tightened", "text": "Only my node will reject some of the other node's test blocks."},
+        {"id": "split", "text": "Both nodes will reject some of the other node's test blocks."},
         {"id": "unsure", "text": "I am not sure."},
     ],
 }
@@ -424,12 +424,12 @@ CURATED = (
                         "What does that show about its consensus rules?",
             "options": [
                 {"id": "safe", "text": "They are compatible. A month of blocks would have exposed any difference."},
-                {"id": "limited", "text": "Only that no block in that month exercised a rule it changed."},
+                {"id": "limited", "text": "It accepted that month's blocks. Untested differences may still exist."},
                 {"id": "nothing", "text": "Nothing at all. Following the chain is unrelated to consensus rules."},
             ],
             "answer": "limited",
-            "why": "A node disagrees only when a block arrives that its changed rule treats "
-                   "differently. Agreement so far says the difference has not been exercised yet.",
+            "why": "Agreement on that history shows that those blocks passed its checks. It does "
+                   "not establish that the two versions would accept every possible block.",
         },
     },
     {
@@ -461,11 +461,12 @@ CURATED = (
             "options": [
                 {"id": "print", "text": "Create coins beyond the schedule."},
                 {"id": "steal", "text": "Spend coins from anyone's address."},
-                {"id": "reorder", "text": "Leave out transactions, and undo its own recent payments."},
+                {"id": "reorder", "text": "Try to exclude transactions or replace its own recent payments with conflicting spends."},
             ],
             "answer": "reorder",
-            "why": "Majority mining power controls which valid blocks get built. It gives no power "
-                   "to make an invalid block valid, so it cannot forge coins or signatures.",
+            "why": "A majority miner can attempt censorship and reorganisations using valid blocks. "
+                   "It still cannot make an invalid block pass another node's checks. More hash "
+                   "power is not a permission slip to change another node's rules.",
         },
     },
     {
