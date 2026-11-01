@@ -19,7 +19,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import PropertyMock, patch
+from unittest.mock import Mock, PropertyMock, patch
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -662,6 +662,14 @@ class SharedNetworkTests(ConsoleCase):
 
 
 class RegtestRulesTests(ConsoleCase):
+    def test_lab_result_followed_by_a_process_failure_is_not_accepted(self):
+        proc = Mock(returncode=1, stdout=iter([json.dumps({'t': 'result', 'result': {'verdict': 'none'}})]))
+        with patch.object(vibes.subprocess, 'Popen', return_value=proc), \
+                patch.object(self.console, '_free_ports', return_value=[1, 2, 3, 4]), \
+                patch.object(self.console, '_reap'):
+            with self.assertRaisesRegex(RuntimeError, 'ended with code 1'):
+                self.console.run_lab(vibes.Job('scene'), 'compare', self.repo, self.repo)
+
     def test_lab_reports_an_unfinished_check_as_inconclusive(self):
         lab = importlib.util.spec_from_file_location('lab_runner_under_test', VIBES_DIR / 'lab_runner.py')
         module = importlib.util.module_from_spec(lab)
@@ -681,9 +689,11 @@ class RegtestRulesTests(ConsoleCase):
         self.assertEqual(unfinished['verdict'], 'inconclusive')
         self.assertEqual(unfinished['unfinished'], [failed['title']])
         self.assertEqual(outcome([dict(same), dict(skipped)])['verdict'], 'inconclusive')
-        # A difference that was found is still reported as that difference.
+        # Preserve a difference as evidence, without guessing the untested
+        # direction of compatibility when the other check failed.
         found = outcome([dict(same), dict(failed)], cand_rejects={'height': 1, 'plain': 'x'})
-        self.assertEqual(found['verdict'], 'tightened')
+        self.assertEqual(found['verdict'], 'inconclusive')
+        self.assertEqual(found['observed_differences'], ['candidate rejected a block'])
         # Two nodes that refused nothing and still ended on different chains.
         view = dict(view, converged=False, candidate_tip={'height': 150})
         self.assertEqual(outcome([dict(same)])['verdict'], 'inconclusive')
@@ -1228,6 +1238,17 @@ class ReadyMadeTests(ConsoleCase):
         self.assertEqual(job.state, 'error')
         self.assertIn('reference node', job.meta['error'])
 
+    def test_ordinary_teaching_scenes_do_not_substitute_an_experimental_build(self):
+        release = self.repo / 'experimental'
+        self.fake_node(release)
+        self.console.running_state = {'path': str(release), 'sha': 'changed'}
+        with patch.object(self.console, 'run_lab') as lab:
+            self.console.start_job('scene', 'x', self.console.scene_runner('keys', lessons.curated('keys')))
+            job = self.wait()
+        self.assertEqual(job.state, 'error')
+        self.assertIn('reference node', job.meta['error'])
+        lab.assert_not_called()
+
     def test_outside_program_must_be_a_named_executable(self):
         for bad in ('bitcoind', '/etc/hosts', str(self.repo / 'missing/bitcoind'), '~/x'):
             with self.assertRaises(ValueError):
@@ -1237,6 +1258,77 @@ class ReadyMadeTests(ConsoleCase):
 
 
 class SettingsTests(ConsoleCase):
+    def test_hand_written_integer_prefixes_match_core(self):
+        self.console.conf_path.write_text('maxconnections=8foo\ndbcache=400MiB\n'
+                                         '[regtest]\nrpcport=18550port\n')
+        values = self.console.read_settings()
+        self.assertEqual(values['maxconnections'], 8)
+        self.assertEqual(values['dbcache'], 400)
+        self.assertEqual(self.console.rpc_port(), 18550)
+        self.assertEqual(self.console._config_int('not-a-number'), 0)
+        self.assertEqual(self.console._config_int('9' * 100), 2**63 - 1)
+        self.assertEqual(self.console._config_int('-' + '9' * 100), -(2**63))
+
+    def test_dotted_network_keys_are_read_and_updated_without_stale_overrides(self):
+        self.console.conf_path.write_text('regtest.maxconnections=8\nregtest.nodatacarrier=1\n'
+                                         'regtest.rpcport=18550\nsignet.maxconnections=12\n')
+        self.assertEqual(self.console.read_settings()['maxconnections'], 8)
+        self.assertFalse(self.console.read_settings()['datacarrier'])
+        self.assertEqual(self.console.rpc_port(), 18550)
+        self.console.write_settings({'maxconnections': 20, 'datacarrier': True})
+        self.assertEqual(self.console.read_settings()['maxconnections'], 20)
+        self.assertTrue(self.console.read_settings()['datacarrier'])
+        self.assertNotIn('regtest.maxconnections=', self.console.conf_path.read_text())
+        self.assertNotIn('regtest.nodatacarrier=', self.console.conf_path.read_text())
+        self.assertIn('signet.maxconnections=12', self.console.conf_path.read_text())
+
+    def test_config_booleans_follow_core_instead_of_python_truthiness(self):
+        for value, expected in (('', True), ('true', False), ('False', False), ('foo', False),
+                                ('0', False), ('2', True), ('-1', True), ('1tail', True),
+                                ('+0', False), ('+-1', False), ('999999999999999999999', True)):
+            self.console.conf_path.write_text(f'listen={value}\n')
+            self.assertEqual(self.console.read_settings()['listen'], expected, value)
+            self.console.conf_path.write_text(f'nolisten={value}\n')
+            self.assertEqual(self.console.read_settings()['listen'], not expected, 'no' + value)
+
+    def test_testnet_console_alias_uses_core_chain_and_config_names(self):
+        self.opts.chain = 'testnet'
+        self.console.conf_path.write_text('rpcport=9999\n[test]\nrpcport=18555\nrpcport=18556\n'
+                                         'dbcache=256\n[signet]\ndbcache=64\n')
+        self.assertIn('-chain=test', self.console.chain_args())
+        self.assertEqual(self.console.rpc_port(), 18555)
+        self.assertEqual(self.console.read_settings()['dbcache'], 256)
+        spec = self.console._spec_from_help('port', '=<port>', 'Peer port (default: 18333).', 'core-network')
+        with patch.object(self.console, 'all_specs', return_value=[*self.console.all_specs(), spec]):
+            self.console.write_settings({'port': 18557})
+            self.assertIn('[test]', self.console.conf_path.read_text())
+            self.assertNotIn('[testnet]', self.console.conf_path.read_text())
+            self.assertEqual(self.console.read_settings()['port'], 18557)
+
+    def test_rpc_port_prefers_network_section_and_first_assignment(self):
+        self.opts.chain = 'main'
+        self.console.conf_path.write_text('rpcport=18500\nrpcport=18501\n'
+                                         '[main]\nrpcport=18502\nrpcport=18503\n')
+        self.assertEqual(self.console.rpc_port(), 18502)
+
+    def test_network_section_and_first_scalar_assignment_match_core_precedence(self):
+        self.console.conf_path.write_text('dbcache=512\ndbcache=1024\n'
+                                         '[regtest]\ndbcache=256\ndbcache=128\n'
+                                         '[signet]\ndbcache=64\n')
+        self.assertEqual(self.console.read_settings()['dbcache'], 256)
+        self.console.write_settings({'dbcache': 768})
+        self.assertEqual(self.console.read_settings()['dbcache'], 768)
+        self.assertIn('[signet]\ndbcache=64', self.console.conf_path.read_text())
+        self.console.conf_path.write_text('dbcache=512\ndbcache=1024\n')
+        self.assertEqual(self.console.read_settings()['dbcache'], 512)
+
+    def test_negated_bool_can_be_read_and_replaced_without_a_hidden_override(self):
+        self.console.conf_path.write_text('datacarrier=1\n[regtest]\nnodatacarrier=1\n')
+        self.assertFalse(self.console.read_settings()['datacarrier'])
+        self.console.write_settings({'datacarrier': True})
+        self.assertTrue(self.console.read_settings()['datacarrier'])
+        self.assertNotIn('nodatacarrier=', self.console.conf_path.read_text())
+
     def test_roundtrip_preserves_hand_edits(self):
         self.console.conf_path.write_text('# personal config\nuacomment=QA\n')
         problems, clean = self.console.validate_settings({'dbcache': 512, 'prune': 0})
@@ -1251,6 +1343,26 @@ class SettingsTests(ConsoleCase):
         self.assertEqual(allowed[0], [])
         refused = self.console.validate_settings({'prune': 1000, 'txindex': True})
         self.assertIn('transaction index', refused[0][0])
+        self.assertEqual(self.console.validate_settings({'prune': 1})[0], [])
+        self.assertTrue(self.console.validate_settings({'prune': 2})[0])
+
+    def test_settings_do_not_silently_truncate_or_accept_wrong_types(self):
+        for value in (1.5, True, float('inf'), float('nan')):
+            self.assertTrue(self.console.validate_settings({'maxconnections': value})[0])
+        for value in ('onion', ['not-a-network'], [None]):
+            self.assertTrue(self.console.validate_settings({'onlynet': value})[0])
+
+    def test_discovered_text_settings_accept_text_without_config_injection(self):
+        spec = self.console._spec_from_help('testtext', '=<text>', 'A text value.', 'core-test')
+        with patch.object(self.console, 'all_specs', return_value=[spec]):
+            self.assertEqual(self.console.validate_settings({'testtext': 'a descriptive value'})[0], [])
+            for value in ('x\nlisten=1', 'x\rlisten=1', 'x\x00', 'x#truncated', None):
+                self.assertTrue(self.console.validate_settings({'testtext': value})[0])
+
+    def test_validation_overrides_and_command_hooks_are_not_discovered_settings(self):
+        for key in ('testactivationheight', 'vbparams', 'assumevalid', 'minimumchainwork',
+                    'blocknotify', 'walletnotify', 'alertnotify', 'includeconf', 'signer'):
+            self.assertIn(key, vibes.DENIED)
 
     def test_defaults_and_options_come_from_the_build(self):
         self.console._discovered = ([], [])
@@ -1291,9 +1403,8 @@ class LessonTests(unittest.TestCase):
                 self.assertTrue(source['url'].startswith('https://'), source)
             if item['kind'] == 'scene':
                 choices = {o['id'] for o in item['options']}
-                if 'answer_by_share' in item:
-                    self.assertIn(item['answer_by_share']['above'], choices)
-                    self.assertIn(item['answer_by_share']['below'], choices)
+                if item['id'] == 'power':
+                    self.assertIsNone(item.get('answer'))
                     self.assertIn('slider', item)
                 else:
                     self.assertIn(item['answer'], choices, item['id'])
@@ -1314,11 +1425,10 @@ class LessonTests(unittest.TestCase):
         for belief in lessons.BELIEFS:
             self.assertIsNotNone(lessons.curated(belief['experiment']), belief['id'])
 
-    def test_slider_prediction_depends_on_the_share(self):
+    def test_slider_predictions_require_an_observation_not_a_threshold(self):
         power = lessons.curated('power')
-        self.assertEqual(lessons.expected_answer(power, 30), 'own')
-        self.assertEqual(lessons.expected_answer(power, 50), 'own')
-        self.assertEqual(lessons.expected_answer(power, 55), 'strict')
+        for share in (30, 50, 55, 70):
+            self.assertIsNone(lessons.expected_answer(power, share))
 
     @unittest.skipUnless((REPO_ROOT / 'src/validation.cpp').is_file(), 'needs the Bitcoin source tree')
     def test_ready_made_patches_still_apply_to_this_source(self):
@@ -1333,6 +1443,58 @@ class LessonTests(unittest.TestCase):
     def test_no_em_dashes_in_teaching_text(self):
         text = json.dumps(lessons.payload()) + lessons.MAINNET_WARNING
         self.assertNotIn('—', text)
+
+
+class LabObservationTests(unittest.TestCase):
+    def test_actual_coinbase_outputs_are_used_instead_of_the_scheduled_subsidy(self):
+        node = SimpleNamespace(rpc=Mock(return_value={'tx': [{'vout': [{'value': 0.1}, {'value': 0.2}]}]}))
+        self.assertEqual(vibes.lab_runner.coinbase_paid(node, 'block'), 30_000_000)
+        node.rpc.assert_called_once_with('getblock', 'block', 2)
+
+    def test_nonfinite_results_cannot_break_the_browser_json_parser(self):
+        value = vibes.Console._sanitise({'a': float('nan'), 'b': float('inf'), 'c': 0.5})
+        self.assertEqual(value, {'a': None, 'b': None, 'c': 0.5})
+        self.assertEqual(json.loads(json.dumps(value, allow_nan=False)), value)
+
+    def source(self):
+        return SimpleNamespace(rpc=lambda method, *args: {'height': 1} if method == 'getblockheader' else args[0])
+
+    def test_inconclusive_or_duplicate_is_not_evidence_of_block_acceptance(self):
+        for answer in ('inconclusive', 'duplicate'):
+            def rpc(method, *args):
+                if method == 'submitblock':
+                    return answer
+                if method == 'getblockheader':
+                    return {'height': 1, 'confirmations': -1}
+                if method == 'getchaintips':
+                    return [{'hash': 'block', 'height': 1, 'status': 'valid-headers'}]
+                self.fail(method)
+            target = SimpleNamespace(label='candidate', rpc=rpc)
+            with self.assertRaisesRegex(RuntimeError, 'did not finish validating'):
+                vibes.lab_runner.shuttle(self.source(), target, ['block'])
+
+    def test_later_blocks_can_complete_validation_of_an_earlier_submission(self):
+        answers = iter(['inconclusive', None])
+        def rpc(method, *args):
+            if method == 'submitblock':
+                return next(answers)
+            if method == 'getblockheader':
+                return {'height': 1, 'confirmations': 2}
+            self.fail(method)
+        result = vibes.lab_runner.shuttle(self.source(), SimpleNamespace(label='candidate', rpc=rpc), ['a', 'b'])
+        self.assertEqual(result, (2, None))
+
+    def test_validated_side_branch_can_establish_acceptance(self):
+        def rpc(method, *args):
+            if method == 'submitblock':
+                return 'duplicate'
+            if method == 'getblockheader':
+                return {'height': 1, 'confirmations': -1}
+            if method == 'getchaintips':
+                return [{'hash': 'block', 'height': 1, 'status': 'valid-fork'}]
+            self.fail(method)
+        result = vibes.lab_runner.shuttle(self.source(), SimpleNamespace(label='candidate', rpc=rpc), ['block'])
+        self.assertEqual(result, (1, None))
 
 
 class HealthTests(unittest.TestCase):
@@ -1351,6 +1513,7 @@ class HealthTests(unittest.TestCase):
         self.assertIn('refused block 101', alerts[0]['detail'])
         self.assertIn('pays its miner more than the rules allow', alerts[0]['detail'])
         self.assertIn('stopped following the network', alerts[0]['detail'])
+        self.assertIn('Reset button is available only for the private regtest chain', alerts[0]['detail'])
 
     def test_old_refused_blocks_below_the_tip_are_not_alarms(self):
         tips = [{'height': 100, 'hash': 'aa', 'status': 'active', 'branchlen': 0},
@@ -1511,28 +1674,110 @@ class HttpTests(ConsoleCase):
         self.assertIn('"state": "review"', stream)
         self.assertTrue(json.load(self.get('/api/experiment?id=' + job.id))['events'])
 
+    def completed_scene(self, experiment='relay-filter', prediction='reject', observed='accept', verdict='policy'):
+        job = vibes.Job('scene')
+        job.state = 'done'
+        job.meta.update(curated=experiment, prediction=prediction,
+                        compare={'verdict': verdict, 'observed_answer': observed, 'rows': []})
+        self.console.job = job
+        self.console._save_job(job)
+        return job
+
     def test_learning_is_scored_by_the_console_and_kept_locally(self):
-        first = json.load(self.post('/api/learning', {'experiment': 'relay-filter', 'stage': 'prediction', 'choice': 'reject'}))
+        job = self.completed_scene()
+        prediction = {'experiment': 'relay-filter', 'job': job.id, 'stage': 'prediction', 'choice': 'reject'}
+        first = json.load(self.post('/api/learning', prediction))
         self.assertFalse(first['correct'])
-        second = json.load(self.post('/api/learning', {'experiment': 'relay-filter', 'stage': 'followup', 'choice': 'nothing'}))
+        second = json.load(self.post('/api/learning', {'experiment': 'relay-filter', 'job': job.id,
+                                                     'stage': 'followup', 'choice': 'nothing'}))
         self.assertTrue(second['correct'])
+        # Repeated result renders and lost-response retries do not inflate scores.
+        json.load(self.post('/api/learning', prediction))
         summary = json.load(self.get('/api/learning'))['summary']
         self.assertEqual(summary['prediction'], {'answered': 1, 'correct': 0})
         self.assertEqual(summary['followup'], {'answered': 1, 'correct': 1})
         with self.assertRaises(urllib.error.HTTPError):
-            self.post('/api/learning', {'experiment': 'nonsense', 'stage': 'followup', 'choice': 'x'})
+            self.post('/api/learning', {'experiment': 'nonsense', 'job': job.id, 'stage': 'followup', 'choice': 'x'})
+
+    def test_predictions_require_matching_complete_observations_and_original_choice(self):
+        job = self.completed_scene()
+        valid = {'experiment': 'relay-filter', 'job': job.id, 'stage': 'prediction', 'choice': 'reject'}
+        for payload in ({**valid, 'job': None}, {**valid, 'experiment': 'keys'},
+                        {**valid, 'choice': 'accept'}, {**valid, 'choice': 'invented'}):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.post('/api/learning', payload)
+        for state, verdict, observed in (('running', 'policy', 'accept'), ('error', 'policy', 'accept'),
+                                        ('cancelled', 'policy', 'accept'), ('done', 'inconclusive', None),
+                                        ('done', 'policy', None)):
+            job.state = state
+            job.meta['compare'].update(verdict=verdict, observed_answer=observed)
+            with self.assertRaises(urllib.error.HTTPError):
+                self.post('/api/learning', valid)
+        self.assertEqual(self.console.learning_summary()['summary']['prediction']['answered'], 0)
+
+    def test_power_prediction_is_graded_against_actual_chain_outcome(self):
+        job = self.completed_scene('power', 'strict', 'strict', 'tightened')
+        # An observed outcome takes precedence over the old share > 50 shortcut.
+        job.meta['compare']['share'] = 30
+        answer = json.load(self.post('/api/learning', {'experiment': 'power', 'job': job.id,
+                                                     'stage': 'prediction', 'choice': 'strict'}))
+        self.assertTrue(answer['correct'])
+
+    def test_first_answer_is_immutable_even_when_followup_is_retried(self):
+        job = self.completed_scene()
+        body = {'experiment': 'relay-filter', 'job': job.id, 'stage': 'followup', 'choice': 'nothing'}
+        self.assertTrue(json.load(self.post('/api/learning', body))['correct'])
+        self.assertTrue(json.load(self.post('/api/learning', {**body, 'choice': 'fork'}))['correct'])
+        record = self.console.learning_summary()
+        self.assertEqual(record['summary']['followup'], {'answered': 1, 'correct': 1})
+        self.assertEqual(record['entries'][-1]['choice'], 'nothing')
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/learning', {**body, 'choice': 'invented'})
 
     def test_before_and_after_answers_are_scored_per_statement(self):
-        wrong = json.load(self.post('/api/learning', {'experiment': 'coins-in-wallet', 'stage': 'before', 'choice': 'true'}))
+        belief = next(b for b in lessons.BELIEFS if b['experiment'] == 'keys' and not b['truth'])
+        body = {'experiment': belief['id'], 'stage': 'before', 'choice': 'true'}
+        wrong = json.load(self.post('/api/learning', body))
         self.assertFalse(wrong['correct'])
-        right = json.load(self.post('/api/learning', {'experiment': 'coins-in-wallet', 'stage': 'after', 'choice': 'false'}))
+        # The first round cannot be replaced with the known answer afterwards.
+        self.assertFalse(json.load(self.post('/api/learning', {**body, 'choice': 'false'}))['correct'])
+        right = json.load(self.post('/api/learning', {**body, 'stage': 'after', 'choice': 'false'}))
         self.assertTrue(right['correct'])
         record = json.load(self.get('/api/learning'))
-        self.assertEqual(record['beliefs']['coins-in-wallet'],
+        self.assertEqual(record['beliefs'][belief['id']],
                          {'before': {'choice': 'true', 'correct': False}, 'after': {'choice': 'false', 'correct': True}})
         self.assertEqual(record['summary']['before'], {'answered': 1, 'correct': 0})
         with self.assertRaises(urllib.error.HTTPError):
-            self.post('/api/learning', {'experiment': 'coins-in-wallet', 'stage': 'before', 'choice': 'maybe'})
+            self.post('/api/learning', {**body, 'choice': 'maybe'})
+
+    def test_belief_round_is_atomic_and_old_questionnaire_is_not_reused(self):
+        old = [{'experiment': b['id'].removesuffix('-v2'), 'stage': stage, 'choice': 'true',
+                'correct': b['truth'], 'time': 1} for b in lessons.BELIEFS for stage in ('before', 'after')]
+        self.console._write_json(self.console.state_dir / 'learning.json', old)
+        answers = [{'experiment': b['id'], 'choice': 'false'} for b in lessons.BELIEFS]
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/learning', {'stage': 'before', 'answers': answers[:-1]})
+        self.assertEqual(len(self.console.learning_summary()['entries']), len(old))
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/learning', {'stage': 'after', 'answers': answers})
+        self.post('/api/learning', {'stage': 'before', 'answers': answers})
+        after = [{'experiment': b['id'], 'choice': 'true'} for b in lessons.BELIEFS]
+        self.post('/api/learning', {'stage': 'after', 'answers': after})
+        record = self.console.learning_summary()
+        self.assertEqual(len(record['beliefs']), len(lessons.BELIEFS))
+        self.assertTrue(all(row['before']['choice'] == 'false' and row['after']['choice'] == 'true'
+                            for row in record['beliefs'].values()))
+        self.assertEqual(record['summary']['before']['answered'], len(lessons.BELIEFS))
+
+    def test_malformed_json_cannot_trigger_default_actions(self):
+        for raw in (b'[]', b'{oops', b'null', b''):
+            request = urllib.request.Request(self.url + '/api/build', data=raw,
+                headers={'X-Vibe-Key': self.console.key, 'Content-Type': 'application/json'})
+            with patch.object(self.console, 'start_job') as start:
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request)
+                self.assertEqual(error.exception.code, 400)
+                start.assert_not_called()
 
 
 @needs_node

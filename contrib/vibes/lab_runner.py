@@ -30,14 +30,16 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal
 from pathlib import Path
 
 # A fixed regtest address, so block production never depends on a wallet.
 FIXED_ADDRESS = "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"
 COIN = 100_000_000
-# submitblock answers that mean "valid": null (new best block), "duplicate"
-# (already had it) and "inconclusive" (valid, but not on the best chain).
-ACCEPTED = (None, "duplicate", "inconclusive")
+# A null submitblock response reports validation. "duplicate" and
+# "inconclusive" need a separate check: a stored side branch may not have
+# undergone script validation yet (src/rpc/mining.cpp).
+ACCEPTED = (None,)
 # Fields of getmempoolinfo that describe traffic, not settings.
 VOLATILE_MEMPOOL = {"loaded", "size", "bytes", "usage", "total_fee",
                     "unbroadcastcount", "mempoolminfee"}
@@ -94,6 +96,17 @@ def btc(satoshis):
     if frac == 0:
         return f"{whole} BTC"
     return f"{whole}.{frac:08d}".rstrip("0") + " BTC"
+
+
+def coinbase_paid(node, block_hash):
+    """Read the actual payout, rather than getblockstats' scheduled subsidy.
+
+    A miner is allowed to claim less than its maximum. The subsidy reported
+    by getblockstats is calculated from the node's rules, not from the amount
+    in the coinbase outputs (src/rpc/blockchain.cpp).
+    """
+    block = node.rpc("getblock", block_hash, 2)
+    return int(sum(Decimal(str(output["value"])) for output in block["tx"][0]["vout"]) * COIN)
 
 
 def emit(kind, **fields):
@@ -209,15 +222,46 @@ class LabNode:
                  "branchlen": t["branchlen"]} for t in self.rpc("getchaintips")][:8]
 
 
+def validated_block(node, block_hash):
+    """Whether a block is on an active or fully validated side chain."""
+    try:
+        header = node.rpc("getblockheader", block_hash)
+        if header.get("confirmations", -1) > 0:
+            return True
+        for tip in node.rpc("getchaintips"):
+            if tip.get("status") not in ("active", "valid-fork") or tip["height"] < header["height"]:
+                continue
+            tip_hash, height = tip["hash"], tip["height"]
+            while height > header["height"]:
+                parent = node.rpc("getblockheader", tip_hash)
+                tip_hash, height = parent["previousblockhash"], height - 1
+            if tip_hash == block_hash:
+                return True
+    except RpcError:
+        pass
+    return False
+
+
 def shuttle(source, target, hashes):
     """Hand blocks from one node to the other. Returns (accepted, rejection)."""
-    accepted = 0
+    accepted, pending = 0, []
     for block_hash in hashes:
         answer = target.rpc("submitblock", source.rpc("getblock", block_hash, 0))
+        if answer in ("duplicate", "inconclusive"):
+            # Deliver the remainder first: a later block can give this branch
+            # enough work to be selected and fully validated.
+            pending.append(block_hash)
+            continue
         if answer not in ACCEPTED:
             height = source.rpc("getblockheader", block_hash)["height"]
             return accepted, {"height": height, "hash": block_hash[:16], "reason": str(answer)[:160],
                               "plain": explain_reject(answer)}
+        accepted += 1
+    for block_hash in pending:
+        if not validated_block(target, block_hash):
+            height = source.rpc("getblockheader", block_hash)["height"]
+            raise RuntimeError(f"The {target.label} node did not finish validating block {height}; "
+                               "a stored or inconclusive block is not evidence of acceptance")
         accepted += 1
     return accepted, None
 
@@ -298,7 +342,7 @@ def setting_differences(reference, candidate):
 VERDICTS = {
     "inconclusive": "The comparison could not be completed",
     "none": "No difference observed",
-    "policy": "Local policy only",
+    "policy": "Local policy difference observed",
     "tightened": "Your node rejects blocks the unmodified node accepts",
     "loosened": "The unmodified node rejects blocks your node produces",
     "split": "The two nodes reject each other's blocks",
@@ -340,8 +384,8 @@ def scene_compare(reference, candidate):
         row("follow", "Does your node accept the blocks an unmodified node produces?", "differs",
             "produced 110 valid blocks", f"refused block {rejection['height']}",
             f"Your node accepted {accepted} blocks, then refused block {rejection['height']}: "
-            f"{rejection['plain']}. From that block on it would stop following any network "
-            "that still runs the unmodified rules.")
+            f"{rejection['plain']}. It will not build on this rejected block. The two nodes "
+            "could still agree on a different history that both consider valid.")
     else:
         row("follow", "Does your node accept the blocks an unmodified node produces?", "same",
             "produced 110 valid blocks", "accepted all 110",
@@ -424,7 +468,7 @@ def scene_compare(reference, candidate):
             "Your node could not assemble a block of its own: " + error.message[:200])
     if hashes:
         stats = candidate.rpc("getblockstats", hashes[0], ["subsidy", "totalfee", "height"])
-        paid = btc(stats["subsidy"] + stats["totalfee"])
+        paid = btc(coinbase_paid(candidate, hashes[0]))
         allowed = btc(reference_subsidy(stats["height"]))
         # A node does not fully check a block on a branch shorter than its own
         # chain. If the two have already parted, step the unmodified node back
@@ -444,15 +488,15 @@ def scene_compare(reference, candidate):
                 f"refused block {rejection['height']} (reward allowed: {allowed})",
                 f"produced a block paying its miner {paid}",
                 f"The unmodified node refused your node's block: {rejection['plain']}. "
-                "Every node running the unmodified rules would do the same, so coins "
-                "created this way exist only on your own node.")
+                "A node enforcing the same rules also rejects that block; a larger subsidy "
+                "is spendable only on a chain whose participants accept it.")
         elif result["cand_rejects"]:
             row("produce", "Does an unmodified node accept the blocks your node produces?", "same",
                 "judged both blocks valid, and ignored them", f"produced blocks paying their miner {paid}",
                 "The unmodified node considers your node's blocks valid, because a stricter rule "
-                "never produces anything the looser rule forbids. It still ignores them: its own "
-                "chain contains more proof of work. Other nodes would follow your stricter chain "
-                "only if most mining power enforced your rule.")
+                "permits these particular blocks under both rule sets. Its active chain contains "
+                "more proof of work. It would switch to a stricter chain if that chain became its "
+                "most-work valid chain; it would still not enforce the new rule itself.")
         else:
             row("produce", "Does an unmodified node accept the blocks your node produces?", "same",
                 "accepted both blocks", f"produced blocks paying their miner {paid}",
@@ -502,23 +546,33 @@ def finish(result, reference, candidate):
         # Two nodes that found nothing to refuse, and yet never connected or
         # ended on different chains: something went unobserved.
         unfinished.append("Connected directly, do they agree on one chain?")
-    if unfinished and verdict in ("none", "policy"):
+    if unfinished:
+        result["observed_differences"] = [name for name, found in
+                                          (("candidate rejected a block", tightened),
+                                           ("reference rejected a block", loosened),
+                                           ("local policy differed", bool(result["policy"]))) if found]
         verdict = "inconclusive"
         result["unfinished"] = unfinished
     ref_height, cand_height = view["reference_tip"]["height"], view["candidate_tip"]["height"]
     if view["converged"]:
-        plain = f"Connected directly, both nodes settled on the same chain at block {ref_height}."
+        plain = (f"Both nodes ended on the same chain at block {ref_height}. " +
+                 ("The lab also observed a direct connection." if view["connected"] else
+                  "The lab handed over blocks manually, but did not observe a successful direct connection."))
     else:
-        plain = (f"Connected directly, the nodes stayed apart: the unmodified node is at block "
+        plain = (f"After the direct-connection attempt, the nodes remained apart: the unmodified node is at block "
                  f"{ref_height} and yours is at block {cand_height}, on different chains. ")
+        if not view["connected"]:
+            plain += "A successful direct connection was not observed; the block-exchange rows are the evidence here. "
         if verdict == "tightened":
             plain += ("Your node refuses the unmodified chain. The unmodified node sees your chain "
                       "as valid but shorter, so it does not follow it.")
         elif verdict == "loosened":
             plain += ("The unmodified node will never accept your node's chain, however long it "
                       "grows. Your node still considers the unmodified chain valid.")
+        elif verdict == "split":
+            plain += "Each node rejected a block from the other under the rules tested here."
         else:
-            plain += "Neither node will ever accept the other's version of history."
+            plain += "The available checks do not explain this difference; the comparison is incomplete."
         if view["connected"] and not view["still_connected"]:
             plain += " The unmodified node also dropped the connection to your node."
     if not view["converged"]:
@@ -529,7 +583,8 @@ def finish(result, reference, candidate):
             "Chain the unmodified node follows", "Chain your node follows",
             first_refuses=bool(result["ref_rejects"]), second_refuses=bool(result["cand_rejects"]))
     result["rows"].append({"id": "network", "title": "Connected directly, do they agree on one chain?",
-                           "status": "same" if view["converged"] else "differs",
+                           "status": "same" if view["converged"] and view["connected"] else
+                                     "differs" if tightened or loosened else "error",
                            "reference": f"block {ref_height}", "candidate": f"block {cand_height}",
                            "plain": plain})
     result["verdict"] = verdict
@@ -552,8 +607,9 @@ def scene_policy(default, strict):
     rows.append({"id": "relay", "title": "Would each node relay the data-carrying transaction?",
                  "status": "differs" if open_answer["allowed"] != strict_answer["allowed"] else "same",
                  "reference": describe_mempool(open_answer), "candidate": describe_mempool(strict_answer),
-                 "plain": "The filtering node keeps the transaction out of its own waiting area "
-                          "and does not pass it on. The default node relays it."})
+                 "plain": "The mempool-admission probe shows whether each node would accept this "
+                          "transaction into its waiting area. It does not measure propagation "
+                          "through a live network."})
     txid = default.rpc("sendrawtransaction", tx_hex)
     step("The default node includes the transaction in a block")
     block = default.rpc("generatetoaddress", 1, payout)
@@ -565,7 +621,8 @@ def scene_policy(default, strict):
                  "candidate": "accepted the block" if not rejection else "refused the block",
                  "plain": "The filtering node accepted the block, and the transaction it refused to "
                           "relay is now part of its own copy of the chain. A relay filter decides "
-                          "what a node passes along. It cannot decide what miners include."
+                          "what a node passes along. It cannot guarantee that miners exclude a "
+                          "transaction that can reach them by another route."
                           if in_block else "The filtering node did not accept the block."})
     same_tip = default.tip()["hash"] == strict.tip()["hash"]
     rows.append({"id": "chain", "title": "Are the two nodes still on the same chain?",
@@ -574,8 +631,11 @@ def scene_policy(default, strict):
                  "plain": "Yes. Nodes with different relay policy stay on one chain, because "
                           "policy never applies to transactions that are already in a block."
                           if same_tip else "The nodes are on different chains."})
-    return {"rows": rows, "verdict": "policy" if same_tip else "split",
-            "headline": VERDICTS["policy"] if same_tip else VERDICTS["split"]}
+    demonstrated = open_answer["allowed"] and not strict_answer["allowed"] and in_block and same_tip
+    return {"rows": rows, "verdict": "policy" if demonstrated else "inconclusive",
+            "observed_answer": "accept" if demonstrated else None,
+            "headline": "The filtering node accepted the block containing the transaction" if demonstrated
+                        else "The filter scene did not demonstrate the expected policy difference"}
 
 
 def scene_reorg(first, second):
@@ -617,12 +677,17 @@ def scene_reorg(first, second):
                  "reference": f"{before} confirmation before", "candidate": f"{after} confirmations after",
                  "plain": ("The payment is back to zero confirmations" +
                            (" and is waiting in node A's mempool again" if waiting else "") +
-                           ". A confirmation is a block built on top of a payment, not an approval "
+                           ". One confirmation counts the block containing the payment; each "
+                           "additional block adds one. A confirmation is not an approval "
                            "by anyone. Each further block makes reversal more expensive, which is "
                            "why people wait for several, but no number of confirmations is a "
                            "formal guarantee.")
                           if after < before else "The payment kept its confirmation."})
-    return {"rows": rows, "verdict": "none", "headline": "A confirmation was reversed by a longer chain"}
+    demonstrated = switched and before == 1 and after == 0
+    return {"rows": rows, "verdict": "none" if demonstrated else "inconclusive",
+            "observed_answer": "zero" if demonstrated else None,
+            "headline": "A confirmation was reversed by a chain with more proof of work" if demonstrated
+                        else "The payment's confirmation was not reversed in this run"}
 
 
 def scene_maturity(node, _unused):
@@ -632,20 +697,23 @@ def scene_maturity(node, _unused):
     if not wallet:
         raise RuntimeError("This node was built without wallet support, which this scene needs.")
     address = node.rpc("getnewaddress", wallet=wallet)
-    node.rpc("generatetoaddress", 1, address)
+    first_block = node.rpc("generatetoaddress", 1, address)[0]
+    paid = coinbase_paid(node, first_block)
     balances = node.rpc("getbalances", wallet=wallet)["mine"]
     rows.append({"id": "immature", "title": "After 1 block: can the miner spend its reward?", "status": "info",
                  "reference": f"immature: {balances['immature']} BTC", "candidate": f"spendable: {balances['trusted']} BTC",
-                 "plain": "The block created 50 new bitcoin for its miner, and none of it can be spent yet."})
+                 "plain": f"The block's coinbase pays {btc(paid)}. Its reward is still immature in "
+                          "the wallet; maturity applies to the coinbase output, including any fees."})
     step("Producing 100 more blocks")
     node.rpc("generatetoaddress", 100, address)
     balances = node.rpc("getbalances", wallet=wallet)["mine"]
     rows.append({"id": "mature", "title": "After 101 blocks: can the miner spend its reward?", "status": "info",
                  "reference": f"immature: {balances['immature']} BTC", "candidate": f"spendable: {balances['trusted']} BTC",
                  "plain": "The reward from the first block is now spendable; the rewards from the "
-                          "100 newer blocks are still waiting. Newly created coins must wait 100 "
-                          "blocks, so that a reorganisation cannot leave people holding coins "
-                          "from a block that no longer exists."})
+                          "100 newer blocks are still waiting. Coinbase outputs require a gap of 100 "
+                          "blocks between their creation height and spending height. This reduces the "
+                          "risk from short reorganisations; a sufficiently deep reorganisation can "
+                          "still remove a mature coinbase and invalidate transactions spending it."})
     return {"rows": rows, "verdict": "none", "headline": "New coins mature after 100 blocks"}
 
 
@@ -693,12 +761,12 @@ def scene_keys(first, second):
                           "reading the same record."})
     step("Deleting the wallet from node A")
     first.rpc("unloadwallet", wallet)
-    shutil.rmtree(first.datadir / "regtest" / "wallets" / wallet, ignore_errors=True)
+    shutil.rmtree(first.datadir / "regtest" / "wallets" / wallet)
     rows.append({"id": "deleted", "title": "The wallet is deleted from node A. Are the coins gone?",
                  "status": "info", "reference": "wallet deleted",
                  "candidate": f"the chain still records {on_chain()} BTC at that address",
-                 "plain": "Nothing on the chain changed. The coins were never inside the wallet. What "
-                          "was deleted is the only copy of the key that can move them."})
+                 "plain": "Nothing on the chain changed. The coins were never inside the wallet. "
+                          "The wallet file was deleted; the backup made earlier still holds its keys."})
     step("A stranger's new wallet looks at the same chain")
     second.named("createwallet", wallet_name="stranger")
     stranger = second.rpc("getbalances", wallet="stranger")["mine"]["trusted"]
@@ -717,7 +785,9 @@ def scene_keys(first, second):
         if "range" in item:
             request["range"] = item["range"]
         requests.append(request)
-    second.rpc("importdescriptors", requests, wallet="restored", timeout=180)
+    imported = second.rpc("importdescriptors", requests, wallet="restored", timeout=180)
+    if not imported or not all(item.get("success") for item in imported):
+        raise RuntimeError("The wallet backup could not be fully restored on the second node")
     restored = second.rpc("getbalances", wallet="restored")["mine"]["trusted"]
     spend = ""
     if restored > 0:
@@ -727,14 +797,18 @@ def scene_keys(first, second):
                  "reference": "wallet file gone from node A",
                  "candidate": f"restored on node B: {restored} BTC, and it can spend" if spend else f"restored: {restored} BTC",
                  "plain": "The same coins are spendable again, from a different machine, because the "
-                          "keys came back. A backup of a wallet is a backup of its keys (usually written "
-                          "as a list of words). Anyone who holds that backup holds the coins; anyone "
-                          "who shows you a balance without giving you the keys holds them for you."})
-    return {"rows": rows, "verdict": "none", "headline": "The coins were on the chain all along; the wallet held the keys"}
+                          "keys came back. This scene uses a single-key wallet with a private descriptor "
+                          "backup. Other wallets may also need a passphrase, multiple signers or recovery "
+                          "information. A displayed balance alone does not establish who can spend it."
+                          if spend else "Restoring the backup did not produce a spendable balance in this run."})
+    return {"rows": rows, "verdict": "none" if spend else "inconclusive",
+            "observed_answer": "chain" if spend else None,
+            "headline": "The coins were on the chain all along; the wallet held the keys" if spend
+                        else "The wallet backup did not restore spendable coins"}
 
 
 def scene_fees(miner, other):
-    """Block space is sold by the byte to whoever pays most per byte."""
+    """Demonstrate the default block assembler's preference for fee rate."""
     rows = []
     wallet = make_wallet(miner)
     if not wallet:
@@ -752,29 +826,33 @@ def scene_fees(miner, other):
         return round(-miner.rpc("gettransaction", txid, wallet=wallet)["fee"] * COIN)
     rows.append({"id": "waiting", "title": "Two payments are waiting to be confirmed",
                  "status": "info",
-                 "reference": f"10 BTC, paying a fee of {fee(big)} satoshis (2 per byte)",
-                 "candidate": f"0.1 BTC, paying a fee of {fee(small)} satoshis (50 per byte)",
+                 "reference": f"10 BTC, paying a fee of {fee(big)} satoshis (2 sat/vB)",
+                 "candidate": f"0.1 BTC, paying a fee of {fee(small)} satoshis (50 sat/vB)",
                  "plain": "Both transactions take up almost exactly the same space in a block, although "
                           "one moves a hundred times as much as the other."})
     step("The next block has room for only one of them")
     first_block = miner.rpc("generatetoaddress", 1, FIXED_ADDRESS)[0]
     included = miner.rpc("getblock", first_block)["tx"]
+    shuttle(miner, other, [first_block])
     winner = "the 0.1 BTC payment" if small in included and big not in included else \
              "the 10 BTC payment" if big in included and small not in included else "both" \
              if big in included else "neither"
     rows.append({"id": "first", "title": "The next block has room for one. Which got in?",
                  "status": "differs", "reference": "10 BTC payment: " + ("in the block" if big in included else "still waiting"),
                  "candidate": "0.1 BTC payment: " + ("in the block" if small in included else "still waiting"),
-                 "plain": f"The miner included {winner}. A miner fills a block with whatever pays most "
-                          "per byte of space, because space is what is scarce. The amount being sent "
-                          "does not enter into it, and nobody set either fee but the sender."})
+                 "plain": f"The miner included {winner}. This node's block assembler prefers the "
+                          "higher fee per virtual byte (sat/vB) for these independent transactions. "
+                          "Miners can choose a different policy, and transaction dependencies can also "
+                          "matter. The amount being sent does not set the fee rate."})
     second_block = miner.rpc("generatetoaddress", 1, FIXED_ADDRESS)[0]
     later = big in miner.rpc("getblock", second_block)["tx"]
+    shuttle(miner, other, [second_block])
     rows.append({"id": "second", "title": "What happened to the other payment?",
                  "status": "info", "reference": "confirmed one block later" if later else "still waiting",
                  "candidate": "",
-                 "plain": "It waited for space. When blocks are full, a low fee means a longer wait, not "
-                          "a rejected payment. When blocks have room, almost any fee is enough."})
+                 "plain": "In this run the lower-fee payment waited for the next block. On a real "
+                          "network it may wait longer, be evicted from mempools or fail relay policy. "
+                          "A low fee provides no guarantee of eventual confirmation."})
     other_pool = len(other.rpc("getrawmempool"))
     rows.append({"id": "mempool", "title": "Did node B ever see either payment waiting?",
                  "status": "info", "reference": "node A held both in its waiting area",
@@ -782,11 +860,15 @@ def scene_fees(miner, other):
                  "plain": "The two nodes were not connected, so node B never heard of either payment "
                           "until it arrived in a block. There is no single waiting area: each node keeps "
                           "its own, and they differ."})
-    return {"rows": rows, "verdict": "none", "headline": "The smaller payment went first, because it paid more per byte"}
+    demonstrated = small in included and big not in included and later
+    return {"rows": rows, "verdict": "none" if demonstrated else "inconclusive",
+            "observed_answer": "small" if demonstrated else None,
+            "headline": "The smaller payment went first, because it paid more per virtual byte" if demonstrated
+                        else "The fee scene did not produce the expected transaction ordering"}
 
 
 def scene_softfork(upgraded, old):
-    """Replay of a real soft fork (BIP 65, activated in December 2015)."""
+    """Demonstrate CLTV with two modern nodes and a test-only activation override."""
     rows = []
     wallet = make_wallet(upgraded)
     if not wallet:
@@ -814,8 +896,10 @@ def scene_softfork(upgraded, old):
     rows.append({"id": "locked", "title": "A coin is locked until block 500",
                  "status": "info", "reference": f"both nodes are at block {height}",
                  "candidate": "the lock uses a rule added to Bitcoin in 2015 (BIP 65)",
-                 "plain": "Before 2015 the instruction this lock uses did nothing at all. The upgrade "
-                          "gave it a meaning: this coin cannot be spent before the stated block."})
+                 "plain": "BIP 65 gave OP_NOP2 the CHECKLOCKTIMEVERIFY meaning. This demonstration "
+                          "uses two modern nodes, with only that rule disabled on the second. It "
+                          "does not run historical 2015 software. The spend used here requires a "
+                          "transaction locktime of at least 500, so it can first confirm in block 501."})
     step("A miner running the old rules includes a spend of that coin, far too early")
     try:
         mined = old.rpc("generateblock", FIXED_ADDRESS, [early_spend])["hash"]
@@ -823,33 +907,35 @@ def scene_softfork(upgraded, old):
         rows.append({"id": "early", "title": "A miner on the old rules tries to spend it early", "status": "error",
                      "reference": "", "candidate": "could not build the block",
                      "plain": "The node running the old rules refused the early spend too: " + error.message[:200]})
-        return {"rows": rows, "verdict": "none", "headline": "Both nodes enforced the lock"}
+        return {"rows": rows, "verdict": "inconclusive", "observed_answer": None,
+                "headline": "The node with CLTV disabled could not build the test block"}
     _, rejection = shuttle(old, upgraded, [mined])
     rows.append({"id": "early", "title": f"The coin is spent at block {height + 1}, in a block mined under the old rules",
                  "status": "differs" if rejection else "same",
                  "reference": ("refused the block: " + rejection["plain"]) if rejection else "accepted the block",
-                 "candidate": "accepted the block: to the old rules the lock is an instruction that does nothing",
-                 "plain": "The same block is valid to the node that never upgraded and invalid to the node "
-                          "that did. This is what a soft fork is: the new rules forbid something the old "
-                          "rules allowed, so old nodes cannot see the difference."
+                 "candidate": "accepted the block: with CLTV disabled, that instruction is a no-op",
+                 "plain": "The same block is accepted with CLTV disabled and refused with it enabled. "
+                          "This illustrates a soft fork: the new rule forbids some spends the older "
+                          "rule allowed. All the other modern rules remain enabled in this scene."
                           if rejection else "Both nodes accepted the block, which is not what this scene expects."})
     view = network_view(upgraded, old)
     rows.append({"id": "apart", "title": "Are the two nodes still on the same chain?",
                  "status": "same" if view["converged"] else "differs",
                  "reference": f"upgraded node: block {view['reference_tip']['height']}",
                  "candidate": f"node on the old rules: block {view['candidate_tip']['height']}",
-                 "plain": "They have parted. The node on the old rules is following a block the rest of "
-                          "the network refuses. In 2015 this did not happen, because the new rule was "
-                          "switched on only after 95% of recent blocks came from miners who had said "
-                          "they would enforce it, so no block like this one was built on."
+                 "plain": "They have parted. The node with CLTV disabled follows a block the "
+                          "CLTV-enforcing node refuses. During the BIP 65 deployment, block-version "
+                          "signalling coordinated enforcement. Signalling itself is not validation: "
+                          "a node needs the new rule implemented and active to check it independently."
                           if not view["converged"] else "They agree."})
-    result = {"rows": rows, "verdict": "loosened" if rejection else "none",
-              "headline": "A node that never upgraded accepted a block the upgraded node refused"
-              if rejection else "Both nodes agreed"}
+    result = {"rows": rows, "verdict": "loosened" if rejection else "inconclusive",
+              "observed_answer": "accept" if rejection else None,
+              "headline": "The node with CLTV disabled accepted a block the enforcing node refused"
+              if rejection else "The CLTV scene did not demonstrate a rule difference"}
     if not view["converged"]:
         result["picture"] = split_picture(
             height, view["reference_tip"]["height"] - height, view["candidate_tip"]["height"] - height,
-            "Chain the upgraded node follows", "Chain the node on the old rules follows",
+            "Chain the CLTV-enforcing node follows", "Chain the node with CLTV disabled follows",
             first_refuses=True, first_kind="stock", second_kind="changed")
     return result
 
@@ -865,12 +951,12 @@ def scene_miners(honest, rogue):
                            "and this one refused an unmodified block: " + rejection["plain"])
     step("The rule-breaking miner produces 30 blocks; the honest miner produces 2")
     rogue_blocks = rogue.rpc("generatetoaddress", 30, FIXED_ADDRESS)
-    paid = rogue.rpc("getblockstats", rogue_blocks[0], ["subsidy", "totalfee"])
+    paid = coinbase_paid(rogue, rogue_blocks[0])
     before = honest.tip()
     refused, first_reason = 0, None
     for block_hash in rogue_blocks:
         answer = honest.rpc("submitblock", rogue.rpc("getblock", block_hash, 0))
-        if answer not in ACCEPTED:
+        if answer not in (*ACCEPTED, "duplicate", "inconclusive"):
             refused += 1
             first_reason = first_reason or str(answer)
     switched = honest.tip()["hash"] != before["hash"]
@@ -881,10 +967,12 @@ def scene_miners(honest, rogue):
     rows.append({"id": "power", "title": "Who has more mining power?", "status": "info",
                  "reference": f"honest miner: {len(honest_blocks)} blocks",
                  "candidate": f"rule-breaking miner: {len(rogue_blocks)} blocks, each paying itself "
-                              f"{btc(paid['subsidy'] + paid['totalfee'])}",
-                 "plain": f"The rule-breaking miner's chain holds about {ratio:.0f} times the proof of "
-                          "work of the honest one. If the chain with the most work simply won, it "
-                          "would win here."})
+                              f"{btc(paid)}",
+                 "plain": f"Including the shared {len(start)}-block beginning, the rule-breaking "
+                          f"chain holds {ratio:.1f} times the proof of work of the honest chain. "
+                          "The separate branches contain 30 and 2 equally difficult blocks. These "
+                          "blocks were produced on demand; this is a controlled demonstration of "
+                          "chain selection, not a measurement of real hash rate."})
     rows.append({"id": "switch", "title": "Does the unmodified node switch to the chain with more work?",
                  "status": "same" if switched else "differs",
                  "reference": f"switched to the rule-breaking chain" if switched else
@@ -901,34 +989,39 @@ def scene_miners(honest, rogue):
                           "do real damage inside the rules: leave transactions out, or replace recent "
                           "blocks to take back its own payments. It cannot create coins, spend someone "
                           "else's, or change a rule for any node that checks."})
-    return {"rows": rows, "verdict": "loosened" if refused else "none",
-            "headline": "Thirty blocks of mining power, refused by one node that checked",
+    demonstrated = refused == len(rogue_blocks) and not switched
+    return {"rows": rows, "verdict": "loosened" if demonstrated else "inconclusive",
+            "observed_answer": "valid" if demonstrated else None,
+            "headline": "Thirty rule-breaking blocks were refused by the unmodified node" if demonstrated
+                        else "The miner scene did not demonstrate rejection of every invalid block",
             "picture": split_picture(len(start), len(honest_blocks), len(rogue_blocks),
                                      "Chain the unmodified node follows",
                                      "Chain the rule-breaking miner built", first_refuses=bool(refused))}
 
 
 def scene_power(stock, strict, share=60, rounds=40):
-    """A stricter rule, enforced by a chosen share of mining power.
-
-    Two nodes stand for two kinds of node: unmodified, and enforcing a
-    stricter rule. Each of 40 blocks is produced by one kind of miner, in
-    proportion to the share. Every block is offered to both nodes."""
-    share = max(5, min(95, int(share)))
-    produced = []                                   # (kind, hash)
-    reorganised = 0
+    """A deterministic schedule of block opportunities, not a hash-rate simulation."""
+    share = int(share)
+    if not 5 <= share <= 95 or rounds < 1:
+        raise ValueError("Choose a mining share between 5 and 95 and a positive block count")
+    produced = []
+    reorganised, strict_refused, stock_refused = 0, 0, 0
     for i in range(rounds):
         if ((i + 1) * share) // 100 > (i * share) // 100:
             before = stock.tip()["hash"]
             block_hash = strict.rpc("generatetoaddress", 1, FIXED_ADDRESS)[0]
-            stock.rpc("submitblock", strict.rpc("getblock", block_hash, 0))
+            answer = stock.rpc("submitblock", strict.rpc("getblock", block_hash, 0))
+            if answer not in (*ACCEPTED, "duplicate", "inconclusive"):
+                stock_refused += 1
             header = stock.rpc("getblockheader", block_hash)
             if stock.tip()["hash"] == block_hash and header.get("previousblockhash") != before:
                 reorganised += 1
             produced.append(("changed", block_hash))
         else:
             block_hash = stock.rpc("generatetoaddress", 1, FIXED_ADDRESS)[0]
-            strict.rpc("submitblock", stock.rpc("getblock", block_hash, 0))
+            answer = strict.rpc("submitblock", stock.rpc("getblock", block_hash, 0))
+            if answer not in (*ACCEPTED, "duplicate", "inconclusive"):
+                strict_refused += 1
             produced.append(("stock", block_hash))
 
     def in_chain(node, block_hash):
@@ -936,56 +1029,90 @@ def scene_power(stock, strict, share=60, rounds=40):
             return node.rpc("getblockheader", block_hash)["confirmations"] > 0
         except RpcError:
             return False
+
+    stock_tip, strict_tip = stock.tip(), strict.tip()
     stock_lane = [{"kind": kind, "state": "kept"} for kind, h in produced if in_chain(stock, h)]
     strict_lane = [{"kind": kind, "state": "kept"} for kind, h in produced if in_chain(strict, h)]
     by_stock_miners = [h for kind, h in produced if kind == "stock"]
     by_strict_miners = [h for kind, h in produced if kind == "changed"]
     discarded = sum(1 for h in by_stock_miners if not in_chain(stock, h))
-    follows = bool(by_strict_miners) and in_chain(stock, strict.tip()["hash"])
-    stock_height, strict_height = stock.tip()["height"], strict.tip()["height"]
+    follows = bool(by_strict_miners) and in_chain(stock, strict_tip["hash"])
+    stock_work = int(stock.rpc("getblockheader", stock_tip["hash"])["chainwork"], 16)
+    strict_work = int(strict.rpc("getblockheader", strict_tip["hash"])["chainwork"], 16)
+    tied = not follows and stock_work == strict_work
+
+    # Receiving a shorter side branch does not prove script validity. After
+    # recording the experiment's outcome, temporarily set aside the competing
+    # branch so the unmodified node actually validates the stricter branch.
+    # Restore the original chain choice, including its tie preference, before
+    # returning. This probe does not contribute any mining opportunities.
+    compatible = follows
+    if not follows and by_strict_miners and not stock_refused:
+        competing = next((h for h in by_stock_miners if in_chain(stock, h) and not in_chain(strict, h)), None)
+        if competing:
+            step("Checking the shorter branch separately, then restoring the recorded chain choice")
+            stock.rpc("invalidateblock", competing)
+            try:
+                compatible = validated_block(stock, strict_tip["hash"])
+            finally:
+                stock.rpc("reconsiderblock", competing)
+                if stock.tip()["hash"] != stock_tip["hash"]:
+                    stock.rpc("preciousblock", stock_tip["hash"])
+            if stock.tip()["hash"] != stock_tip["hash"]:
+                raise RuntimeError("Could not restore the unmodified node's recorded chain choice")
+
+    complete = compatible and strict_refused > 0 and stock_refused == 0
     rows = [{"id": "mined", "title": f"{rounds} blocks were produced", "status": "info",
              "reference": f"miners on the unmodified rules: {len(by_stock_miners)} blocks",
              "candidate": f"miners enforcing the stricter rule: {len(by_strict_miners)} blocks",
-             "plain": f"{share}% of the mining power enforces the stricter rule. Its blocks are valid "
-                      "to every node. Blocks from the other miners are valid only to unmodified nodes. "
-                      "Here the two kinds of block arrive in an even pattern; on a real network they "
-                      "arrive at random, which makes the outcome near the halfway line a matter of luck."}]
+             "plain": f"The schedule assigns {share}% of block opportunities to the stricter miners. "
+                      "The stricter node refuses the higher subsidy claimed by the other miners. "
+                      "Block difficulty is constant here and the order is deterministic. Real block "
+                      "discovery is random, so a finite run cannot establish a universal threshold."}]
     if follows:
-        rows.append({"id": "outcome", "title": "Which chain did the unmodified nodes end up following?",
-                     "status": "differs", "reference": f"the stricter chain (block {stock_height})",
-                     "candidate": f"the stricter chain (block {strict_height})",
-                     "plain": f"The stricter chain grew fastest, so the unmodified nodes kept switching to "
-                              f"it ({reorganised} times), without being upgraded and without being asked. "
-                              f"{discarded} of the {len(by_stock_miners)} blocks from miners on the old "
-                              "rules were discarded, along with their rewards. This is how a soft fork "
-                              "takes effect for everyone: a majority of mining power refuses to build on "
-                              "anything else."})
+        rows.append({"id": "outcome", "title": "Which chain did the unmodified node end up following?",
+                     "status": "differs", "reference": f"the stricter chain (block {stock_tip['height']})",
+                     "candidate": f"the stricter chain (block {strict_tip['height']})",
+                     "plain": f"In this schedule the unmodified node switched to the stricter chain "
+                              f"({reorganised} reorganisations). {discarded} of the {len(by_stock_miners)} "
+                              "blocks from the other miners were removed from its active chain. "
+                              "It follows that compatible history but still does not check the stricter "
+                              "subsidy rule itself; a later rule-breaking chain with more work could "
+                              "be accepted by the unmodified node."})
     else:
-        rows.append({"id": "outcome", "title": "Which chain did the unmodified nodes end up following?",
-                     "status": "differs", "reference": f"their own, at block {stock_height}",
-                     "candidate": f"stricter nodes are alone at block {strict_height}",
-                     "plain": "The stricter chain never became the longest, so no unmodified node ever "
-                              "switched to it. The nodes enforcing the stricter rule are on a shorter "
-                              "chain of their own, and the miners who enforced it earned rewards that "
-                              "exist only there. Enforcing a rule without most of the mining power "
-                              "splits you off; it does not bring anyone with you."})
-    rows.append({"id": "threshold", "title": "Where is the line?", "status": "info",
+        rows.append({"id": "outcome", "title": "Which chain did the unmodified node end up following?",
+                     "status": "differs", "reference": f"its own chain, at block {stock_tip['height']}",
+                     "candidate": f"a separate stricter chain, at block {strict_tip['height']}",
+                     "plain": ("The branches ended with equal accumulated work. The unmodified node "
+                               "kept its existing chain; equal-work ties do not force a switch. " if tied else
+                               "At the end of this schedule, the unmodified node's chain had more "
+                               "accumulated work than the separate stricter chain. ") +
+                              "This is the observed outcome of this run, not a prediction that every "
+                              "real network with this hash-rate share must end the same way."})
+    rows.append({"id": "threshold", "title": "Following a chain is different from enforcing its rules", "status": "info",
                  "reference": "", "candidate": "",
-                 "plain": "Just above half. With more than half the mining power the stricter chain "
-                          "outgrows any other; with half or less it does not. Real activations have "
-                          "waited for far more than half (95% in 2015, 90% in 2021), because near the "
-                          "line the two sides trade places for a long time and payments on the losing "
-                          "side are undone."})
-    return {"rows": rows, "verdict": "tightened", "share": share,
-            "headline": (f"With {share}% of mining power, the stricter rule became the rule for everyone"
-                         if follows else
-                         f"With {share}% of mining power, the stricter nodes were left on their own chain"),
+                 "plain": "Sustained majority hash rate can make a compatible stricter chain outgrow "
+                          "a competing chain under fixed assumptions. Actual outcomes also depend on "
+                          "block discovery, miner behavior and which rules users enforce. Activation "
+                          "signalling thresholds are coordination mechanisms, not a rule that changes "
+                          "every node's software or makes old nodes validate a new condition."})
+    if not complete:
+        rows.append({"id": "validation", "title": "Was the intended rule difference demonstrated?",
+                     "status": "error", "reference": f"stricter blocks refused: {stock_refused}",
+                     "candidate": f"unmodified blocks refused: {strict_refused}",
+                     "plain": "The supplied programs did not establish the expected one-way rule "
+                              "difference. Do not score this run as evidence about stricter rules."})
+    return {"rows": rows, "verdict": "tightened" if complete else "inconclusive", "share": share,
+            "observed_answer": ("strict" if follows else "own") if complete else None,
+            "equal_work": tied,
+            "headline": (f"With {share}% of scheduled blocks, the unmodified node followed the stricter chain"
+                         if follows else f"With {share}% of scheduled blocks, the nodes followed separate chains")
+                        if complete else "The mining-share scene could not establish the intended rule difference",
             "picture": {"lanes": [
-                {"label": "Chain the unmodified nodes follow", "blocks": stock_lane,
+                {"label": "Chain the unmodified node follows", "blocks": stock_lane,
                  "note": f"{len(stock_lane)} blocks; {discarded} blocks from unmodified miners were discarded"},
-                {"label": "Chain the stricter nodes follow", "blocks": strict_lane,
+                {"label": "Chain the stricter node follows", "blocks": strict_lane,
                  "note": f"{len(strict_lane)} blocks, all from miners enforcing the stricter rule"}]}}
-
 
 SCENES = {"compare": scene_compare, "policy": scene_policy, "reorg": scene_reorg,
           "maturity": scene_maturity, "keys": scene_keys, "fees": scene_fees,

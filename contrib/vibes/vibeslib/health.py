@@ -52,18 +52,20 @@ def node_alerts(chain, info, tips, peers, warnings, log_tail="", explain=None):
         reason = reject_reason(log_tail)
         why = ""
         if reason:
-            why = " Its reason: " + (explain(reason) if explain else reason) + "."
+            why = " Recent logged reject reason: " + (explain(reason) if explain else reason) + "."
         detail = (f"Your node is at block {height}. It has refused block "
                   f"{worst.get('height')} ({str(worst.get('hash', ''))[:16]}) and will not "
                   f"build on it.{why}")
         if chain == "regtest":
-            detail += (" On this private chain that means a block was produced under different "
-                       "rules from the ones this node now enforces.")
+            detail += (" On this private chain, inspect the reject reason: the block may have "
+                       "been produced under different rules, or may simply be malformed.")
         else:
             detail += (" If the rest of the network accepts that block, your node has stopped "
                        "following the network: new blocks and payments will no longer appear "
-                       "here. Undoing the source change does not clear this by itself; use "
-                       "Reset in Setup and help, or restore the baseline build.")
+                       "here. Undoing the source change does not clear a stored rejection by "
+                       "itself. Stop the experimental node, restore a compatible build, and "
+                       "inspect its validation state before relying on it again. The console's "
+                       "Reset button is available only for the private regtest chain.")
         alerts.append({"level": "danger", "title": "Your node has refused a block",
                        "detail": detail})
 

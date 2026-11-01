@@ -3,8 +3,8 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """The words the lab teaches with.
 
-Everything here is written by people and fixed in the source, so that what an
-operator learns never depends on what an AI happened to say. The console adds
+The explanations are fixed in the source and reviewed with their evidence, so
+what an operator learns does not depend on a live agent response. The console adds
 observations (which node refused which block, and why); this file supplies the
 explanation that goes with each kind of observation.
 
@@ -17,11 +17,11 @@ then give the mechanism. Never claim more than the lab observed.
 PREDICTION = {
     "question": "Before you run it: what will an unmodified node do with this change?",
     "options": [
-        {"id": "none", "text": "Nothing visible. Both nodes keep accepting each other's blocks and transactions."},
-        {"id": "policy", "text": "They relay transactions differently, but still accept each other's blocks."},
-        {"id": "loosened", "text": "The unmodified node will refuse the blocks my node produces."},
-        {"id": "tightened", "text": "My node will refuse the blocks the unmodified node produces."},
-        {"id": "split", "text": "Each node will refuse the other's blocks."},
+        {"id": "none", "text": "No difference in the tested blocks and transactions."},
+        {"id": "policy", "text": "Different transaction policy, with no block disagreement in these checks."},
+        {"id": "loosened", "text": "The unmodified node will refuse some blocks my node accepts."},
+        {"id": "tightened", "text": "My node will refuse some blocks the unmodified node accepts."},
+        {"id": "split", "text": "Block disagreements in both directions."},
         {"id": "unsure", "text": "I am not sure."},
     ],
 }
@@ -29,98 +29,96 @@ PREDICTION = {
 # What each observed outcome means, and what it would mean on a real network.
 VERDICTS = {
     "identical": {
-        "title": "Same rules as the unmodified node",
-        "meaning": "This build has the same node source as the unmodified reference, so there "
-                   "is nothing to compare.",
-        "mainnet": "On a real network this node follows the same chain as every other "
-                   "unmodified node.",
+        "title": "Same node source as the reference",
+        "meaning": "The files that feed this build match the unmodified reference. The lab did "
+                   "not need to repeat the comparison for this build.",
+        "mainnet": "The source contains the reference rules. Configuration, chain state and "
+                   "network connectivity still affect how the node operates.",
     },
     "inconclusive": {
         "title": "The comparison could not be completed",
-        "meaning": "At least one check could not be carried out, for example because this "
-                   "build could not produce a block of its own. The checks that did run found "
-                   "no difference, but a check that never ran is not a check that passed.",
-        "mainnet": "Treat this build as unknown. The lab does not apply it without your review "
-                   "and does not start it on a shared network. The rows below show which check "
-                   "did not run and why.",
+        "meaning": "At least one required check could not be carried out. The rows below show "
+                   "which observations are available and which are missing. An unfinished check "
+                   "does not establish agreement.",
+        "mainnet": "Treat this build as unknown. The lab waits for your review and does not "
+                   "start it on a shared network.",
     },
     "none": {
         "title": "No difference observed",
-        "meaning": "In every check the lab ran, the two nodes accepted each other's blocks and "
-                   "treated the test transactions the same way.",
-        "mainnet": "That is evidence, not proof. The lab checks block rewards, a reward halving, "
-                   "ordinary payments, a data-carrying transaction and block exchange in both "
-                   "directions. A change to a rule those checks never exercise would not show up here.",
+        "meaning": "The completed checks found no difference in block acceptance or in the "
+                   "test transactions. They do not establish that every rule is unchanged.",
+        "mainnet": "This is evidence, not proof of compatibility. The lab tests subsidy limits, "
+                   "a halving, ordinary payments, a data-carrying transaction and block exchange. "
+                   "Other changes can remain invisible until a different block exercises them.",
     },
     "policy": {
-        "title": "Local policy changed; consensus did not",
-        "meaning": "Your node relays or stores transactions differently, and both nodes still "
-                   "accept each other's blocks.",
-        "mainnet": "On a real network your node would stay on the same chain as everyone else. "
-                   "Only your own waiting area for unconfirmed transactions (the mempool), your "
-                   "fee estimates and what you pass on to peers would differ. A relay filter "
-                   "cannot keep a transaction out of a block: miners decide what a block contains.",
+        "title": "Transaction policy differs; no block disagreement observed",
+        "meaning": "The nodes treated unconfirmed transactions differently but accepted the "
+                   "blocks exchanged in these checks. Other consensus differences may be untested.",
+        "mainnet": "A policy-only change can alter your mempool, relay, fee estimates or mining "
+                   "templates while leaving block validity unchanged. A local relay filter does "
+                   "not guarantee exclusion from blocks: a miner can receive a valid transaction "
+                   "another way. These checks alone cannot prove the change is policy-only.",
     },
     "tightened": {
-        "title": "Tightened: your node rejects blocks the unmodified node accepts",
-        "meaning": "Your node now refuses something the unmodified rules allow. The unmodified "
-                   "node still considers your node's blocks valid, because a stricter rule never "
-                   "produces anything the looser rule forbids.",
-        "mainnet": "On a real network your node would follow the chain until the first block "
-                   "that breaks your stricter rule, then stop there while everyone else carried "
-                   "on. Payments confirmed after that point would never appear on your node. "
-                   "Others would follow your stricter chain only if most mining power enforced "
-                   "the same rule. Bitcoin's name for this shape of change is a soft fork.",
+        "title": "Tightened in these checks: your node rejected a reference block",
+        "meaning": "Your node rejected a block the reference accepts, while the reference "
+                   "accepted the tested blocks from your node. This is the pattern expected from "
+                   "stricter rules, but a limited test cannot classify every possible block.",
+        "mainnet": "A pure tightening is a soft fork: blocks valid under the stricter rules are "
+                   "also valid under the old rules. Your node refuses any chain containing a block "
+                   "that breaks its new rule. It can continue on a compatible branch if one is "
+                   "mined. Old nodes follow that branch if it has the most work among branches "
+                   "they accept; they still do not check the new rule themselves. Adoption and "
+                   "activation are separate from this compatibility relationship.",
     },
     "loosened": {
-        "title": "Loosened: the unmodified node rejects blocks your node produces",
-        "meaning": "Your node now accepts something the unmodified rules forbid. Every "
-                   "unmodified node refuses a block that uses the looser rule.",
-        "mainnet": "On a real network nothing visible would change at first: nobody else "
-                   "produces blocks that use your looser rule, so your node would keep following "
-                   "the same chain. The difference appears only if a block using the looser rule "
-                   "is ever mined. Your node would accept it and every unmodified node would "
-                   "refuse it, leaving your node on a chain nobody else recognises. Coins that "
-                   "exist only on that chain cannot be spent with anyone else. Bitcoin's name for "
-                   "this shape of change is a hard fork.",
+        "title": "Loosened in these checks: the reference rejected your node's block",
+        "meaning": "Your node accepted a block the reference rejects. The tested reference "
+                   "blocks were accepted by your node.",
+        "mainnet": "Allowing previously invalid blocks is a hard-forking change. Existing nodes "
+                   "continue to reject those blocks regardless of their proof of work. A changed "
+                   "node can still follow the existing chain; a separate branch appears only if "
+                   "blocks using the new permission are mined and followed. Extra outputs on "
+                   "that branch are not valid on the unchanged chain.",
     },
     "split": {
-        "title": "Split: each node rejects the other's blocks",
-        "meaning": "The two nodes disagree in both directions. Neither will ever accept the "
-                   "other's chain.",
-        "mainnet": "On a real network your node would separate from everyone else at the first "
-                   "block either side refused, and stay separate for good. Coins on your side "
-                   "could be spent only with nodes running the same changed rules.",
+        "title": "Block disagreement in both directions",
+        "meaning": "Each node rejected at least one tested block accepted by the other. This "
+                   "is not evidence that every possible block would be rejected.",
+        "mainnet": "These builds can follow incompatible branches. A shared branch may still "
+                   "satisfy both sets of rules; convergence depends on the blocks produced, their "
+                   "work and the rules each node runs. The comparison cannot prove a permanent split.",
     },
 }
 
 # Shown beside the regex and path flags, which fire before anything is built.
 STATIC_FLAG_NOTE = (
     "This is a text match on the proposed change, made before anything is built. It can flag "
-    "harmless edits and miss real ones. What the change actually does to compatibility is "
-    "decided by the comparison with an unmodified node, shown below.")
+    "harmless edits and miss real ones. The comparison below supplies "
+    "observations about compatibility; it also has limited coverage.")
 
 NO_REFERENCE_NOTE = (
     "This build was not compared with an unmodified node, because no reference node is "
-    "available yet. On a private chain of one node any rule appears to work, because nobody "
-    "is present to disagree. Prepare a reference node to see what an unmodified node does "
+    "available yet. A node accepting its own blocks does not establish compatibility with "
+    "other nodes. Prepare a reference node to see what an unmodified node does "
     "with this change.")
 
 NETWORKS = {
-    "regtest": "A private test network that exists only on this machine. Blocks are produced "
-               "on demand, coins have no value, and nothing you do here reaches anyone else. "
-               "Two regtest quirks matter: the block reward halves every 150 blocks instead of "
-               "every 210,000, and the difficulty never adjusts.",
-    "signet": "A shared test network whose blocks must be signed by its operator. Coins have no "
-              "value. Other people's nodes are on it, so a node with changed consensus rules "
-              "will stop agreeing with them.",
-    "testnet": "The old public test network (testnet3). Coins have no value. Other people's "
-               "nodes are on it, so a node with changed consensus rules will stop agreeing with them.",
-    "testnet4": "The current public test network. Coins have no value. Other people's nodes are "
-                "on it, so a node with changed consensus rules will stop agreeing with them.",
-    "main": "The real Bitcoin network. Coins have real value. A node with changed consensus "
-            "rules here either stops following the network or follows a chain nobody else "
-            "recognises, and anything it tells a wallet about payments can then be wrong.",
+    "regtest": "The lab uses an isolated regtest chain with coins intended only for testing. "
+               "Blocks are mined on demand. With this build's defaults, the subsidy halves every "
+               "150 blocks rather than mainnet's 210,000 and difficulty does not retarget. "
+               "Regtest can be networked if deliberately configured; the lab's scenes are isolated.",
+    "signet": "A shared test network whose blocks must satisfy an additional signing challenge. "
+              "Its coins are intended for testing. Changed consensus rules can cause disagreement "
+              "when a block exercises the difference.",
+    "testnet": "The older public test network, testnet3. Its coins are intended for testing. "
+               "Other operators use it, so changed rules can cause disagreement with their nodes.",
+    "testnet4": "The testnet4 public test network. Its coins are intended for testing. Changed "
+                "rules can cause disagreement with other nodes when the difference is exercised.",
+    "main": "The real Bitcoin network. Coins have real value. Changed validation rules can "
+            "cause your node to reject the network's chain or accept a conflicting branch, so "
+            "its payment information may be incompatible with other people's nodes.",
 }
 
 MAINNET_WARNING = """\
@@ -128,16 +126,16 @@ You asked to run on the real Bitcoin network (--chain=main).
 
 What that means here:
   * This node's source can be rewritten by an AI. A change to a consensus rule
-    makes it stop following the network (a stricter rule) or follow a chain
-    nobody else recognises (a looser rule).
+    can cause disagreement when a block exercises the changed rule. A
+    node with looser rules does not automatically leave the existing chain.
   * The lab refuses to start a build on this network unless a comparison with
     an unmodified node found no consensus difference. That comparison checks a
     limited set of behaviours; passing it is evidence, not proof.
   * The wallet stays disabled and incoming connections stay off unless you
     switch them on in Node settings. Never point a wallet holding real funds
     at an experimental node.
-  * The first synchronisation downloads and checks the whole chain, which
-    needs hundreds of gigabytes of disk.
+  * Initial synchronisation downloads and verifies historical blocks. Pruning
+    can reduce retained block storage, but does not avoid that initial download.
 """
 
 # ----- curated experiments ---------------------------------------------------
@@ -164,13 +162,16 @@ GROUPS = (
 
 WHITEPAPER = {"title": "Bitcoin: A Peer-to-Peer Electronic Cash System", "url": "https://bitcoin.org/bitcoin.pdf"}
 POLICY_DOC = {"title": "Bitcoin Core: transaction relay policy",
-              "url": "https://github.com/bitcoin/bitcoin/blob/master/doc/policy/README.md"}
+              "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/policy/README.md"}
 VALIDATION_SRC = {"title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
-                  "url": "https://github.com/bitcoin/bitcoin/blob/master/src/validation.cpp"}
+                  "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/validation.cpp"}
 BIP65 = {"title": "BIP 65: OP_CHECKLOCKTIMEVERIFY", "url": "https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki"}
-ACTIVATION = {"title": "Bitcoin Optech: soft fork activation", "url": "https://bitcoinops.org/en/topics/soft-fork-activation/"}
-BIP110 = {"title": "BIP 110: Reduced Data Temporary Softfork (closed)",
-          "url": "https://github.com/bitcoin/bips/blob/master/bip-0110.mediawiki"}
+ACTIVATION = {"title": "BIP 9: activation states and enforcement",
+              "url": "https://github.com/bitcoin/bips/blob/master/bip-0009.mediawiki"}
+BIP141 = {"title": "BIP 141: transaction weight and virtual size",
+          "url": "https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki"}
+CHAIN_GUIDE = {"title": "Bitcoin developer guide: consensus and chain selection",
+               "url": "https://developer.bitcoin.org/devguide/block_chain.html"}
 
 CURATED = (
     {
@@ -184,25 +185,26 @@ CURATED = (
                     "happened to the coins?",
         "options": [
             {"id": "gone", "text": "They are destroyed. They were stored in that wallet."},
-            {"id": "chain", "text": "Nothing. They are recorded on the chain; only the key to move them was deleted."},
+            {"id": "chain", "text": "The chain is unchanged; the wallet's local spending information was deleted."},
             {"id": "node", "text": "They return to the node that mined them."},
         ],
         "answer": "chain",
         "belief": "\"My bitcoin are stored in my wallet.\"",
-        "lesson": "Nothing that could be called a coin is ever stored in a wallet. The chain that "
-                  "every node keeps records which outputs exist and what it takes to spend them. A "
-                  "wallet holds keys, and shows a balance by reading the chain. Node B had never seen "
-                  "this wallet and could still find the 50 BTC. When the wallet was deleted the chain "
-                  "did not change; when the keys were restored on another machine the coins could be "
-                  "spent again. Two things follow. A backup of the keys, usually a list of words, is "
-                  "the wallet: whoever holds it holds the coins, and no one can reset it for you. And "
-                  "a balance shown by an exchange is not this: the exchange holds the keys and owes "
-                  "you the amount.",
+        "lesson": "Confirmed coins are recorded as unspent transaction outputs, with conditions for spending "
+                  "them; they are not files inside a wallet. This scene uses a single-signature wallet. Deleting it did "
+                  "not change the chain, and restoring its complete backup on node B recovered the ability to "
+                  "spend the 50 BTC. A wallet can hold private keys, or only watch for payments while a separate "
+                  "device signs. Recovery needs all required secrets and wallet information: a seed phrase alone "
+                  "may be insufficient when there is a passphrase, multiple signers or additional scripts. Treat "
+                  "a complete usable spending backup like the wallet itself. A custodial exchange balance is "
+                  "different: the exchange controls the on-chain spending keys and owes you a balance.",
         "sources": [
-            {"title": "Mai et al., User Mental Models of Cryptocurrency Systems (SOUPS 2020)",
-             "url": "https://www.usenix.org/system/files/soups2020-mai.pdf"},
+            {"title": "BIP 39: recovery words and optional passphrase",
+             "url": "https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki"},
             {"title": "Bitcoin developer guide: wallets",
              "url": "https://developer.bitcoin.org/devguide/wallets.html"},
+            {"title": "Bitcoin Core: output descriptors and spending conditions",
+             "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/descriptors.md"},
         ],
         "followup": {
             "question": "You buy bitcoin on an exchange and leave it there. Who can move those coins on the chain?",
@@ -223,8 +225,8 @@ CURATED = (
         "summary": "Two payments wait for a block that has room for only one: 10 BTC paying a low "
                    "fee, and 0.1 BTC paying a higher one.",
         "needs": "No AI and no compiling. Runs in a few seconds.",
-        "question": "A block has room for one more payment. One sends 10 BTC with a small fee, the "
-                    "other sends 0.1 BTC with a larger fee. Which one gets in?",
+        "question": "The configured miner has room for one of two similarly sized payments. "
+                    "One sends 10 BTC at 2 sat/vB, the other 0.1 BTC at 50 sat/vB. Which does it choose?",
         "options": [
             {"id": "big", "text": "The 10 BTC payment. Larger payments take priority."},
             {"id": "small", "text": "The 0.1 BTC payment. It pays more for the space it takes."},
@@ -232,28 +234,29 @@ CURATED = (
         ],
         "answer": "small",
         "belief": "\"The fee is a percentage of what you send, and the network sets it.\"",
-        "lesson": "A block has limited space, and a fee is a bid for some of it. Both payments took "
-                  "almost the same number of bytes, so the miner chose the one bidding more per byte, "
-                  "and the amount being moved never entered into it. Nobody sets the fee but the "
-                  "sender: when blocks are full a low bid waits, and when they have room almost any "
-                  "bid is enough. The scene also showed that node B never saw either payment waiting. "
-                  "Each node keeps its own waiting area for unconfirmed transactions, called a "
-                  "mempool, and no two are guaranteed to match.",
+        "lesson": "A fee bids for block space, rather than being a percentage of the amount sent. The two "
+                  "transactions here have similar virtual sizes, so the configured miner selected the one paying "
+                  "the higher fee rate, measured in satoshis per virtual byte (sat/vB). Virtual size accounts for "
+                  "transaction weight; it is not the raw byte count. Miners choose their own transactions and may "
+                  "consider related transactions together, so a higher individual fee rate is not a universal "
+                  "priority guarantee. Relay and mining fee floors can also apply when blocks have room. Each "
+                  "node has its own waiting area, called a mempool: node B did not receive these unconfirmed "
+                  "payments because the nodes were disconnected.",
         "sources": [
             {"title": "Bitcoin developer guide: transaction fees",
              "url": "https://developer.bitcoin.org/devguide/transactions.html#transaction-fees-and-change"},
-            POLICY_DOC,
+            BIP141, POLICY_DOC,
         ],
         "followup": {
             "question": "Your payment has been unconfirmed for an hour while blocks are full. What is the most likely reason?",
             "options": [
                 {"id": "amount", "text": "The amount is too small for miners to bother with."},
-                {"id": "bid", "text": "Other transactions are paying more per byte, so they are chosen first."},
+                {"id": "bid", "text": "Other transactions offer higher fee rates for the space they use."},
                 {"id": "approval", "text": "The network has not approved it yet."},
             ],
             "answer": "bid",
-            "why": "Nobody approves a payment. It waits because block space went to transactions "
-                   "that bid more for it.",
+            "why": "A low fee rate is a common reason to wait during congestion. It is not the only "
+                   "possible cause: propagation, transaction dependencies and miner policy also matter.",
         },
     },
     {
@@ -261,10 +264,10 @@ CURATED = (
         "kind": "scene", "scene": "reorg",
         "title": "Is a confirmed payment final?",
         "summary": "Two nodes share a chain. One confirms a payment in a block the other never "
-                   "sees; the other then builds a longer chain without it.",
+                   "sees; the other then builds a valid chain with more work and no conflicting spend.",
         "needs": "No AI and no compiling. Runs in a few seconds.",
-        "question": "Node A's payment has one confirmation. Node A then learns of a longer chain "
-                    "that does not contain it. What happens to the payment?",
+        "question": "Node A's payment has one confirmation. It adopts a valid higher-work chain "
+                    "without that payment or a conflicting spend. What happens to the payment?",
         "options": [
             {"id": "stays", "text": "It stays confirmed. A confirmation cannot be undone."},
             {"id": "zero", "text": "It goes back to zero confirmations."},
@@ -272,13 +275,13 @@ CURATED = (
         ],
         "answer": "zero",
         "belief": "\"A confirmation means the network approved my payment.\"",
-        "lesson": "A confirmation is not an approval by anyone. It is a count of blocks: one for "
-                  "the block that includes the payment, plus one for each block built on top. "
-                  "Nodes follow the valid chain with the most proof of work, so when a longer "
-                  "chain arrives that does not contain the block, the payment goes back to "
-                  "waiting. Each extra block makes that reversal more expensive for whoever "
-                  "attempts it, which is why people wait for several before treating a payment "
-                  "as settled. Six is a convention, not a rule in the software.",
+        "lesson": "One confirmation means the payment is in the active chain; each block built on top adds "
+                  "another. Nodes choose the chain with the most accumulated proof of work among chains their "
+                  "rules accept. In this scene, the replacement chain is valid, has more work and contains no "
+                  "conflicting spend, so the payment returns to zero confirmations and can be mined again. A "
+                  "conflicting spend could instead make it invalid. More confirmations generally make replacing "
+                  "that history harder; they are not an absolute guarantee. Six is a convention, not a consensus "
+                  "rule for ordinary payments.",
         "sources": [WHITEPAPER,
                     {"title": "Bitcoin developer guide: block chain",
                      "url": "https://developer.bitcoin.org/devguide/block_chain.html"}],
@@ -298,8 +301,8 @@ CURATED = (
         "id": "relay-filter", "group": "rules",
         "kind": "scene", "scene": "policy",
         "title": "Can a filter keep data out of the chain?",
-        "summary": "Two identical nodes. One is told to refuse data-carrying transactions "
-                   "larger than 83 bytes, the limit Bitcoin Core used before version 30.",
+        "summary": "Two nodes with the same source. One uses the older 83-byte OP_RETURN script "
+                   "policy limit; the other accepts the larger test transaction.",
         "needs": "No AI and no compiling. Runs in a few seconds.",
         "question": "A transaction carrying 200 bytes of data is mined into a block by someone "
                     "else. What does the filtering node do with that block?",
@@ -310,14 +313,13 @@ CURATED = (
         ],
         "answer": "accept",
         "belief": "\"If enough of us filter it, it stays off the chain.\"",
-        "lesson": "A relay filter is policy: a local choice about which unconfirmed transactions a "
-                  "node keeps and passes on. It is never applied to transactions that are already "
-                  "in a block. The filtering node refused to relay the transaction, then accepted "
-                  "the block containing it, and both nodes stayed on one chain. Filters change "
-                  "what crosses your node. They cannot change what miners include, and a "
-                  "transaction can reach a miner without crossing your node at all. Whether "
-                  "filters are still worth running is a question people disagree about; what a "
-                  "filter can and cannot do is not.",
+        "lesson": "A relay filter is policy: a local choice about which unconfirmed transactions a node keeps and "
+                  "passes on. That relay policy is not used to decide whether a transaction already in a block is "
+                  "consensus-valid. Here the filtering node refused the unconfirmed transaction, then accepted "
+                  "the block containing it, and both nodes stayed on one chain. Filters affect propagation and "
+                  "can influence miners using those policies, but cannot guarantee exclusion: a miner can receive "
+                  "a consensus-valid transaction directly or through other peers. The scene establishes that "
+                  "distinction, not whether a particular filtering policy is useful.",
         "sources": [POLICY_DOC,
                     {"title": "Bitcoin Core 30.0 release notes", "url": "https://bitcoincore.org/en/releases/30.0/"}],
         "followup": {
@@ -343,16 +345,17 @@ CURATED = (
         "prompt": "Double the block subsidy: the starting reward becomes 100 BTC instead of 50.",
         "expected": "loosened",
         "belief": "\"The developers could just change the 21 million limit.\"",
-        "lesson": "There is no number 21,000,000 that anyone could edit to print more coins. The "
-                  "limit is the sum of a schedule: 50 new coins per block, halved every 210,000 "
-                  "blocks. You changed that schedule on your node, and your node happily produced "
-                  "a block paying 100. The unmodified node refused it with the reason "
-                  "bad-cb-amount. Every other node would do the same, so the extra coins exist "
-                  "only on your machine. Changing the supply is not a matter of editing code: "
-                  "it takes everyone who checks blocks choosing to run the changed rule.",
+        "lesson": "The subsidy is the new bitcoin a block may create; the total block reward also includes "
+                  "transaction fees. Mainnet starts at a 50 BTC subsidy and halves it every 210,000 blocks. The "
+                  "schedule, satoshi rounding and other validity checks constrain issuance. MAX_MONEY is a "
+                  "separate consensus range check, not a switch that raises the subsidy. This patch doubles the "
+                  "starting subsidy on your private chain, whose halvings occur every 150 blocks. Your node "
+                  "accepted its changed reward; the reference rejected an overpaying block with bad-cb-amount. "
+                  "Other nodes using unchanged rules reject it too. A software release cannot force them to "
+                  "accept the extra outputs; people must choose compatible rules for their own nodes.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: MAX_MONEY is \"not the total money supply\"",
-                     "url": "https://github.com/bitcoin/bitcoin/blob/master/src/consensus/amount.h"}],
+                     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/consensus/amount.h"}],
         "followup": {
             "question": "Suppose every Bitcoin Core maintainer agreed to release a version with a "
                         "higher reward. What would make the new reward real?",
@@ -376,16 +379,14 @@ CURATED = (
         "prompt": "Halve the block subsidy: the starting reward becomes 25 BTC instead of 50.",
         "expected": "tightened",
         "belief": "\"If my node enforces a stricter rule, the network has to follow it.\"",
-        "lesson": "Your node now refuses any block whose miner claims more than 25. Unmodified "
-                  "miners claim 50, so your node rejected the very first block and stopped. The "
-                  "unmodified node carried on without noticing. It even considers your node's "
-                  "blocks valid, since claiming less than the maximum was always allowed; it "
-                  "simply ignores them because its own chain has more proof of work. A stricter "
-                  "rule spreads only when most mining power enforces it. Without that, the node "
-                  "that tightened is the one left behind. That is what happened to the nodes "
-                  "enforcing BIP 110 in August 2026: with about 2.5% of blocks signalling "
-                  "support, they rejected the majority chain and their own chain stalled.",
-        "sources": [BIP110, ACTIVATION],
+        "lesson": "This patch lowers the starting subsidy limit to 25 BTC. In the check, the reference miner "
+                  "claimed its full 50 BTC subsidy, so your node rejected the block. The reference accepts blocks "
+                  "claiming the smaller subsidy because miners may claim less than the maximum. Your node cannot "
+                  "make another node change its checks. It can follow a compatible branch if miners build one, or "
+                  "remain at its last accepted block if nobody does. A smaller mining share can still produce a "
+                  "growing branch; whether other nodes follow it depends on accumulated valid work and later "
+                  "miner behavior, not a vote by node count.",
+        "sources": [VALIDATION_SRC, CHAIN_GUIDE],
         "followup": {
             "question": "A group of node operators starts rejecting blocks that most miners keep "
                         "producing. What happens to the group's nodes?",
@@ -395,8 +396,8 @@ CURATED = (
                 {"id": "vote", "text": "The rule takes effect once enough nodes signal for it."},
             ],
             "answer": "stall",
-            "why": "A node can only refuse blocks for itself. Unless most mining power builds "
-                   "blocks its rule accepts, a stricter node is left on a chain that stops growing.",
+            "why": "The nodes reject any chain containing a block that violates their rule. Their "
+                   "accepted branch can keep growing if miners produce compatible blocks.",
         },
     },
     {
@@ -409,15 +410,15 @@ CURATED = (
         "prompt": "Change the regtest subsidy halving interval from 150 blocks to 75.",
         "expected": "tightened",
         "belief": "\"A rule change takes effect straight away, so I would notice at once.\"",
-        "lesson": "For 74 blocks the two nodes agreed completely, and a short test would have "
-                  "called this change harmless. At block 75 your node expected the reward to "
-                  "halve, the unmodified node did not, and your node refused the block. Changed "
-                  "rules can sit silent until the chain reaches the height, time or kind of "
-                  "transaction that exercises them. That is why one block on a private chain "
-                  "proves very little, and why the lab runs the chain past a halving.",
+        "lesson": "The nodes accepted the same first 74 reference blocks. At height 75 the changed node allowed "
+                  "at most half its earlier subsidy while the reference miner still claimed the old amount, so it "
+                  "rejected that block. A miner claiming less could have produced a block both accepted. Changed "
+                  "rules can remain invisible until a particular height, time or transaction exercises them. "
+                  "Successful checks therefore demonstrate only the behaviors tested, rather than proving that "
+                  "the builds have identical consensus rules.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: regtest halves every 150 blocks (chainparams.cpp)",
-                     "url": "https://github.com/bitcoin/bitcoin/blob/master/src/kernel/chainparams.cpp"}],
+                     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/kernel/chainparams.cpp"}],
         "followup": {
             "question": "A changed node has followed the real network without trouble for a month. "
                         "What does that show about its consensus rules?",
@@ -438,8 +439,8 @@ CURATED = (
         "summary": "A miner whose node pays itself 100 BTC per block produces 30 blocks. An honest "
                    "miner produces 2. Both are offered to an unmodified node.",
         "needs": "No AI. Uses the ready-made node from \"Can you raise the block reward?\".",
-        "question": "The rule-breaking miner's chain has fifteen times the proof of work of the "
-                    "honest one. Which chain does the unmodified node follow?",
+        "question": "The rule-breaking branch has more accumulated proof of work. Which chain "
+                    "does the unmodified node follow?",
         "options": [
             {"id": "longest", "text": "The rule-breaking chain. The chain with the most work wins."},
             {"id": "valid", "text": "The honest chain. It refuses every rule-breaking block, however many there are."},
@@ -447,17 +448,14 @@ CURATED = (
         ],
         "answer": "valid",
         "belief": "\"Miners control Bitcoin\", and \"the longest chain wins.\"",
-        "lesson": "A node follows the chain with the most proof of work among the chains it "
-                  "considers valid. Proof of work is never weighed for a block that breaks a rule: "
-                  "the first of the thirty blocks was refused for paying its miner too much, and "
-                  "the rest for building on it. Mining power decides the order of valid "
-                  "transactions, and a miner with most of it can do real harm inside the rules: it "
-                  "can leave transactions out, and it can replace recent blocks to take back "
-                  "payments it made itself. It cannot create coins, spend coins that belong to "
-                  "someone else, or change a rule for any node that checks. That limit holds only "
-                  "for people who check with a node of their own, or rely on someone who does.",
-        "sources": [WHITEPAPER,
-                    {"title": "Bitcoin Wiki: majority attack", "url": "https://en.bitcoin.it/wiki/Majority_attack"}],
+        "lesson": "A node chooses the chain with the most proof of work among chains it considers valid. The "
+                  "reference refused the first overpaying block and the descendants built on it, even though the "
+                  "competing branch contained more work. Majority mining power can censor transactions or attempt "
+                  "to reorganize recent history, including double-spending the miner's own payments. It cannot "
+                  "make an over-subsidy block or an unauthorized signature pass an unchanged node's checks. This "
+                  "scene compares constructed branches at regtest difficulty; producing more blocks here is not a "
+                  "measurement of real mining power.",
+        "sources": [WHITEPAPER, CHAIN_GUIDE],
         "followup": {
             "question": "What can a miner with 60% of the mining power do?",
             "options": [
@@ -475,64 +473,63 @@ CURATED = (
         "kind": "scene", "scene": "power", "variant": "halve-reward",
         "slider": {"label": "Share of mining power enforcing the stricter rule", "min": 10, "max": 90,
                    "step": 5, "value": 30, "unit": "%"},
-        "title": "How much mining power does a stricter rule need?",
-        "summary": "Forty blocks are produced. A share of the miners, which you choose, enforce a "
-                   "stricter rule (a reward of 25 instead of 50); the rest do not.",
+        "title": "How does mining power affect a stricter chain?",
+        "summary": "Forty discoveries are scheduled in the share you choose. Some miners enforce a "
+                   "25 BTC subsidy limit; others may claim 50. Compare the active chains.",
         "needs": "No AI. Uses the ready-made node from \"What if your node demands a smaller reward?\".",
         "question": "With the share you chose, where do the nodes that did not change end up?",
         "options": [
-            {"id": "own", "text": "On their own chain. The stricter nodes are left behind on a shorter one."},
+            {"id": "own", "text": "On a different active chain from the stricter node."},
             {"id": "strict", "text": "On the stricter chain, without ever being upgraded."},
             {"id": "stuck", "text": "Nowhere. Both chains stop."},
         ],
-        "answer_by_share": {"above": "strict", "below": "own", "line": 50},
+        "answer": None,  # The correct prediction comes from the observed active chains.
         "belief": "\"Nodes vote, and a rule takes effect when enough nodes want it.\"",
-        "lesson": "Blocks that follow the stricter rule are valid to every node; blocks that break "
-                  "it are valid only to nodes that never changed. So unmodified nodes will follow "
-                  "the stricter chain whenever it is the one with the most work, and that happens "
-                  "when more than half the mining power builds only on it. Below that line the "
-                  "nodes enforcing the stricter rule are simply left on a shorter chain of their "
-                  "own. The number of nodes on either side never entered into it. This is why "
-                  "real rule changes have waited for miners first: 95% of recent blocks in 2015, "
-                  "90% in 2021. Try the slider on both sides of one half.",
-        "sources": [ACTIVATION, BIP65, BIP110],
+        "lesson": "This is a controlled schedule of forty block discoveries, not a prediction of a real network. "
+                  "Miners using the stricter rule accept only the lower-subsidy branch; unmodified miners accept "
+                  "both kinds of block and follow whichever valid branch has more work. With this schedule, a "
+                  "larger enforcing share can make the reference switch to the stricter branch. It still does not "
+                  "check the new rule itself. Real discoveries are random, equal-work ties depend on which block "
+                  "arrives first, and miner choices can change. A forty-block outcome does not establish a "
+                  "universal activation threshold. Activation rules, signaling and ongoing enforcement are "
+                  "separate questions. Try different shares and compare the observed chains.",
+        "sources": [CHAIN_GUIDE, ACTIVATION],
         "followup": {
-            "question": "Ten thousand nodes start enforcing a stricter rule, but only 3% of mining power does. What happens?",
+            "question": "Ten thousand nodes enforce a stricter rule while miners keep producing blocks "
+                        "that violate it. Does the node count force those blocks to become acceptable?",
             "options": [
                 {"id": "wins", "text": "The rule takes effect, because so many nodes enforce it."},
-                {"id": "alone", "text": "Those ten thousand nodes end up on a slow chain of their own."},
+                {"id": "alone", "text": "No. Each node still rejects blocks that violate its own rule."},
                 {"id": "nothing", "text": "Nothing changes for anyone."},
             ],
             "answer": "alone",
-            "why": "Each node refuses blocks only for itself. With 3% of mining power building "
-                   "blocks they accept, those nodes follow a chain that grows at 3% of the speed, "
-                   "while everyone else carries on.",
+            "why": "Node count does not alter block validity. An accepted branch needs compatible "
+                   "blocks; its progress depends on mining and network conditions.",
         },
     },
     {
         "id": "softfork", "group": "power",
         "kind": "scene", "scene": "softfork",
-        "title": "What happened to nodes that never upgraded in 2015?",
-        "summary": "A replay of a real rule change (BIP 65). A coin is locked until block 500 with "
-                   "the rule added in 2015. One node enforces that rule; the other never upgraded.",
+        "title": "What does a node miss when it does not enforce a soft fork?",
+        "summary": "A controlled demonstration of BIP 65, introduced in 2015. Two modern nodes "
+                   "differ in one check: only one enforces the time lock.",
         "needs": "No AI and no compiling. Runs in a few seconds.",
         "question": "Someone spends the locked coin far too early, in a block. What does the node "
-                    "that never upgraded do with that block?",
+                    "with the time-lock check disabled do with that block?",
         "options": [
             {"id": "reject", "text": "It rejects the block. The coin is locked."},
-            {"id": "accept", "text": "It accepts the block. It does not know the lock means anything."},
+            {"id": "accept", "text": "It accepts the block. Its active checks do not enforce that lock."},
             {"id": "crash", "text": "It stops, because it meets an instruction it does not understand."},
         ],
         "answer": "accept",
         "belief": "\"Old nodes are protected by a rule change even if they do not upgrade.\"",
-        "lesson": "Before 2015 the instruction used by this lock did nothing. The upgrade gave it a "
-                  "meaning, which made some previously valid spends invalid: a tightening, or soft "
-                  "fork. A node that never upgraded still sees the old meaning, so it accepted an "
-                  "early spend that the upgraded node refused, and followed a block the rest of the "
-                  "network would reject. Old nodes keep working after a soft fork only as long as "
-                  "miners never build such a block, which is why this change was switched on only "
-                  "after 95% of recent blocks came from miners who had said they would enforce it. "
-                  "An old node is not checking the new rule. It is trusting miners to.",
+        "lesson": "BIP 65 gave the existing NOP2 instruction a new meaning: OP_CHECKLOCKTIMEVERIFY rejects spends "
+                  "that do not satisfy a specified transaction lock time. That is a soft fork because it "
+                  "invalidates some spends previously allowed. This scene uses two modern regtest nodes, with "
+                  "that check disabled on one; it demonstrates the rule difference rather than replaying the 2015 "
+                  "network. The disabled node accepted an early spend that the enforcing node rejected. An "
+                  "unupgraded node can still follow a valid stricter chain, but does not independently check the "
+                  "new condition. Following a compatible chain is different from validating every rule on it.",
         "sources": [BIP65, ACTIVATION],
         "followup": {
             "question": "After a soft fork, what is a node that has not upgraded relying on?",
@@ -552,25 +549,25 @@ CURATED = (
 # changed can be measured on the same questions. A mix of true and false, so
 # that always answering one way scores badly.
 BELIEFS = (
-    {"id": "coins-in-wallet", "truth": False, "experiment": "keys",
+    {"id": "coins-in-wallet-v2", "truth": False, "experiment": "keys",
      "statement": "My bitcoin are stored inside my wallet app or device."},
-    {"id": "backup-is-wallet", "truth": True, "experiment": "keys",
-     "statement": "Anyone who holds a backup of a wallet's keys can spend its coins."},
-    {"id": "fee-by-amount", "truth": False, "experiment": "fees",
-     "statement": "Sending a larger amount of bitcoin costs a higher fee."},
-    {"id": "mempools-differ", "truth": True, "experiment": "fees",
+    {"id": "backup-is-wallet-v2", "truth": True, "experiment": "keys",
+     "statement": "A complete, usable spending backup can restore access after a wallet is lost."},
+    {"id": "fee-by-amount-v2", "truth": False, "experiment": "fees",
+     "statement": "Bitcoin requires a higher fee just because the amount sent is larger."},
+    {"id": "mempools-differ-v2", "truth": True, "experiment": "fees",
      "statement": "Two nodes can hold different sets of unconfirmed transactions."},
-    {"id": "confirmation-final", "truth": False, "experiment": "reorg",
+    {"id": "confirmation-final-v2", "truth": False, "experiment": "reorg",
      "statement": "Once a payment has one confirmation, it can never be undone."},
-    {"id": "filters-block", "truth": False, "experiment": "relay-filter",
-     "statement": "If enough node operators refuse to relay a kind of transaction, it cannot get into a block."},
-    {"id": "devs-change-supply", "truth": False, "experiment": "double-reward",
-     "statement": "The developers of the Bitcoin software could raise the 21 million limit by releasing a new version."},
-    {"id": "miners-print", "truth": False, "experiment": "miners",
-     "statement": "A miner with most of the mining power can create extra coins."},
-    {"id": "majority-tightens", "truth": True, "experiment": "power",
-     "statement": "A stricter rule takes effect for every node once most of the mining power enforces it."},
-    {"id": "old-nodes-check", "truth": False, "experiment": "softfork",
+    {"id": "filters-block-v2", "truth": False, "experiment": "relay-filter",
+     "statement": "A node's relay filter makes a filtered transaction invalid even inside a block."},
+    {"id": "devs-change-supply-v2", "truth": False, "experiment": "double-reward",
+     "statement": "Releasing new software automatically raises the supply limit enforced by unchanged nodes."},
+    {"id": "miners-print-v2", "truth": False, "experiment": "miners",
+     "statement": "Most mining power can make unchanged nodes accept coins beyond their subsidy rules."},
+    {"id": "majority-tightens-v2", "truth": True, "experiment": "power",
+     "statement": "A node can follow a stricter chain without independently checking its new rule."},
+    {"id": "old-nodes-check-v2", "truth": False, "experiment": "softfork",
      "statement": "After a rule is tightened, nodes that have not upgraded still check the new rule themselves."},
 )
 
@@ -583,11 +580,12 @@ def curated(experiment_id):
 
 
 def expected_answer(item, share=None):
-    """The option a correct prediction picks."""
-    if item.get("answer_by_share"):
-        rule = item["answer_by_share"]
-        return rule["above"] if (share or 0) > rule["line"] else rule["below"]
-    return item["answer"] if item["kind"] == "scene" else item["expected"]
+    """The designed answer for a fixed scene, not a substitute for observations.
+
+    The mining-power scene has no fixed answer: grade its observed_answer.
+    The optional share argument is retained for callers from older versions.
+    """
+    return item.get("answer") if item["kind"] == "scene" else item["expected"]
 
 
 def public_catalogue():
@@ -597,7 +595,7 @@ def public_catalogue():
     for item in CURATED:
         entry = {key: item[key] for key in ("id", "group", "kind", "title", "summary", "needs",
                                             "belief", "lesson", "sources", "followup")}
-        for key in ("variant", "slider", "answer_by_share"):
+        for key in ("variant", "slider"):
             if key in item:
                 entry[key] = item[key]
         if item["kind"] == "scene":

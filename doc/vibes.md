@@ -130,7 +130,7 @@ have saved experiments it prints exactly what they changed.
 
 ## Start with a ready-made experiment
 
-The console opens on ten experiments with known outcomes. None needs an AI.
+The console offers ten controlled experiments. None needs an AI.
 Each asks you for a prediction, runs two real nodes on a throwaway private
 chain, shows what each node did (with a drawing of the two chains when they
 part), and then explains why, with its sources.
@@ -139,17 +139,17 @@ part), and then explains why, with its sources.
 |---|---|
 | **Coins, keys and payments** | |
 | Are your coins in your wallet? | A wallet is deleted and the coins are still on the chain. A backup of the keys, restored on another node, can spend them. A wallet holds keys, not coins. |
-| Does sending more cost more? | A block has room for one payment. The one paying more per byte gets in, although it moves a hundredth as much. Each node has its own waiting area. |
-| Is a confirmed payment final? | A payment with one confirmation goes back to zero when a longer chain arrives. A confirmation is a block built on top, not an approval. |
+| Does sending more cost more? | A block has room for one payment. The one paying more per virtual byte gets in, although it moves a hundredth as much. Each node has its own waiting area. |
+| Is a confirmed payment final? | A payment returns to zero confirmations after a valid higher-work chain replaces its block without a conflicting spend. Its own block counts as the first confirmation. |
 | **Rules, and who enforces them** | |
 | Can a filter keep data out of the chain? | A node that refuses to relay a transaction still accepts the block that contains it. Relay policy is not consensus. |
-| Can you raise the block reward? | Your node pays its miner 100 BTC. The unmodified node refuses the block. The extra coins exist only on your machine. |
-| What if your node demands a smaller reward? | Your node refuses every block the unmodified node produces, and is left behind. |
+| Can you raise the block reward? | Your node permits a larger subsidy. The reference rejects the overpaying block; its extra outputs are invalid under unchanged rules. |
+| What if your node demands a smaller reward? | Your node rejects reference blocks claiming the full subsidy, while blocks claiming less can satisfy both sets of rules. |
 | What if the reward halved sooner? | The two nodes agree for 74 blocks and split at block 75. A changed rule can sit silent until something exercises it. |
 | **Mining power and upgrades** | |
 | Can most of the mining power break the rules? | A miner produces thirty rule-breaking blocks to an honest miner's two. The unmodified node refuses all thirty. Most work wins only among valid chains. |
-| How much mining power does a stricter rule need? | You choose the share of miners enforcing a stricter rule. Above half, every node ends up on the stricter chain without upgrading. At half or below, the stricter nodes are left alone. |
-| What happened to nodes that never upgraded in 2015? | A replay of a real rule change (BIP 65). A node on the old rules accepts a block the upgraded node refuses. After a soft fork, old nodes trust miners for the new rule. |
+| How does mining power affect a stricter chain? | You choose a share in a controlled schedule of forty discoveries. Compare which valid branch has more work and whether the reference adopts it. This is not a universal activation threshold. |
+| What does a node miss when it does not enforce a soft fork? | Two modern nodes differ in enforcement of BIP 65. One accepts an early spend the other refuses. This demonstrates the check, rather than replaying the 2015 network. |
 
 Seven of the ten change no source and run in seconds. Three apply a one-line
 change bundled with the lab. For those, a release ships nodes already built
@@ -179,12 +179,12 @@ change such as Bitcoin Inquisition. The lab runs it beside the unmodified node
 in the sandbox and reports what each did with the other's blocks and with the
 test transactions. The lab never downloads a node program for you. Its checks
 cover block rewards, a halving, a payment and a data-carrying transaction, so
-a program whose only difference is a new script instruction will show "no
-difference observed".
+a difference in a script instruction these transactions do not exercise may
+show "no difference observed".
 
 ## Your own experiment
 
-1. Type a request and press **Manifest**. You are asked for a prediction first.
+1. Type a request and press **Propose a change**. You are asked for a prediction first.
 2. The agent writes a proposal in an isolated copy of the source. It can read
    and edit files there. It cannot run commands or use the network.
 3. The lab compiles the proposal inside an operating-system sandbox and runs
@@ -222,16 +222,16 @@ no change to the node needs them.
 | Outcome | What was observed | What it would mean on a real network |
 |---|---|---|
 | No difference observed | Both nodes accepted each other's blocks and treated the test transactions alike. | Evidence, not proof. A change to something the checks never exercise shows nothing. |
-| Local policy only | Your node relays or stores transactions differently; both still accept each other's blocks. | You stay on the same chain. Only your own mempool and what you relay differ. |
-| Tightened | Your node refuses blocks the unmodified node produces. | Your node follows the chain until the first block that breaks your rule, then stops. Others follow you only if most mining power enforces the same rule. This shape of change is called a soft fork. |
-| Loosened | The unmodified node refuses blocks your node produces. | Nothing visible changes until a block uses the looser rule. Your node then accepts a block that every unmodified node refuses. This shape is called a hard fork. |
-| Split | Each node refuses the other's blocks. | The two separate at the first block either side refuses, for good. |
-| Could not be completed | A check could not be carried out, for example because your build could not produce a block of its own. The checks that did run found no difference. | Unknown. A check that never ran is not a check that passed, so the proposal waits for your review and the lab does not start the build on a shared network. |
+| Transaction policy differs | The nodes treated unconfirmed transactions differently but accepted the tested blocks. | A policy-only change can affect relay and mining templates without changing block validity. Untested consensus differences remain possible. |
+| Tightened in these checks | Your node rejects a reference block; the reference accepted the tested candidate blocks. | A pure tightening is a soft fork. A compatible branch can still grow; old nodes follow it if it has the most valid work, without independently checking the new rule. |
+| Loosened in these checks | The reference rejected a block your node accepts. | Allowing previously invalid blocks is hard-forking. A changed node can continue following the existing chain; a competing branch requires blocks using the changed permission. |
+| Disagreement in both directions | Each rejected at least one tested block accepted by the other. | Incompatible branches are possible. A common branch satisfying both sets of rules may also exist, so permanence has not been proved. |
+| Could not be completed | A check could not be carried out, for example because your build could not produce a block of its own. Available observations are shown alongside missing checks. | Unknown. A check that never ran is not a check that passed, so the proposal waits for your review and the lab does not start the build on a shared network. |
 
 The comparison covers block rewards, one reward halving (regtest places it at
 block 150), an ordinary payment, a data-carrying transaction, and block
 exchange in both directions. Two regtest quirks limit what any private chain
-can show: the reward halves every 150 blocks instead of every 210,000, and the
+can show: the subsidy halves every 150 blocks instead of every 210,000, and the
 difficulty never adjusts, so a change to difficulty rules is not exercised.
 
 ### What the other checks tell you
@@ -244,7 +244,7 @@ difficulty never adjusts, so a change to difficulty rules is not exercised.
   the behaviour being right.
 - **Text match.** Before anything is built, the console flags changed lines and
   file paths that look consensus-related. It can flag harmless edits and miss
-  real ones; the comparison is what decides.
+  real ones. The comparison supplies observations, also with limited coverage.
 
 None of this proves a change is safe on a real network.
 
@@ -256,8 +256,8 @@ while experiments are saved, the baseline moves and the console asks you to
 prepare the reference again, which compiles the unmodified source once in a
 temporary folder.
 
-Without a reference node a build is marked "not compared". On a private chain
-of one node any rule appears to work, because nobody is present to disagree.
+Without a reference node a build is marked "not compared". A node accepting its
+own blocks does not establish that another node would accept them.
 
 "Unmodified" means every file that can feed the build is unchanged: the
 source, and every build script wherever it lives, not only `src/`. Other
@@ -386,8 +386,9 @@ a request written with them has to be retyped by you.
 
 ## Node settings
 
-Settings are local choices about how your node runs. None of them changes
-which blocks are valid, and no other node is bound by them. The console
+Settings control how your node runs, and no other node is bound by them.
+Relay and mining policy settings do not change consensus validity; validation
+overrides and command-running options are not offered in this form. The console
 offers about two dozen with explanations written for people, and every other
 option the node documents. Defaults, and which options exist at all, are read
 from the node's own `-help`, so the form cannot show a default the node does
@@ -397,14 +398,14 @@ is disabled and incoming connections are off.
 Only values that differ from the default are written to `bitcoin.conf`.
 Comments, sections and options you add by hand are preserved.
 
-Two guards match what the node itself enforces: pruning must be `0` or at
-least 550 MiB, and pruning cannot be combined with the full transaction index.
+Two guards match what the node itself enforces: pruning must be `0` (off), `1` (manual), or at
+least 550 MiB (automatic target), and pruning cannot be combined with the full transaction index.
 (The block filter and coin statistics indexes do work on a pruned node.)
 
 `datacarrier` and `datacarriersize` govern transactions that carry data in a
 dedicated output, called OP_RETURN. They do not govern inscriptions, which
 place data in a transaction's signature area. Both are relay policy. The
-first ready-made experiment shows what that means.
+relay-filter experiment shows what that means.
 
 ## Staying current
 
@@ -449,10 +450,10 @@ make no AI calls.
 Bitcoin Core's contribution policy welcomes AI as a coding tool, requires a
 human author who understands every change, and says pull requests should not
 be opened or driven by autonomous agents. Bitcoin Vibes is the opposite
-arrangement on purpose, in a place where it cannot hurt anyone: an agent
+arrangement on purpose, in an experimental lab: an agent
 writes, a sandbox contains, a second node judges, and you are the human in the
 loop. Nothing produced here is offered to Bitcoin Core, and nothing should be.
-Every change stays on your machine.
+The lab does not submit changes upstream. You may choose to share a request or export a diff.
 
 ## Testing the console without an AI
 
@@ -469,11 +470,11 @@ rehearse the whole request, review, apply and revert loop.
 something true about Bitcoin, which is more than most jokes manage.
 
 **What happens if I ask for 22 million coins?** It depends what the agent
-changes. Raising the constant named `MAX_MONEY` alone changes nothing: that is
-a sanity bound on single amounts, not the supply. The supply is the sum of the
-reward schedule. Raise the reward and your node will produce a block paying
-more, which the unmodified node refuses. The extra coins exist on your machine
-and nowhere else.
+changes. Raising `MAX_MONEY` alone does not increase block subsidies: it is a
+consensus range bound on monetary amounts, not the issuance schedule. The
+subsidy schedule determines how many new coins blocks may create. Increasing
+it lets your node accept an overpaying block that the reference refuses. Those
+extra outputs are not valid on the unchanged chain.
 
 **Is it decentralized?** It is your own fork, on your own laptop, obeying only
 you. A network of one always agrees with itself, which is exactly why the lab
