@@ -162,14 +162,14 @@ What happens to a request
    the change itself. Then you apply it or discard it.
 
 Start with the ten **ready-made experiments** at the top of the console. They
-need no AI and no compiler, have known outcomes, and each ends with a short
-explanation and its sources:
+need no AI, can use prepared nodes instead of compiling, and each ends with a
+short explanation and its sources:
 
 | | |
 |---|---|
 | **Coins, keys and payments** | Are your coins in your wallet? · Does sending more cost more? · Is a confirmed payment final? |
 | **Rules, and who enforces them** | Can a filter keep data out of the chain? · Can you raise the block reward? · What if your node demands a smaller reward? · What if the reward halved sooner? |
-| **Mining power and upgrades** | Can most of the mining power break the rules? · How much mining power does a stricter rule need? (with a slider) · What happened to nodes that never upgraded in 2015? |
+| **Mining power and upgrades** | Can most of the mining power break the rules? · How does mining power affect a stricter chain? (with a slider) · What does a node miss when it does not enforce a soft fork? |
 
 Three of them change one line of the node's source. A release ships nodes
 already built with each change, so they run in seconds; you can also compile
@@ -197,11 +197,12 @@ beside the unmodified node and report what each did with the other's blocks.
 Read this part
 --------------
 
-**A fresh install is stock Bitcoin Core.** Out of the box this node has every
-consensus rule exactly as upstream wrote it. The only things we change are the
-name it reports and the console bolted onto the side. An automated check fails
-our build if anything else under `src/` differs. Every deviation on your node
-is one you asked for, in a commit with your name on it.
+**A fresh install keeps the upstream consensus rules.** Out of the box this
+node has every consensus rule exactly as upstream wrote it. The node source
+differs in the name it reports; the teaching console is added beside it. The
+console also uses its own configuration defaults. An automated check fails
+our build if anything else under `src/` differs. Every source deviation on
+your node is one you asked for, in a commit with your name on it.
 
 **AI-written code runs in a sandbox, and you should still read it.** Proposals
 are compiled, tested and run inside `sandbox-exec` on macOS or `bubblewrap` on
@@ -269,8 +270,9 @@ its ancestors. Not affiliated with or endorsed by the Bitcoin Core project.
 
 ---
 
-*Everything below is the upstream Bitcoin Core README, which still describes
-this codebase.*
+*Everything below is the inherited Bitcoin Core README. It describes upstream
+Bitcoin Core, including its release and CI processes. This fork uses the
+Vibes workflows in `.github/workflows/` and its own releases.*
 
 ---
 

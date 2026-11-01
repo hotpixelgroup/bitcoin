@@ -23,6 +23,7 @@ import fnmatch
 import hashlib
 import hmac
 import json
+import math
 import os
 import platform
 import tarfile
@@ -52,6 +53,14 @@ sys.path.insert(0, str(HERE))
 import lab_runner                              # noqa: E402
 from vibeslib import health, lessons           # noqa: E402
 from vibeslib.sandbox import Sandbox           # noqa: E402
+
+CONSOLE_RESTART_NOTE = ("Close and reopen Bitcoin Vibes, or stop and rerun ./vibes, to load the new "
+                        "lab version. Reloading the browser page is not enough.")
+# Only these paths feed modules, runtime copies or assets cached by a running
+# console. Ordinary node/doc experiment commits do not require a lab restart.
+CACHED_LAB_PATHS = ("contrib/vibes/bitcoin-vibes", "contrib/vibes/lab_runner.py",
+                    "contrib/vibes/vibeslib", "contrib/vibes/web",
+                    "contrib/vibes/index.html", "contrib/vibes/experiments")
 
 AGENT_SYSTEM_PROMPT = """\
 You are the coding agent inside Bitcoin Vibes, a fork of Bitcoin Core used as a
@@ -208,10 +217,15 @@ DENIED = {
     "rpccookiefile", "rpccookieperms", "rpcwhitelist", "rpcwhitelistdefault",
     "rpcservertimeout", "rpcssl", "server", "rest",
     "connect", "reindex", "reindex-chainstate", "loadblock",
-    "chain", "testnet", "testnet4", "regtest", "signet", "signetchallenge",
+    "chain", "testnet", "testnet4", "regtest", "signet", "signetchallenge", "includeconf",
     "signetseednode", "datadir", "conf", "settings", "pid", "blocksdir",
     "version", "help", "help-debug", "?", "daemon", "daemonwait",
     "sysperms", "printtoconsole", "shutdownnotify", "startupnotify",
+    # These change validation or execute commands rather than configure the
+    # local relay/storage choices this form promises. Keep experiments in the
+    # proposal-and-comparison workflow instead of bypassing it via settings.
+    "testactivationheight", "vbparams", "assumevalid", "minimumchainwork",
+    "blocknotify", "walletnotify", "alertnotify", "signer",
 }
 
 # Options bitcoind accepts more than once.
@@ -230,12 +244,14 @@ SETTINGS = (
     # --- storage and speed ---
     {"key": "prune", "group": "storage", "type": "int", "default": 0,
      "min": 0, "max": 8_000_000, "unit": "MiB", "label": "Prune old blocks",
-     "help": "0 keeps the entire chain.",
+     "help": "0 keeps all blocks; 1 enables manual pruning; 550+ sets a MiB target.",
      "tip": "Pruning throws away old block files once your node has checked "
             "them, keeping disk use roughly at the number you set. You still "
             "verify every rule for yourself — nothing is trusted on faith. The "
             "catch: you can no longer serve that history to other nodes, and "
-            "some features need the full chain. Must be 0 or at least 550."},
+            "some features need the full chain. Use 0 to keep everything, 1 for "
+            "manual pruning with the pruneblockchain RPC, or at least 550 MiB "
+            "for automatic pruning."},
     {"key": "dbcache", "group": "storage", "type": "int", "default": 450,
      "min": 4, "max": 16384, "unit": "MiB", "label": "Database cache",
      "help": "Memory held for the coin database.",
@@ -343,15 +359,14 @@ SETTINGS = (
             "what goes in a block. The ready-made experiment \"Can a filter "
             "keep data out of the chain?\" shows this with two nodes."},
     {"key": "datacarriersize", "group": "relay", "type": "int", "default": 100000,
-     "min": 0, "max": 1_000_000, "unit": "bytes", "label": "Largest data payload",
-     "help": "The number the 2025 relay dispute was about.",
-     "tip": "The most data, across a transaction's data outputs, that your node "
-            "will relay. Bitcoin Core's default was 83 bytes until version 30 "
-            "raised it to 100,000, which is why many operators moved to Bitcoin "
-            "Knots. Set 83 for the old default, or leave it alone for the "
-            "current one. Either way this is relay policy: it governs what "
-            "crosses your node, and your node accepts the same blocks whatever "
-            "you choose."},
+     "min": 0, "max": 1_000_000, "unit": "script bytes", "label": "Data-output relay limit",
+     "help": "Maximum combined OP_RETURN output-script size per transaction.",
+     "tip": "The maximum combined size of the data-carrier output scripts, "
+            "including their opcodes, that your node will relay. It is not a "
+            "limit on all possible data in a transaction. Bitcoin Core 30 raised "
+            "the default from 83 to 100,000 bytes. This is relay policy: miners "
+            "can still include consensus-valid transactions outside your filter, "
+            "and your node checks those blocks using its consensus rules."},
     {"key": "permitbaremultisig", "group": "relay", "type": "bool", "default": True,
      "label": "Relay bare multisig",
      "help": "An old transaction shape, sometimes used to store data.",
@@ -369,9 +384,11 @@ SETTINGS = (
     {"key": "txindex", "group": "index", "type": "bool", "default": False,
      "label": "Index every transaction",
      "help": "Look up any transaction by its id.",
-     "tip": "Without this your node can only find transactions involving its "
-            "own wallet. Block explorers and many services need it. Costs "
-            "tens of gigabytes and cannot be combined with pruning."},
+     "tip": "Lets getrawtransaction find confirmed transactions without being "
+            "given the block hash. Without it, that RPC can still find mempool "
+            "transactions and transactions in a specified available block; wallet "
+            "RPCs can find the wallet's own transactions. The full index uses "
+            "extra disk and cannot be combined with pruning."},
     {"key": "blockfilterindex", "group": "index", "type": "bool", "default": False,
      "label": "Index block filters",
      "help": "Lets light wallets sync against you privately.",
@@ -528,8 +545,13 @@ class Console:
         # "that port is MY console for THIS repo" apart from a stranger's socket.
         self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
         self.job = None
+        self.console_restart_required = False
         self.job_lock = threading.Lock()
+        self.learning_lock = threading.RLock()
         self.git_mutex = threading.Lock()
+        _, startup_head, _ = self.git("rev-parse", "HEAD")
+        self._console_startup_head = startup_head.strip()
+        self._console_checked_head = self._console_startup_head
         self._engine_cache = None
         self._discovered = None
         self._upstream_cache = None
@@ -678,6 +700,25 @@ class Console:
             return run(["git", "-C", str(self.repo), *GIT_SAFE, *args], timeout=timeout,
                        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
 
+    def _check_console_revision(self, head=None):
+        """Notice committed installer/git updates outside this console too."""
+        if self.console_restart_required:
+            return True
+        if head is None:
+            code, head, _ = self.git("rev-parse", "HEAD")
+            if code:
+                return False
+        head = head.strip()
+        if not head or head == self._console_checked_head or not self._console_startup_head:
+            return False
+        code, _, _ = self.git("diff", "--quiet", *DIFF_AS_TEXT, self._console_startup_head, head,
+                              "--", *CACHED_LAB_PATHS)
+        if code == 1:
+            self.console_restart_required = True
+        if code in (0, 1):
+            self._console_checked_head = head
+        return self.console_restart_required
+
     def bin_path(self, name):
         for rel in (f"build/bin/{name}", f"build/src/{name}"):
             p = self.repo / rel
@@ -688,26 +729,34 @@ class Console:
     def chain_args(self):
         args = [f"-datadir={self.data_dir}"]
         if self.opts.chain != "main":
-            args.append(f"-chain={self.opts.chain}")
+            args.append(f"-chain={self.core_chain}")
         return args
+
+    @property
+    def core_chain(self):
+        # Keep the console's existing --chain=testnet spelling, but Bitcoin
+        # Core's -chain value and config section are named "test".
+        return "test" if self.opts.chain == "testnet" else self.opts.chain
 
     def rpc_port(self):
         """The port the operator's node answers on: bitcoin.conf if it says,
         otherwise the network's default."""
-        section, want = None, self.opts.chain
-        port = RPC_PORTS[want]
+        section, want = None, self.core_chain
+        port = RPC_PORTS[self.opts.chain]
+        ports = {}
         try:
             for line in self.conf_path.read_text().splitlines():
-                line = line.strip()
+                line = line.partition("#")[0].strip()
                 if line.startswith("["):
                     section = line.strip("[]").strip()
                     continue
                 key, _, value = line.partition("=")
-                if key.strip() == "rpcport" and (section == want or (section is None and want == "main")):
-                    port = int(value.strip())
+                key_section, key = self._config_key(section, key.strip())
+                if key == "rpcport" and (key_section == want or (not key_section and want == "main")):
+                    ports.setdefault(key_section, self._config_int(value.strip()))
         except (OSError, ValueError):
             pass
-        return port
+        return ports.get(want, ports.get("", port))
 
     def rpc(self, method, *params, timeout=15):
         """Ask the operator's node a question over its local RPC port.
@@ -773,6 +822,7 @@ class Console:
             _, branch, _ = self.git("rev-parse", "--abbrev-ref", "HEAD")
             _, head, _ = self.git("rev-parse", "HEAD")
             _, dirty, _ = self.git("status", "--porcelain")
+        self._check_console_revision(head)
         info = self.rpc_json("getblockchaininfo")
         net = self.rpc_json("getnetworkinfo") if info else None
         running = info is not None or (self.node_proc is not None and self.node_proc.poll() is None)
@@ -803,6 +853,7 @@ class Console:
                 node["revision"] = self.running_state.get("sha")
                 node["compare"] = self.running_state.get("compare")
         return {"branch": branch.strip(), "source": head.strip(), "dirty": bool(dirty.strip()),
+                "console_restart_required": self.console_restart_required,
                 "chain": self.opts.chain, "chain_note": lessons.NETWORKS[self.opts.chain],
                 "engine": self.opts.engine,
                 "agent": {"model": self.opts.model, "turns": self.opts.agent_turns,
@@ -988,60 +1039,115 @@ class Console:
         return list(SETTING_GROUPS) + list(self.discover_settings()[0])
 
     def read_settings(self):
-        """Current values, falling back to bitcoind's own defaults."""
-        # Network-only keys live in the [chain] section; everything else sits
-        # above it. Read both so the form shows what bitcoind will actually use.
-        raw, multi = {}, {}
-        section = None
-        want = self.opts.chain
+        """Read this network's configuration, following Core's precedence.
+
+        Network-section scalars override global ones. Within a config section
+        Core uses the first scalar assignment, while repeatable options combine
+        values. A negated option resets earlier values for that option.
+        """
+        specs = self.all_specs()
+        known = {spec["key"] for spec in specs}
+        chain = self.core_chain
+        buckets = {"": {}, chain: {}}
+        resets = {"": set(), chain: set()}
+        section = ""
         try:
             for line in self.conf_path.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
+                line = line.partition("#")[0].strip()
+                if not line:
                     continue
                 if line.startswith("["):
                     section = line.strip("[]").strip()
                     continue
-                key, _, value = line.partition("=")
-                key, value = key.strip(), value.strip()
-                in_scope = (section == want) if key in NETWORK_ONLY else (section is None)
-                if not in_scope:
+                if section not in buckets:
                     continue
-                raw[key] = value
-                multi.setdefault(key, []).append(value)
+                key, separator, value = line.partition("=")
+                key, value = key.strip(), value.strip()
+                if not separator:
+                    continue
+                key_section, key = self._config_key(section, key)
+                if key_section not in buckets:
+                    continue
+                negated = key.startswith("no") and key[2:] in known
+                if negated:
+                    key = key[2:]
+                    if self._config_bool(value):
+                        buckets[key_section][key] = []
+                        resets[key_section].add(key)
+                        continue
+                    value = "1"  # nofoo=0 is the same as foo=1
+                if key not in known or (key in NETWORK_ONLY and not key_section):
+                    continue
+                buckets[key_section].setdefault(key, []).append(value)
         except OSError:
             pass
         out = {}
-        for spec in self.all_specs():
+        for spec in specs:
             key, kind = spec["key"], spec["type"]
-            # -onlynet may legitimately appear more than once
-            v = raw.get(key)
-            if v is None and kind != "multi":
+            local, general = buckets[chain].get(key), buckets[""].get(key)
+            if kind in ("multi", "multi_string"):
+                values = list(local or [])
+                if key not in NETWORK_ONLY and key not in resets[chain]:
+                    values.extend(general or [])
+                if local is None and general is None and key not in resets[chain]:
+                    out[key] = spec["default"]
+                else:
+                    out[key] = [v for v in values if v in spec["choices"]] if kind == "multi" else values
+                continue
+            values = local if local is not None else general
+            if values is None:
                 out[key] = spec["default"]
                 continue
+            v = values[0] if values else "0"
             try:
                 if kind == "bool":
-                    out[key] = v not in ("0", "false", "no", "")
+                    out[key] = self._config_bool(v)
                 elif kind == "int":
-                    out[key] = int(v)
+                    out[key] = self._config_int(v)
                 elif kind == "decimal":
                     out[key] = float(v)
-                elif kind == "string":
+                else:
                     out[key] = v
-                elif kind == "multi":
-                    out[key] = [n for n in multi.get(key, []) if n in spec["choices"]]
-                elif kind == "multi_string":
-                    out[key] = list(multi.get(key, []))
             except (TypeError, ValueError):
                 out[key] = spec["default"]
         return out
+
+    @staticmethod
+    def _config_int(value):
+        """Core's legacy integer parser accepts a numeric prefix and saturates."""
+        number = re.match(r"[+-]?[0-9]+", value.strip(" \t\n\r\v\f"))
+        if not number:
+            return 0
+        negative = number.group().startswith("-")
+        digits = number.group().lstrip("+-").lstrip("0") or "0"
+        maximum = 2**63 if negative else 2**63 - 1
+        magnitude = maximum if len(digits) > 19 else min(int(digits), maximum)
+        return -magnitude if negative else magnitude
+
+    @staticmethod
+    def _config_key(section, key):
+        """Core prefixes the section, then splits the first dotted scope."""
+        full = f"{section}.{key}" if section else key
+        return tuple(full.split(".", 1)) if "." in full else ("", full)
+
+    @staticmethod
+    def _config_bool(value):
+        """Core's InterpretBool: empty is true; otherwise parse an atoi prefix."""
+        if value == "":
+            return True
+        number = re.match(r"[+-]?[0-9]+", value.strip(" \t\n\r\v\f"))
+        return bool(number and any(digit != "0" for digit in number.group().lstrip("+-")))
 
     def validate_settings(self, values):
         """Return a list of human-readable problems. Better a refusal here than
         a node that will not start."""
         problems = []
         clean = {}
-        for spec in self.all_specs():
+        specs = self.all_specs()
+        known = {spec["key"] for spec in specs}
+        if any(key not in known for key in values):
+            problems.append("One or more settings are not supported by this build. Reload the settings form.")
+        for spec in specs:
             key, kind = spec["key"], spec["type"]
             if key not in values:
                 continue
@@ -1052,24 +1158,36 @@ class Console:
                     continue
                 clean[key] = v
             elif kind == "string":
-                s = str(v or "").strip()
-                if s and not re.fullmatch(r"[\w.\-:\[\]/]{3,120}", s):
-                    problems.append(f"{spec['label']}: that does not look like an "
-                                    f"address. Try something like 127.0.0.1:9050.")
+                if not isinstance(v, str):
+                    problems.append(f"{spec['label']}: enter text")
+                    continue
+                s = v.strip()
+                if len(s) > 1000 or any(c in v for c in "\n\r\x00#"):
+                    problems.append(f"{spec['label']}: use one line without # or control characters")
+                    continue
+                if key in ("proxy", "onion") and s and not re.fullmatch(r"[\w.\-:\[\]/]{3,120}", s):
+                    problems.append(f"{spec['label']}: enter an address such as 127.0.0.1:9050")
                     continue
                 clean[key] = s
             elif kind == "multi":
-                chosen = [c for c in (v or []) if c in spec["choices"]]
-                clean[key] = chosen
+                if not isinstance(v, list) or any(c not in spec["choices"] for c in v):
+                    problems.append(f"{spec['label']}: choose from the listed options")
+                    continue
+                clean[key] = list(dict.fromkeys(v))
             elif kind == "multi_string":
-                if not isinstance(v, list) or any("\n" in str(x) or "\r" in str(x) for x in v):
+                if not isinstance(v, list) or len(v) > 100 or any(
+                        not isinstance(x, str) or len(x) > 1000 or any(c in x for c in "\n\r\x00#") for x in v):
                     problems.append(f"{spec['label']}: values must be individual lines")
                     continue
-                clean[key] = [str(x).strip() for x in v if str(x).strip()]
+                clean[key] = [x.strip() for x in v if x.strip()]
             else:
                 try:
+                    if isinstance(v, bool) or (kind == "int" and float(v) != int(v)):
+                        raise ValueError
                     n = int(v) if kind == "int" else float(v)
-                except (TypeError, ValueError):
+                    if not math.isfinite(n):
+                        raise ValueError
+                except (TypeError, ValueError, OverflowError):
                     word = "whole number" if kind == "int" else "number"
                     problems.append(f"{spec['label']} must be a {word}.")
                     continue
@@ -1081,9 +1199,9 @@ class Console:
 
         # bitcoind's own rules, enforced before it has to refuse to boot
         prune = clean.get("prune", 0)
-        if 0 < prune < 550:
-            problems.append("Pruning must be 0 (off) or at least 550 MiB — bitcoind "
-                            "refuses anything smaller.")
+        if 1 < prune < 550:
+            problems.append("Pruning must be 0 (off), 1 (manual), or at least 550 MiB "
+                            "(automatic).")
         if prune > 0 and clean.get("txindex"):
             # bitcoind refuses exactly this pair (src/init.cpp); the block
             # filter and coin statistics indexes work on a pruned node.
@@ -1141,7 +1259,7 @@ class Console:
                 s = str(v or "").strip()
                 rendered[key] = [s] if s else []
 
-        chain = self.opts.chain
+        chain = self.core_chain
         top = {k: v for k, v in rendered.items() if k not in NETWORK_ONLY}
         net = {k: v for k, v in rendered.items() if k in NETWORK_ONLY}
         drop_top = {k for k in submitted if k not in NETWORK_ONLY}
@@ -1171,10 +1289,13 @@ class Console:
                             seen.add(key)
                 continue
             key = stripped.partition("=")[0].strip()
+            key_section, key = self._config_key(section, key)
             # Only touch keys this save is actually setting, and only in the
             # region they belong to. A managed key absent from the payload is
             # the operator's and stays put.
-            scope = drop_net if section == chain else (drop_top if section is None else set())
+            scope = (drop_net | drop_top) if key_section == chain else (drop_top if not key_section else set())
+            if key.startswith("no") and key[2:] in scope:
+                key = key[2:]
             if key in scope and not stripped.startswith("#"):
                 continue                     # already emitted above; drop stale copy
             out.append(line)
@@ -1350,18 +1471,32 @@ class Console:
                     return
                 job.emit(t="log", line="Your experiments were replayed on top of the new version")
 
+            # Imported Python modules, copied lab code and cached web assets
+            # still belong to the version this process started with. A browser
+            # reload cannot replace them. Set this before any follow-up build,
+            # so a failed or cancelled build cannot hide a successful update.
+            with self.job_lock:
+                self.console_restart_required = True
+            job.meta["console_restart_required"] = True
+            job.emit(t="warn", detail="The source update is saved. " + CONSOLE_RESTART_NOTE)
             self._upstream_cache = None
             self._rev_cache = {}
-            if autobuild:
-                if not self._build(job):
-                    return
-                if autorestart:
-                    self._restart_node(job)
+            try:
+                if autobuild:
+                    if not self._build(job):
+                        job.emit(t="result", detail="The source was updated, but its build did not finish. " +
+                                                    CONSOLE_RESTART_NOTE)
+                        return
+                    if autorestart:
+                        self._restart_node(job)
+            except Exception as error:
+                raise RuntimeError("The source update is saved, but the follow-up build or node start "
+                                   f"failed: {error} " + CONSOLE_RESTART_NOTE) from error
             job.emit(t="result",
                      detail=f"Updated: {n} new commit(s) taken in. " +
                             ("Your experiments now sit on a newer base, so the reference node "
-                             "must be prepared again before they can be compared."
-                             if d and not self.reference_state()["ready"] else ""))
+                             "must be prepared again before they can be compared. "
+                             if d and not self.reference_state()["ready"] else "") + CONSOLE_RESTART_NOTE)
         return go
 
     def vibe_history(self):
@@ -1428,8 +1563,11 @@ class Console:
                               "removed": int(rem) if rem.isdigit() else 0})
         return files
 
-    def start_job(self, kind, prompt="", runner=None, meta=None):
+    def start_job(self, kind, prompt="", runner=None, meta=None, allow_after_update=False):
         with self.job_lock:
+            self._check_console_revision()
+            if self.console_restart_required and not allow_after_update:
+                raise RuntimeError("The lab's files were updated. " + CONSOLE_RESTART_NOTE)
             if self.job and self.job.state in ("running", "cancelling", "review"):
                 return None
             self.job = Job(kind, prompt)
@@ -1512,6 +1650,9 @@ class Console:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
             pass
+        for pipe in (getattr(proc, "stdin", None), getattr(proc, "stdout", None), getattr(proc, "stderr", None)):
+            if pipe:
+                pipe.close()
 
     @staticmethod
     def _kill(proc, grace=5):
@@ -1841,7 +1982,9 @@ class Console:
             return None
         if isinstance(value, str):
             return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f‪-‮⁦-⁩]", "", value)[:1500]
-        if isinstance(value, (bool, int, float)) or value is None:
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        if isinstance(value, (bool, int)) or value is None:
             return value
         if isinstance(value, list):
             return [cls._sanitise(v, depth + 1) for v in value[:60]]
@@ -1893,7 +2036,7 @@ class Console:
             shutil.rmtree(work, ignore_errors=True)
         if job.state != "running":
             raise RuntimeError("Lab run cancelled")
-        if not isinstance(result, dict):
+        if proc.returncode != 0 or error or not isinstance(result, dict):
             raise RuntimeError("The two-node comparison did not finish. " +
                                (error or f"The lab process ended with code {proc.returncode}."))
         return self._sanitise(result)
@@ -2340,6 +2483,7 @@ class Console:
             self._kill(proc)
             proc.wait()
             job.proc = None
+            self._reap(proc)
             return
         timed_out = []
 
@@ -2369,6 +2513,7 @@ class Console:
         finally:
             timer.cancel()
             job.proc = None
+            self._reap(proc)
         if job.state != "running":
             return
         if timed_out:
@@ -2516,8 +2661,10 @@ class Console:
         if code:
             job.meta["build_status"] = "failed"
             job.meta["build_errors"] = "\n".join(errors)[-4000:]
-            raise RuntimeError("The change did not compile. Your source and your running node are "
-                               "unchanged. The compiler's output is in the technical activity.")
+            raise RuntimeError(("The updated source did not compile. The update remains saved, and "
+                                "your running node was not replaced. " if job.kind == "update" else
+                                "The change did not compile. Your source and your running node are unchanged. ") +
+                               "The compiler's output is in the technical activity.")
         job.meta["build_status"] = "passed"
 
         job.meta["test_status"] = "running"
@@ -2981,10 +3128,14 @@ class Console:
             job.meta["test_status"] = "running"
             job.emit(t="phase", name="test", detail="Running a two-node scene on a throwaway private chain")
             needs = lessons.curated(curated["variant"]) if curated and curated.get("variant") else None
-            reference = self._stock_program(strict=bool(needs))
+            # Fixed lessons describe stock behavior. Running an arbitrary
+            # current experimental build on both sides is not a substitute
+            # for the unmodified program, even if both nodes agree.
+            reference = self._stock_program(strict=True)
             candidate = self._need_variant(job, needs) if needs else reference
             result = self.run_lab(job, scene, reference, candidate, share=share)
-            job.meta.update(test_status="passed", compare=result, compare_verdict=result.get("headline"))
+            job.meta.update(test_status="incomplete" if result.get("verdict") == "inconclusive" else "passed",
+                            compare=result, compare_verdict=result.get("headline"))
             job.emit(t="verification", compare=result)
         return go
 
@@ -3288,27 +3439,67 @@ class Console:
 
     # ----- what the operator learned ---------------------------------------------
 
-    def record_learning(self, experiment, stage, choice, correct):
+    def record_learning(self, experiment, stage, choice, correct, job=None):
         """Keep before-and-after answers on this machine only. Nothing is sent
         anywhere; the operator can export the file if they want to share it."""
+        return self.record_learning_batch([{"experiment": str(experiment)[:60], "stage": stage,
+                                            "choice": str(choice)[:40], "correct": bool(correct),
+                                            **({"job": job} if job else {})}])[0]
+
+    def record_learning_batch(self, answers):
+        """Save a round atomically, keeping the first answer to each question.
+
+        Re-rendering a result or retrying a lost HTTP response must not change
+        a learner's answer or count it twice. A new experiment has a new job ID
+        and can therefore contribute a new prediction and follow-up.
+        """
         path = self.state_dir / "learning.json"
-        entries = self._read_json(path, [])
-        entries.append({"experiment": str(experiment)[:60], "stage": stage,
-                        "choice": str(choice)[:40], "correct": bool(correct), "time": time.time()})
-        self._write_json(path, entries[-2000:])
+        with self.learning_lock:
+            entries = self._learning_entries()
+            saved = []
+            for answer in answers:
+                identity = (answer.get("job"), answer["experiment"], answer["stage"])
+                previous = next((entry for entry in entries if
+                                 (entry.get("job"), entry.get("experiment"), entry.get("stage")) == identity), None)
+                if previous is None:
+                    previous = {**answer, "time": time.time()}
+                    entries.append(previous)
+                saved.append(previous)
+            self._write_json(path, entries[-2000:])
+            return saved
+
+    def _learning_entries(self):
+        entries = self._read_json(self.state_dir / "learning.json", [])
+        return [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
 
     def learning_summary(self):
-        entries = self._read_json(self.state_dir / "learning.json", [])
+        with self.learning_lock:
+            entries = self._learning_entries()
+        current_beliefs = {belief["id"] for belief in lessons.BELIEFS}
+        current_entries = []
+        seen = set()
+        for entry in entries:
+            if entry.get("stage") in ("before", "after") and entry.get("experiment") not in current_beliefs:
+                continue
+            # Older questionnaire saves could contain the same answer several
+            # times. Keep their first values consistent with the displayed record.
+            key = (entry.get("job"), entry.get("experiment"), entry.get("stage"))
+            if entry.get("job") or entry.get("stage") in ("before", "after"):
+                if key in seen:
+                    continue
+                seen.add(key)
+            current_entries.append(entry)
         summary = {}
         for stage in ("prediction", "followup", "before", "after"):
-            rows = [e for e in entries if e.get("stage") == stage]
+            rows = [e for e in current_entries if e.get("stage") == stage]
             summary[stage] = {"answered": len(rows), "correct": sum(1 for e in rows if e.get("correct"))}
-        # The first answer to each statement is "before"; the latest later one is "after".
+        # Preserve the first saved answer to each round, including old records
+        # which may contain duplicates from earlier versions of the page.
         beliefs = {}
-        for entry in entries:
+        for entry in current_entries:
             if entry.get("stage") in ("before", "after"):
-                beliefs.setdefault(entry["experiment"], {})[entry["stage"]] = \
-                    {"choice": entry["choice"], "correct": entry["correct"]}
+                beliefs.setdefault(entry.get("experiment", ""), {}).setdefault(entry["stage"],
+                    {"choice": entry.get("choice"), "correct": entry.get("correct", False)})
         return {"summary": summary, "beliefs": beliefs, "entries": entries}
 
     # ----- how old is the base ------------------------------------------------------
@@ -3437,6 +3628,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Security-Policy", self.CSP)
         for k, v in (extra or {}).items():
             self.send_header(k, v)
@@ -3450,14 +3642,23 @@ class Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
         except ValueError:
-            return {}
+            self.close_connection = True
+            raise ValueError("Invalid request length") from None
         if n <= 0 or n > 1_000_000:
-            return {}
+            self.close_connection = True
+            raise ValueError("Send a JSON object smaller than 1 MB")
+        def finite_number(text):
+            number = float(text)
+            if not math.isfinite(number):
+                raise ValueError("JSON numbers must be finite")
+            return number
         try:
-            value = json.loads(self.rfile.read(n))
-            return value if isinstance(value, dict) else {}
+            value = json.loads(self.rfile.read(n), parse_float=finite_number, parse_constant=finite_number)
+            if not isinstance(value, dict):
+                raise ValueError("Send a JSON object")
+            return value
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return {}
+            raise ValueError("Malformed JSON request") from None
 
     # -- routes -------------------------------------------------------------
 
@@ -3547,9 +3748,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, {"error": "forbidden"})
             return
         path = urlparse(self.path).path
-        body = self._body()
         c = self.console
         try:
+            body = self._body()
+            c._check_console_revision()
+            after_update = path in ("/api/cancel", "/api/learning", "/api/check-upstream") or \
+                (path == "/api/node" and body.get("action") == "stop")
+            if c.console_restart_required and not after_update:
+                self._send(409, {"error": "The lab's files were updated. " + CONSOLE_RESTART_NOTE,
+                                 "console_restart_required": True})
+                return
             active = c.job and c.job.state in ("running", "cancelling", "review")
             passive = ("/api/cancel", "/api/apply", "/api/learning", "/api/check-upstream")
             if active and path not in passive:
@@ -3578,13 +3786,15 @@ class Handler(BaseHTTPRequestHandler):
                 item = lessons.curated(str(body.get("id", "")))
                 if not item:
                     raise ValueError("Unknown ready-made experiment")
-                prediction = self._prediction(body)
+                prediction = self._prediction(body, item["options"] if item["kind"] == "scene" else None)
                 if item["kind"] == "scene":
                     share = None
                     if item.get("slider"):
-                        share = int(body.get("share", item["slider"]["value"]))
-                        if not item["slider"]["min"] <= share <= item["slider"]["max"]:
-                            raise ValueError("Choose a share within the slider's range")
+                        slider = item["slider"]
+                        share = body.get("share", slider["value"])
+                        if (type(share) is not int or not slider["min"] <= share <= slider["max"]
+                                or (share - slider["min"]) % slider["step"]):
+                            raise ValueError("Choose a whole-number share on the slider")
                     self._job_reply(c.start_job("scene", item["title"],
                                                 c.scene_runner(item["scene"], item, prediction, share)))
                 elif body.get("compile"):
@@ -3615,10 +3825,19 @@ class Handler(BaseHTTPRequestHandler):
                 values = body.get("values", {})
                 if not isinstance(values, dict):
                     raise ValueError("Settings must be an object")
-                problems, clean = c.validate_settings({**c.read_settings(), **values})
-                if problems:
-                    raise ValueError(" ".join(problems))
-                c.write_settings(clean)
+                # A second browser may start a build between the route's
+                # first busy check and this write. Serialize the final check
+                # and merge with start_job and other settings saves.
+                with c.job_lock:
+                    c._check_console_revision()
+                    if c.console_restart_required:
+                        raise RuntimeError("The lab's files were updated. " + CONSOLE_RESTART_NOTE)
+                    if c.job and c.job.state in ("running", "cancelling", "review"):
+                        raise ValueError("Finish or discard the current experiment before changing settings")
+                    problems, clean = c.validate_settings({**c.read_settings(), **values})
+                    if problems:
+                        raise ValueError(" ".join(problems))
+                    c.write_settings(clean)
                 self._send(200, {"ok": True, "values": c.read_settings(), "restart_required": c.node_running()})
             elif path == "/api/update":
                 self._job_reply(c.start_job("update", "Update Bitcoin Vibes", c.update_runner(
@@ -3645,9 +3864,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/node":
                 action = body.get("action")
                 if action == "mine":
-                    blocks = int(body.get("blocks", 1))
-                    if not 1 <= blocks <= 150:
-                        raise ValueError("Choose 1 to 150 blocks")
+                    blocks = body.get("blocks", 1)
+                    if type(blocks) is not int or not 1 <= blocks <= 150:
+                        raise ValueError("Choose a whole number from 1 to 150 blocks")
                     self._job_reply(c.start_job("playground", f"Produce {blocks} blocks on my private chain", c.playground_runner(blocks)))
                 elif action == "restart":
                     self._job_reply(c.start_job("activate", "Restart the checked build", c.activate_runner()))
@@ -3658,7 +3877,8 @@ class Handler(BaseHTTPRequestHandler):
                             c.start_node(job)
                         else:
                             c.stop_node(job)
-                    self._job_reply(c.start_job("node", action.title() + " node", lifecycle))
+                    self._job_reply(c.start_job("node", action.title() + " node", lifecycle,
+                                                allow_after_update=action == "stop"))
                 else:
                     raise ValueError("Unknown node action")
             else:
@@ -3699,45 +3919,83 @@ class Handler(BaseHTTPRequestHandler):
                                  f"(U+{ord(ch):04X}) and was refused. Ask the sender to retype it as plain text.")
 
     @staticmethod
-    def _prediction(body):
+    def _prediction(body, options=None):
         choice = body.get("prediction")
-        return str(choice)[:40] if isinstance(choice, str) and choice else None
+        if choice in (None, ""):
+            return None
+        if not isinstance(choice, str) or choice not in {o["id"] for o in (options or lessons.PREDICTION["options"])}:
+            raise ValueError("Choose one of this experiment's prediction options")
+        return choice
 
     def _learning(self, body):
-        """Record one answer. The console decides whether it was right, from
-        the lesson file or from what the lab observed, never from the page."""
+        """Score observed results, binding each answer to its actual run."""
         c = self.console
         stage = body.get("stage")
-        choice = str(body.get("choice", ""))[:40]
-        if stage not in ("prediction", "followup", "before", "after") or not choice:
-            raise ValueError("Unknown answer")
+        if stage not in ("prediction", "followup", "before", "after"):
+            raise ValueError("Unknown answer stage")
         if stage in ("before", "after"):
-            belief = next((b for b in lessons.BELIEFS if b["id"] == body.get("experiment")), None)
-            if not belief or choice not in ("true", "false", "unsure"):
-                raise ValueError("Unknown statement")
-            correct = choice == ("true" if belief["truth"] else "false")
-            c.record_learning(belief["id"], stage, choice, correct)
-            return {"correct": correct}
-        item = lessons.curated(str(body.get("experiment", "")))
+            raw = body.get("answers")
+            batch = raw is not None
+            if not batch:
+                raw = [{"experiment": body.get("experiment"), "choice": body.get("choice")}]
+            if not isinstance(raw, list) or not raw or len(raw) > len(lessons.BELIEFS):
+                raise ValueError("Answer each statement once")
+            beliefs = {belief["id"]: belief for belief in lessons.BELIEFS}
+            ids = [answer.get("experiment") for answer in raw if isinstance(answer, dict)]
+            if len(ids) != len(raw) or any(not isinstance(value, str) for value in ids) or len(set(ids)) != len(ids):
+                raise ValueError("Answer each statement once")
+            if batch and set(ids) != set(beliefs):
+                raise ValueError("Answer all statements before saving this round")
+            answers = []
+            for answer in raw:
+                belief = beliefs.get(answer["experiment"])
+                choice = answer.get("choice")
+                if not belief or choice not in ("true", "false", "unsure"):
+                    raise ValueError("Unknown statement or answer")
+                answers.append({"experiment": belief["id"], "stage": stage, "choice": choice,
+                                "correct": choice == ("true" if belief["truth"] else "false")})
+            with c.learning_lock:
+                if stage == "after":
+                    before = {entry.get("experiment") for entry in c._learning_entries()
+                              if entry.get("stage") == "before"}
+                    if not set(ids) <= before:
+                        raise ValueError("Save the first answers before answering again")
+                saved = c.record_learning_batch(answers)
+            return {"answers": [{"experiment": entry["experiment"], "correct": entry["correct"],
+                                  "choice": entry["choice"]}
+                                for entry in saved]} if batch else {"correct": saved[0]["correct"],
+                                                                   "choice": saved[0]["choice"]}
+
+        job_id = body.get("job")
+        summary = c.experiment(job_id if isinstance(job_id, str) else "")["summary"]
+        item_id = body.get("experiment") or ""
+        item = lessons.curated(item_id) if isinstance(item_id, str) else None
+        if (summary.get("curated") or "") != item_id:
+            raise ValueError("That result belongs to a different experiment")
+        compare = summary.get("compare") or {}
+        if summary.get("state") not in ("done", "review") or not compare or compare.get("verdict") == "inconclusive":
+            raise ValueError("This experiment has no completed observation to score")
+        choice = body.get("choice")
+        if not isinstance(choice, str):
+            raise ValueError("Unknown answer")
         if stage == "followup":
             if not item:
                 raise ValueError("Unknown experiment")
-            correct = choice == item["followup"]["answer"]
-            name = item["id"]
+            options, expected = item["followup"]["options"], item["followup"]["answer"]
         elif item and item["kind"] == "scene":
-            share = None
-            if item.get("answer_by_share"):
-                share = (c.experiment(str(body.get("job", "")))["summary"].get("compare") or {}).get("share")
-            correct, name = choice == lessons.expected_answer(item, share), item["id"]
+            options, expected = item["options"], compare.get("observed_answer")
         else:
-            summary = c.experiment(str(body.get("job", "")))["summary"]
-            verdict = (summary.get("compare") or {}).get("verdict")
-            if not verdict:
-                raise ValueError("That experiment has not been compared yet")
-            correct = choice == ("none" if verdict == "identical" else verdict)
-            name = item["id"] if item else "typed"
-        c.record_learning(name, stage, choice, correct)
-        return {"correct": correct}
+            options = lessons.PREDICTION["options"]
+            verdict = compare.get("verdict")
+            expected = "none" if verdict == "identical" else verdict
+        allowed = {option["id"] for option in options}
+        if choice not in allowed or expected not in allowed:
+            raise ValueError("This answer cannot be scored against an observed result")
+        if stage == "prediction" and choice != summary.get("prediction"):
+            raise ValueError("The prediction must match the answer made before this run")
+        name = item["id"] if item else "typed"
+        saved = c.record_learning(name, stage, choice, choice == expected, job_id)
+        return {"correct": saved["correct"], "choice": saved["choice"]}
 
     def _job_reply(self, job):
         if job is None:

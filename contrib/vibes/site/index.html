@@ -52,19 +52,19 @@
 
 <section aria-labelledby="features-heading">
   <h2 id="features-heading">One node alone proves nothing.</h2>
-  <p class="subtle">On a private chain of one, any rule appears to work, because nobody is present to disagree. So every experiment gets a second node.</p>
+  <p class="subtle">A node accepting its own blocks does not establish that other nodes will accept them. The lab compares two nodes so you can see where they agree and disagree.</p>
   <div class="feature-grid">
     <div class="panel">
       <h3>Predict.</h3>
-      <p>Before anything runs, you say what you think will happen. Ten ready-made experiments start you off, from "are your coins in your wallet?" to "how much mining power does a rule change need?". No AI and no compiler needed.</p>
+      <p>Before anything runs, you say what you think will happen. Ten ready-made experiments start you off, from "are your coins in your wallet?" to "how does mining power affect a stricter chain?". No AI needed; prepared nodes avoid compiling.</p>
     </div>
     <div class="panel">
       <h3>Observe.</h3>
-      <p>Your change is compiled in a sandbox and run beside an unmodified node. You see which blocks each one refused, and the reason it gave.</p>
+      <p>Your change is compiled and run beside an unmodified node. The lab uses an operating-system sandbox where available; otherwise it waits for review before compiling. You see which blocks each node refused, and why.</p>
     </div>
     <div class="panel">
       <h3>Understand.</h3>
-      <p>Each outcome comes with what it would mean on a real network, written by people, not by the AI, with its sources. Ten statements, answered before and after, show you what changed in your own thinking.</p>
+      <p>Each outcome comes with what it would mean on a real network, fixed in the lesson source, with references and the limits of the experiment. Ten statements, answered before and after, show you what changed in your own thinking.</p>
     </div>
   </div>
 </section>
@@ -100,7 +100,7 @@ cd bitcoin
 docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
       <p class="subtle">Open the link from the logs. The container keeps its own Claude Code sign-in. In Docker a proposal is compiled only after you have reviewed it.</p>
       <h3>Already installed?</h3>
-      <p class="subtle">Use “Check for and take updates” in the console. Like Bitcoin Core, the lab never updates by itself.</p>
+      <p class="subtle">Use “Check for and take updates” in the console, then restart Bitcoin Vibes to load the updated lab. Like Bitcoin Core, the lab never updates by itself.</p>
       <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes.md">Read the full manual ↗</a>
     </div>
   </div>
@@ -122,7 +122,7 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
   </details>
   <details>
     <summary>What do the checks prove?</summary>
-    <p>That the change compiles, which of Bitcoin Core's unit tests still pass, and what an unmodified node did with a limited set of blocks and transactions. A change to something those checks never exercise shows no difference. None of it proves a change is safe on a real network.</p>
+    <p>That the change compiles, which of Bitcoin Core's unit tests still pass, and what an unmodified node did with a limited set of blocks and transactions. A change to something those checks never exercise may show no difference. None of it proves a change is safe on a real network.</p>
   </details>
   <details>
     <summary>Can I use it on the real Bitcoin network?</summary>
@@ -138,7 +138,7 @@ docker compose -f contrib/vibes/docker-compose.yml up --build</pre>
   </details>
   <details>
     <summary>Is this an alternative to Bitcoin Core or Bitcoin Knots?</summary>
-    <p>No. The tagline is a joke. Nothing made here is offered to Bitcoin Core, whose own policy requires a human author who understands every change. Bitcoin Vibes is a way to see why changing a node does not change Bitcoin.</p>
+    <p>No. The tagline is a joke. Nothing made here is offered to Bitcoin Core, whose contribution policy requires an accountable human author who understands every change. Bitcoin Vibes is a way to see why changing a node does not change Bitcoin.</p>
   </details>
 </section>
 

@@ -313,6 +313,12 @@ try_prebuilt() {
   esac
 
   want=$(git -C "$DEST" rev-parse HEAD 2>/dev/null) || return 1
+  # HEAD alone cannot identify locally edited source. A release binary is
+  # never evidence about edits that have not been committed.
+  if ! source_changes=$(git -C "$DEST" status --porcelain 2>/dev/null) || [ -n "$source_changes" ]; then
+    note "the source has local edits, so a release node cannot match it: building instead"
+    return 1
+  fi
   # At a tag, take the binary from that same named release, so binary and
   # source come from one place. Otherwise ask the latest release; the commit
   # check below still has to pass. VIBES_PREBUILT_URL replaces the folder the
@@ -411,13 +417,19 @@ build_node() {
   step "Building the node"
   plan_build
   if [ -f "$DEST/build/bin/bitcoind" ]; then
-    if [ "$UPDATED" != "1" ]; then
-      note "already built: skipping (delete $DEST/build to force a rebuild)"
+    installed_from=$(cat "$DEST/build/bin/COMMIT" 2>/dev/null || true)
+    current_source=$(git -C "$DEST" rev-parse HEAD 2>/dev/null || true)
+    if [ "$UPDATED" != "1" ] && [ -n "$current_source" ] \
+        && [ "$installed_from" = "$current_source" ] \
+        && source_changes=$(git -C "$DEST" status --porcelain 2>/dev/null) \
+        && [ -z "$source_changes" ] \
+        && [ -x "$DEST/build/bin/bitcoin-cli" ] \
+        && "$DEST/build/bin/bitcoind" -version >/dev/null 2>&1; then
+      note "already built from this exact source: skipping"
       return 0
     fi
     # A node left over from the older source is not the node for this source.
-    note "the source was just updated, so the node built from the older source"
-    note "is replaced"
+    note "the existing node is unverified or belongs to different source; checking the build"
   fi
   if [ "$DRY_RUN" = "1" ]; then
     note '$ (try a prebuilt node for this platform, else compile)'
@@ -425,18 +437,28 @@ build_node() {
     return 0
   fi
   note "$cores core(s), ${mem_gb}GB RAM — using $jobs parallel job(s)"
-  note "expect roughly $low-$high minutes, once. Everything after it is seconds."
+  note "expect roughly $low-$high minutes for a full build; later incremental builds are usually faster"
   if [ "$jobs" -lt "$cores" ]; then
     note "(fewer jobs than cores: keeps the linker from being OOM-killed)"
   fi
   gen=''
   command -v ninja >/dev/null 2>&1 && gen='-G Ninja'
+  # A rebuild may use locally edited source. Never leave an older release's
+  # provenance attached to programs that the compiler is about to replace.
+  if [ "$DRY_RUN" != "1" ]; then
+    rm -f "$DEST/build/bin/COMMIT"
+  fi
   # shellcheck disable=SC2086
   run cmake -B "$DEST/build" -S "$DEST" $gen \
       -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
       || die "cmake configure failed (see output above)"
   run cmake --build "$DEST/build" -j "$jobs" \
       || die "build failed (see output above)"
+  if [ "$DRY_RUN" != "1" ] \
+      && source_changes=$(git -C "$DEST" status --porcelain 2>/dev/null) \
+      && [ -z "$source_changes" ]; then
+    git -C "$DEST" rev-parse HEAD > "$DEST/build/bin/COMMIT"
+  fi
 }
 
 # Claude Code comes from Anthropic's own installer: a script fetched from
@@ -519,8 +541,9 @@ main() {
     '')       ;;
     fetch)    fetch_source; exit 0 ;;
     prebuilt) if try_prebuilt; then exit 0; else exit 1; fi ;;
+    build)    build_node; exit 0 ;;
     claude)   install_claude; exit 0 ;;
-    *)        die "VIBES_INSTALL_ONLY must be fetch, prebuilt or claude" ;;
+    *)        die "VIBES_INSTALL_ONLY must be fetch, prebuilt, build or claude" ;;
   esac
 
   banner

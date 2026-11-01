@@ -88,6 +88,7 @@ jobs:
           for script in contrib/vibes/web/*.js; do node --check "$script"; done
           python3 contrib/vibes/build_site.py --out /tmp/vibes-site
           node --check /tmp/vibes-site/web/lessons.js
+          node contrib/vibes/tests/demo_qa.cjs
 
       - name: Browser workflows and accessibility
         run: |
@@ -99,6 +100,15 @@ jobs:
           export NODE_PATH=/tmp/vibes-browser/node_modules
           node contrib/vibes/tests/browser_qa.cjs
           node contrib/vibes/tests/accessibility_qa.cjs
+          node contrib/vibes/tests/live_browser_qa.cjs
+
+      - name: Keep the verified site for deployment review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bitcoin-vibes-site
+          path: /tmp/vibes-site/
+          include-hidden-files: true
+          if-no-files-found: error
 
 
   node:
@@ -240,6 +250,17 @@ jobs:
           check halve-reward tightened
           check faster-halving tightened
           # The scenes that put a changed node beside the unmodified one.
-          expect "rule-breaking miner" "Thirty blocks of mining power, refused" "$(lab miners /tmp/double-reward "" headline)"
-          expect "30% of mining power" "With 30% of mining power, the stricter nodes were left" "$(lab power /tmp/halve-reward "--share 30" headline)"
-          expect "70% of mining power" "With 70% of mining power, the stricter rule became" "$(lab power /tmp/halve-reward "--share 70" headline)"
+          expect "rule-breaking miner" "valid" "$(lab miners /tmp/double-reward "" observed_answer)"
+          expect "30% of scheduled blocks" "own" "$(lab power /tmp/halve-reward "--share 30" observed_answer)"
+          expect "70% of scheduled blocks" "strict" "$(lab power /tmp/halve-reward "--share 70" observed_answer)"
+
+      - name: Record every supported demo input through the console API
+        run: |
+          python3 contrib/vibes/tests/record_ci_demo.py --programs /tmp --out /tmp/vibes-recorded-demo.js
+
+      - name: Keep real-node demo evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bitcoin-vibes-recorded-demo
+          path: /tmp/vibes-recorded-demo.js
+          if-no-files-found: error

@@ -209,6 +209,14 @@ class PrebuiltTests(unittest.TestCase):
         self.assertIn('does not match its published SHA-256', out)
         self.assertFalse((self.dest / 'build/bin/bitcoind').exists())
 
+    def test_release_program_does_not_stand_in_for_dirty_source(self):
+        self.publish()
+        (self.dest / 'file.txt').write_text('local source change\n')
+        code, out = self.run_installer()
+        self.assertNotEqual(code, 0)
+        self.assertIn('local edits', out)
+        self.assertFalse((self.dest / 'build/bin/COMMIT').exists())
+
     def test_archive_without_a_checksum_is_refused(self):
         self.publish()
         (self.served / f'vibes-node-{self.slug}.tar.gz.sha256').unlink()

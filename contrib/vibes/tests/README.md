@@ -23,11 +23,19 @@ python3 -m http.server 21880 --bind 127.0.0.1 --directory /tmp/vibes-site
 # In another terminal, with playwright and axe-core installed:
 node contrib/vibes/tests/browser_qa.cjs
 node contrib/vibes/tests/accessibility_qa.cjs
+node contrib/vibes/tests/live_browser_qa.cjs
 ```
 
 `VIBES_QA_URL` overrides the test server. `VIBES_BROWSER_CHANNEL=chrome` uses
 installed Chrome. `PLAYWRIGHT_MODULE` and `AXE_MODULE` can point at existing
 installations.
+
+`node contrib/vibes/tests/demo_qa.cjs` checks the lesson payload, exact replay
+inputs, scoring, questionnaire persistence and damaged browser storage without
+launching a browser. The live browser check starts its own disposable console,
+uses its real HTTP authentication and git worktrees with the mock agent, and
+exercises review, discard, apply, history, mobile layout and disconnection.
+It does not require a running node or a paid AI session.
 
 ## What is covered
 
@@ -61,7 +69,10 @@ installations.
 | Installer: shallow-clone update, truthful messages, release tag installs | `test_install.py` UpdateTests | no |
 | Ready-made node: checksum, commit match, archive safety | `test_install.py` PrebuiltTests | no |
 | Browser demo: recorded results, predictions, lessons, safe rendering of shared text, narrow screens | `browser_qa.cjs` | no |
-| Accessibility audit at three widths | `accessibility_qa.cjs` | no |
+| Accessibility audit of landing, prediction dialog, finished result and questionnaire at three widths | `accessibility_qa.cjs` | no |
+| Real HTTP console in a browser: authentication, propose/review/discard/apply, reload, history, narrow screens and offline controls | `live_browser_qa.cjs` | no |
+| Exact recordings for all 17 slider positions; scoring and persistence contracts | `demo_qa.cjs` | no |
+| Installer build provenance and container first/repeated startup | `test_packaging.py` | no |
 
 CI additionally builds the node and Bitcoin Core's unit tests from source,
 checks that `src/` differs from the upstream base in one file only, applies
@@ -78,5 +89,7 @@ mining-power scene (at 30% and 70%) with the nodes it has just built.
   node and links it inside it, and runs these tests inside it with real nodes.
 - The Mac app, notarisation, and the Docker image beyond "it builds and the
   console answers".
-- The real console page in a browser. The browser tests drive the static demo,
-  which shares the page and script but not the server.
+- A real AI proposal and compiler-driven proposal in the browser. The live
+  browser suite drives the real console and mock-agent source workflow;
+  compilation, activation and recovery are exercised by the Python real-node
+  tests and CI.

@@ -1,2 +1,3 @@
 src/clientversion.cpp export-subst
 src/CMakeLists.txt export-subst
+contrib/vibes/web/demo-data.js linguist-generated=true
