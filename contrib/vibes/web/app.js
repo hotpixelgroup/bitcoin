@@ -82,6 +82,12 @@ function toast(message) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 6500);
 }
 
+function setConnectionStatus(message) {
+  // This is a live region. Replacing even identical text on every poll can
+  // interrupt a screen reader, so announce only a meaningful status change.
+  if ($('connection').textContent !== message) $('connection').textContent = message;
+}
+
 function confirmAction(heading, copy, label = 'Continue') {
   const dialog = $('confirm-dialog');
   if (document.querySelector('dialog[open]')) {
@@ -944,7 +950,7 @@ function openStream(job) {
   };
   stream.onerror = () => {
     // EventSource resumes from Last-Event-ID by itself.
-    $('connection').textContent = 'Activity reconnecting…';
+    setConnectionStatus('Activity reconnecting…');
   };
 }
 
@@ -966,9 +972,9 @@ async function refresh() {
     const next = await api('/api/status');
     status = next;
     lastSuccess = Date.now();
-    $('connection').textContent = demo
+    setConnectionStatus(demo
       ? next.storage_available === false ? 'Demo · progress available for this visit only' : 'Demo · progress saved in this browser'
-      : 'Connected · updated ' + new Date().toLocaleTimeString();
+      : 'Connected to the local console');
     renderNode(next);
     modeHelp();
     if (next.job && !selectedId) selectedId = next.job.id;
@@ -987,7 +993,7 @@ async function refresh() {
     });
     updateControls();
   } catch (error) {
-    $('connection').textContent = 'Offline · ' + (lastSuccess ? 'last updated ' + new Date(lastSuccess).toLocaleTimeString() : 'console unavailable');
+    setConnectionStatus('Offline · reconnecting to the local console');
     $('blocker').hidden = false;
     $('blocker').textContent = 'Cannot reach the local console. Check that ./vibes is still running. Reconnecting automatically.';
     lastSuccess = 0;
@@ -1408,7 +1414,7 @@ renderExamples('Customize');
 modeHelp();
 updateControls();
 if (startupProblem) {
-  $('connection').textContent = 'Page assets unavailable';
+  setConnectionStatus('Page assets unavailable');
   $('blocker').hidden = false;
   $('blocker').textContent = startupProblem;
   document.querySelectorAll('[data-curated], #start-learning, #beliefs-save').forEach(button => { button.disabled = true; });

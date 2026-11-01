@@ -25,7 +25,8 @@ verification. Bitcoin Core consensus source under `src/` is unchanged.
   improve mobile navigation, keyboard focus, dialogs and reduced-motion behavior.
 - Preserve unsaved questionnaire choices during polling, retry lost score writes,
   restore scored follow-ups reliably, prevent confirmation-dialog races and keep
-  earlier demo records exportable. Show useful asset-loading and offline errors.
+  earlier demo records exportable. Show useful asset-loading and offline errors,
+  and announce connection status only when it changes instead of on every poll.
 - Require exact recorded slider inputs and matching, scoreable observations; refuse incomplete recordings, replace
   fixtures atomically, and preserve the distinction between unrun and passing tests.
 - Reuse installed programs only when complete and attributable to clean matching

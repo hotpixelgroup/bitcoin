@@ -35,6 +35,22 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.goto(config.url + '/?key=' + config.key);
     await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
     assert.equal(new URL(page.url()).search, '', 'access key is removed from address bar');
+
+    // Polling must not repeatedly announce the connected live region while a
+    // learner is reading. Observe real DOM mutations across two HTTP polls.
+    await page.evaluate(() => {
+      window.connectionMutations = 0;
+      window.connectionObserver = new MutationObserver(changes => { window.connectionMutations += changes.length; });
+      window.connectionObserver.observe(document.getElementById('connection'), {childList: true, characterData: true, subtree: true});
+    });
+    for (let polls = 0; polls < 2; polls++) {
+      const response = await page.waitForResponse(response => new URL(response.url()).pathname === '/api/status', {timeout: 15000});
+      await response.finished();
+    }
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    assert.equal(await page.evaluate(() => window.connectionMutations), 0, 'unchanged connection state must not repeat live-region announcements');
+    assert.equal(await page.locator('#connection').innerText(), 'Connected to the local console');
+    await page.evaluate(() => window.connectionObserver.disconnect());
     await page.locator('summary').filter({hasText: 'Build preferences and agent limits'}).click();
     await page.locator('#autobuild').uncheck();
 
