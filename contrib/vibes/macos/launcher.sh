@@ -10,6 +10,7 @@ set -u
 # Stamped with the release tag when the app is built for a release, so the app
 # fetches the source of its own release. Empty in the repository.
 PINNED_REF=""
+PINNED_COMMIT=""
 
 APP_SUPPORT="${VIBES_HOME:-$HOME/Library/Application Support/Bitcoin Vibes}"
 SRC="$APP_SUPPORT/source"
@@ -32,7 +33,7 @@ say() { osascript -e "display dialog \"$1\" with title \"Bitcoin Vibes\" buttons
 die() { osascript -e "display dialog \"$1\" with title \"Bitcoin Vibes\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1; exit 1; }
 
 PY=$(command -v python3 || true)
-[ -n "$PY" ] || die "Bitcoin Vibes needs Python 3, which normally ships with macOS.\n\nOpening Terminal and running:  xcode-select --install\n\nwill install it along with the developer tools."
+[ -n "$PY" ] || die "Bitcoin Vibes needs Python 3 from Apple's command line tools or Homebrew.\n\nOpen Terminal and run:  xcode-select --install\n\nReopen Bitcoin Vibes when the installation finishes."
 
 # First run: fetch the source. Everything else assumes it is there.
 #
@@ -56,8 +57,26 @@ if [ ! -d "$SRC/.git" ]; then
   fi
 fi
 
+# A new launcher does not replace an existing lab or its saved experiments.
+# Tell the operator when that lab does not contain this release, including
+# shallow histories where ancestry cannot be established. Never call it older
+# unless we could prove that, and never fetch or reset source automatically.
+if [ -n "$PINNED_COMMIT" ] && [ "$REF" = "$PINNED_REF" ]; then
+  CURRENT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)
+  if [ "$CURRENT" != "$PINNED_COMMIT" ] \
+      && ! git -C "$SRC" merge-base --is-ancestor "$PINNED_COMMIT" HEAD >/dev/null 2>&1; then
+    NOTICE="$APP_SUPPORT/launcher-release-notice"
+    ACKNOWLEDGED=$(cat "$NOTICE" 2>/dev/null || true)
+    if [ "$ACKNOWLEDGED" != "$PINNED_COMMIT" ]; then
+      if say "This launcher is for $PINNED_REF. Your existing lab uses different source and has been kept with your saved experiments.\n\nTo update it, use Check for and take updates in Setup & help, then close and reopen Bitcoin Vibes. Downloading a new launcher does not replace your existing lab."; then
+        printf '%s\n' "$PINNED_COMMIT" > "$NOTICE"
+      fi
+    fi
+  fi
+fi
+
 CONSOLE="$SRC/contrib/vibes/bitcoin-vibes"
-[ -f "$CONSOLE" ] || die "The Bitcoin Vibes source looks incomplete.\n\nDelete this folder and reopen the app:\n$SRC"
+[ -f "$CONSOLE" ] || die "The Bitcoin Vibes source looks incomplete. Keep your existing lab and saved experiments.\n\nDetails: $LOG\n\nBack up $SRC before repairing or reinstalling its source."
 
 # Hand over. --app makes first-run setup stream into the browser, because from
 # here there is no terminal for it to print to, and keeps the console's access

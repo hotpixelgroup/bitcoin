@@ -55,6 +55,19 @@ jobs:
         with:
           ref: ${{ env.TAG }}
 
+      - name: Verify the immutable release target and runner architecture
+        run: |
+          set -eu
+          printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+-[0-9]+$'
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$TAG^{commit}")"
+          # Dispatch from the tag (or its exact commit), so provenance describes
+          # the source actually checked out rather than an unrelated master.
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          case "${{ matrix.slug }}:$(uname -m)" in
+            linux-x86_64:x86_64|linux-arm64:aarch64|linux-arm64:arm64|macos-arm64:arm64) ;;
+            *) echo "::error::runner architecture does not match the archive name"; exit 1 ;;
+          esac
+
       # The default Xcode is too old — AppleClang 15 lacks CTAD for aggregates,
       # which src/util/overloaded.h requires. Homebrew's LLVM is new enough but
       # its libc++ collides with Apple's SDK headers, so use the newest Xcode
@@ -86,7 +99,11 @@ jobs:
           # 276MB of DWARF straight into the ELF (macOS hid the problem by
           # keeping debug info in a separate .dSYM).
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTS=ON -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF
+            -DBUILD_TESTS=ON -DBUILD_BENCH=OFF -DBUILD_FUZZ_BINARY=OFF -DBUILD_GUI=OFF \
+            -DENABLE_IPC=OFF
+          # Only the monolithic node and CLI are distributed. Disabling the
+          # optional multiprocess target keeps bitcoin-cli independent of
+          # builder-installed Cap'n Proto/KJ shared libraries.
           cmake --build build -j"$(getconf _NPROCESSORS_ONLN)" --target bitcoind bitcoin-cli test_bitcoin
 
       # Ship nothing that has not passed the tests the product itself relies on.
@@ -133,6 +150,14 @@ jobs:
           set -e
           strip -S build/bin/bitcoind build/bin/bitcoin-cli || \
             strip build/bin/bitcoind build/bin/bitcoin-cli
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            for program in build/bin/bitcoind build/bin/bitcoin-cli; do
+              codesign --force --sign - "$program"
+              codesign --verify --strict "$program"
+            done
+          fi
+          ./build/bin/bitcoind -version
+          ./build/bin/bitcoin-cli -version
           ls -lh build/bin/bitcoind build/bin/bitcoin-cli
           # A Raspberry Pi on home broadband is the worst audience to hand a
           # bloated download, so make the bloat a red X on our run instead.
@@ -150,7 +175,10 @@ jobs:
         run: |
           set -e
           test "$(grep -c '^PINNED_REF=""$' contrib/vibes/macos/launcher.sh)" = "1"
+          test "$(grep -c '^PINNED_COMMIT=""$' contrib/vibes/macos/launcher.sh)" = "1"
           sed -i '' "s/^PINNED_REF=\"\"\$/PINNED_REF=\"$TAG\"/" contrib/vibes/macos/launcher.sh
+          SHA=$(git rev-parse HEAD)
+          sed -i '' "s/^PINNED_COMMIT=\"\"\$/PINNED_COMMIT=\"$SHA\"/" contrib/vibes/macos/launcher.sh
           grep -n '^PINNED_REF=' contrib/vibes/macos/launcher.sh
 
       # Signing is optional. With no secrets the app is ad-hoc signed and not
@@ -179,12 +207,14 @@ jobs:
       # node-only release becomes the latest one.
       - name: Build the Mac app
         if: runner.os == 'macOS'
+        shell: bash
         env:
           VIBES_CODESIGN_IDENTITY: ${{ secrets.VIBES_CODESIGN_IDENTITY }}
           VIBES_NOTARY_APPLE_ID: ${{ secrets.VIBES_NOTARY_APPLE_ID }}
           VIBES_NOTARY_TEAM_ID: ${{ secrets.VIBES_NOTARY_TEAM_ID }}
           VIBES_NOTARY_PASSWORD: ${{ secrets.VIBES_NOTARY_PASSWORD }}
         run: |
+          set -euo pipefail
           sh contrib/vibes/macos/build-app.sh --dmg | tee "$RUNNER_TEMP/app-build.log"
           ls -lh dist/BitcoinVibes.dmg
           grep 'signing:' "$RUNNER_TEMP/app-build.log" | sed 's/^ *signing: //' > mac-signing.txt
@@ -227,12 +257,17 @@ jobs:
             git checkout -- src/
             mkdir -p "$DIR/$name" "candidate-$name" "lab-$name"
             cp build/bin/bitcoind "candidate-$name/"
+            strip -S "candidate-$name/bitcoind" || strip "candidate-$name/bitcoind"
+            if [ "${{ runner.os }}" = "macOS" ]; then
+              codesign --force --sign - "candidate-$name/bitcoind"
+              codesign --verify --strict "candidate-$name/bitcoind"
+            fi
+            "candidate-$name/bitcoind" -version
             python3 -I contrib/vibes/lab_runner.py --scene compare --reference stock \
               --candidate "candidate-$name" --workdir "lab-$name" --ports 18511,18512,18513,18514 > lab.out
             got=$(python3 -c "import json; print([json.loads(l)['result']['verdict'] for l in open('lab.out') if '\"result\"' in l][0])")
             echo "$name: expected $want, observed $got"
             test "$got" = "$want"
-            strip -S "candidate-$name/bitcoind" || strip "candidate-$name/bitcoind"
             cp "candidate-$name/bitcoind" "$DIR/$name/bitcoind"
             printf '%s  %s\n' "$(shasum -a 256 "contrib/vibes/experiments/$name.diff" | cut -d' ' -f1)" "$name" >> "$DIR/PATCHES"
           }
@@ -243,6 +278,14 @@ jobs:
           tar -czf "out/$DIR.tar.gz" "$DIR"
           (cd out && shasum -a 256 "$DIR.tar.gz" > "$DIR.tar.gz.sha256")
           ls -lh out
+
+      - name: Verify the packaged native programs and provenance
+        run: |
+          SHA=$(git rev-parse HEAD)
+          python3 contrib/vibes/tests/verify_release.py --assets out --platform '${{ matrix.slug }}' --tag "$TAG" --commit "$SHA"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            python3 contrib/vibes/tests/verify_release.py --dmg out/BitcoinVibes.dmg --tag "$TAG" --commit "$SHA"
+          fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -290,6 +333,12 @@ jobs:
           sha256sum -- * > ../SHA256SUMS
           mv ../SHA256SUMS .
           cat SHA256SUMS
+
+      - name: Verify the complete release before publishing anything
+        run: |
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$TAG^{commit}")"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          python3 contrib/vibes/tests/verify_release.py --assets assets --tag "$TAG" --commit "$(git rev-parse HEAD)"
 
       # Says which workflow run, on which commit of this repository, produced
       # each file. Anyone can check one with:
@@ -347,6 +396,12 @@ jobs:
           The checksum detects a corrupted or swapped download. The attestation shows a file was built by this repository's release workflow from the commit above. Neither is a maintainer's signature: this release tag is **$(cat tag-signing.txt)**, and the Mac app is **$(cat mac-signing.txt)**.
 
           ## Changes
+
+          - Corrected the lessons, prediction scoring, saved learning records, node settings and exact browser-demo replays audited in PR #13.
+          - Improved the learning flow, mobile layout, long-text wrapping, and radio-button and checkbox alignment.
+          - Preserved build provenance through installer updates and made source updates explicitly require reopening the console.
+          - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^v//;s/-/./')\`. Downloading a new launcher preserves an existing lab: use **Setup & help → Check for and take updates**, then close and reopen Bitcoin Vibes to load the new source. Saved experiments are replayed by the console update action.
+          - Prepared archives contain the monolithic node and CLI with optional multiprocess IPC disabled, so no Cap'n Proto/KJ shared libraries from the builder are needed to run them.
           EOF
           cat notes.md
 
@@ -356,6 +411,7 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
+          name: Bitcoin Vibes ${{ env.TAG }}
           draft: true
           files: assets/*
           body_path: notes.md
@@ -373,3 +429,34 @@ jobs:
             exit 1
           fi
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+  verify-public-downloads:
+    name: Public downloads (${{ matrix.slug }})
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            slug: linux-x86_64
+          - os: ubuntu-24.04-arm
+            slug: linux-arm64
+          - os: macos-15
+            slug: macos-arm64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+      # A fresh runner, with no build/dependency installation. This uses the
+      # actual public URLs and the release's pinned installer, never mock nodes.
+      - name: Verify public installer, programs, variants and private-chain startup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 contrib/vibes/tests/verify_release.py --public --platform '${{ matrix.slug }}' \
+            --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$(git rev-parse HEAD)"

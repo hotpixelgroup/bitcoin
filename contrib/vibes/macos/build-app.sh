@@ -6,7 +6,8 @@
 #
 # The bundle is a launcher, not the node. On first open it fetches the source
 # into ~/Library/Application Support/Bitcoin Vibes and the console compiles the
-# node there, so the app stays small and updates itself.
+# node there when no matching prepared program is available. The app stays
+# small; source updates are an explicit action in the console.
 set -eu
 
 cd "$(dirname "$0")/../../.."
@@ -14,6 +15,12 @@ ROOT="$PWD"
 OUT="$ROOT/dist"
 APP="$OUT/Bitcoin Vibes.app"
 VERSION=$(sed -n 's/^set(CLIENT_VERSION_MAJOR \([0-9]*\))/\1/p' CMakeLists.txt).$(sed -n 's/^set(CLIENT_VERSION_MINOR \([0-9]*\))/\1/p' CMakeLists.txt)
+RELEASE_REF=$(sed -n 's/^PINNED_REF="\([^"]*\)"$/\1/p' contrib/vibes/macos/launcher.sh)
+if [ -n "$RELEASE_REF" ]; then
+  printf '%s\n' "$RELEASE_REF" | grep -Eq '^v[0-9]+\.[0-9]+-[0-9]+$' \
+    || { echo "Invalid pinned release tag: $RELEASE_REF" >&2; exit 1; }
+  VERSION=$(printf '%s\n' "$RELEASE_REF" | sed 's/^v//; s/-/./')
+fi
 
 echo "→ building Bitcoin Vibes.app $VERSION"
 rm -rf "$APP"
@@ -76,8 +83,9 @@ if [ -n "${VIBES_CODESIGN_IDENTITY:-}" ]; then
   SIGN_STATE="signed with a Developer ID, not notarised"
   echo "  signed: $VIBES_CODESIGN_IDENTITY"
 else
-  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
-    && echo "  ad-hoc signed" || echo "  note: could not sign (the app still runs)"
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --deep --strict "$APP"
+  echo "  ad-hoc signed"
 fi
 
 echo "→ $APP"

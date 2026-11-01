@@ -98,6 +98,40 @@ containers were stopped or reset.
 [recorded experiment evidence](vibes-audit-images/experiment-result.png). The starting
 action is visible before the explanation on narrow screens.
 
+## Form-layout and downloadable-release follow-up
+
+On 1 November 2026, a visual report exposed a defect that the earlier axe
+audit did not detect: native radio inputs inherited text-field padding and a
+44-pixel minimum height. Their visible centers sat 17 CSS pixels below the
+answer's first line. Native radios and checkboxes now have their own sizing;
+their labels provide the larger click target. Wrapped legends, narrow settings
+rows, dialog scrolling and WebKit keyboard focus received matching fixes.
+
+The new regression measures all ten prediction forms, follow-ups, questionnaire
+radios, preferences, the compile option and boolean settings in Chromium and
+WebKit. Across six viewport/density cases, 1,116 control layouts passed with a
+maximum first-line offset of 0.72 pixels. The enlarged cases model
+200%-equivalent reflow with half the CSS viewport and twice the output density;
+they do not automate browser zoom controls. Label clicks, keyboard operation,
+visible focus, the existing browser workflow and twelve axe audits also pass.
+The expanded local Python suite ran 184 tests: 176 passed and eight optional
+real-node checks were skipped.
+
+| Before | After |
+|---|---|
+| ![Misaligned prediction controls](vibes-audit-images/radio-layout-before.png) | ![Aligned prediction controls](vibes-audit-images/radio-layout-after.png) |
+
+Release verification now checks the complete 15-file asset set, checksums,
+platform headers, source and patch provenance before publication. The Mac
+bundle records its release number and exact source; a new launcher explains
+when an existing lab uses different source while preserving its experiments.
+Packaged node/CLI builds disable optional multiprocess IPC to avoid depending
+on the builder's Cap'n Proto/KJ shared libraries. Fresh-runner jobs then fetch
+the public release's installer and programs on all three supported platforms,
+verify provenance, start the installed console and private node, and exercise
+the three changed-node experiments. The Mac job also inspects the DMG read-only.
+See the release workflow for the publication and public-download results.
+
 ## Deployment
 
 The current public site uses the `gh-pages` branch at `/`. This PR does not
