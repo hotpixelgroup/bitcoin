@@ -89,6 +89,31 @@ class ReleaseAssetTests(unittest.TestCase):
         self.verify()
         self.assertEqual(release.release_version(self.tag), '31.99.9')
 
+    def test_beta_tags_have_numeric_bundle_versions_without_changing_stable_versions(self):
+        self.assertEqual(release.release_version('v31.99-11'), '31.99.11')
+        self.assertEqual(release.release_version('beta-v31.99-11'), '31.99.11')
+        for invalid in ('beta-beta-v31.99-11', 'v31.99-11-beta', 'beta-v31.99'):
+            with self.subTest(tag=invalid), self.assertRaises(ValueError):
+                release.release_version(invalid)
+
+    def test_beta_app_channel_cannot_reuse_the_stable_app_identity_or_home(self):
+        from unittest.mock import patch
+        info = {'CFBundleIdentifier': 'group.hotpixel.bitcoinvibes.beta', 'CFBundleDisplayName': 'Bitcoin Vibes Beta'}
+        launcher = 'PINNED_BETA="1"\n'
+        with patch.dict(os.environ, {'PRERELEASE': 'true'}):
+            self.assertEqual(release.app_bundle_name(), 'Bitcoin Vibes Beta.app')
+            release.verify_app_channel(info, launcher)
+            for field, wrong in (('CFBundleIdentifier', 'group.hotpixel.bitcoinvibes'),
+                                 ('CFBundleDisplayName', 'Bitcoin Vibes')):
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    release.verify_app_channel({**info, field: wrong}, launcher)
+            for wrong in ('', 'PINNED_BETA=""\n', 'PINNED_BETA="0"\n', launcher + launcher):
+                with self.subTest(launcher=wrong), self.assertRaises(ValueError):
+                    release.verify_app_channel(info, wrong)
+        with patch.dict(os.environ, {'PRERELEASE': 'false'}):
+            self.assertEqual(release.app_bundle_name(), 'Bitcoin Vibes.app')
+            release.verify_app_channel({}, '')  # old v10 inspection remains supported
+
     def test_missing_or_extra_assets_are_rejected_before_publication(self):
         (self.assets / 'unexpected.txt').write_text('no\n')
         with self.assertRaisesRegex(ValueError, 'unexpected'):
@@ -170,6 +195,34 @@ class ReleaseAssetTests(unittest.TestCase):
         with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
             with self.assertRaisesRegex(ValueError, 'isolated GitHub Actions'):
                 release.public_smoke(self.tag, self.commit, 'macos-arm64', 'hotpixelgroup/bitcoin')
+
+
+class BetaLauncherPathTests(unittest.TestCase):
+    def selected_home(self, beta='', ref='beta-v31.99-11', explicit=None):
+        script = LAUNCHER.read_text().replace('PINNED_BETA=""', 'PINNED_BETA="' + beta + '"')
+        script = script.replace('PINNED_REF=""', 'PINNED_REF="' + ref + '"')
+        # Evaluate the product's actual selection code and function definitions
+        # only. No mkdir/log/git command runs, and HOME remains the real HOME.
+        prefix = script.split('mkdir -p "$APP_SUPPORT"', 1)[0]
+        env = dict(os.environ)
+        env.pop('VIBES_HOME', None)
+        if explicit is not None:
+            env['VIBES_HOME'] = explicit
+        result = subprocess.run(['sh', '-c', prefix + '\nprintf "%s" "$APP_SUPPORT"\n'],
+                                text=True, capture_output=True, env=env, check=True)
+        return result.stdout
+
+    def test_stable_default_is_preserved_and_beta_defaults_are_isolated_per_tag(self):
+        support = Path(os.environ['HOME']) / 'Library/Application Support'
+        self.assertEqual(self.selected_home(), str(support / 'Bitcoin Vibes'))
+        self.assertEqual(self.selected_home('1'), str(support / 'Bitcoin Vibes Beta/beta-v31.99-11'))
+        self.assertEqual(self.selected_home('1', 'beta-v31.99-12'), str(support / 'Bitcoin Vibes Beta/beta-v31.99-12'))
+        self.assertEqual(self.selected_home('1', ''), str(support / 'Bitcoin Vibes Beta/development'))
+
+    def test_explicit_home_wins_for_both_channels(self):
+        for beta in ('', '1'):
+            self.assertEqual(self.selected_home(beta, explicit='/tmp/a beta lab with spaces'), '/tmp/a beta lab with spaces')
+        self.assertEqual(LAUNCHER.read_text().splitlines().count('PINNED_BETA=""'), 1)
 
 
 class LauncherReleaseTests(unittest.TestCase):

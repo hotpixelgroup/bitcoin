@@ -44,6 +44,12 @@ function token(value) {
     await page.goto(base + '/');
     await page.getByRole('heading', {name: 'What shall Bitcoin become?'}).waitFor();
     assert.equal(await overflow(), false, 'landing page overflows at desktop width');
+    assert.equal(await page.locator('#beta-heading').innerText(), 'Closed beta testing');
+    assert.equal(await page.locator('.beta-note a').first().getAttribute('href'), 'https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes-beta.md');
+    assert.match(await page.locator('.beta-note').innerText(), /latest stable release; beta candidates are distributed separately/);
+    for (const link of await page.getByRole('link', {name: 'Report a problem ↗', exact: true}).all()) {
+      assert.equal(await link.getAttribute('href'), 'https://github.com/hotpixelgroup/bitcoin/issues/new?template=bug.yml');
+    }
 
     // The demo says what it is.
     await page.goto(base + '/demo.html');
@@ -56,6 +62,33 @@ function token(value) {
     assert.equal(await page.locator('#settings-section').isVisible(), false);
     assert.ok((await page.locator('#start-learning').boundingBox()).y < 1100, 'a clear starting action is visible');
     await capture('demo-desktop.png');
+
+    // A bug report starts with an explicit preview, not a dump of the page or
+    // browser storage. Private draft text and URL access tokens never enter it.
+    const privateText = 'PRIVATE-CONTEXT-MARKER /Users/test/wallet.dat --rpcpassword=private';
+    await page.locator('#wish').fill(privateText);
+    await page.evaluate(() => {
+      history.replaceState(null, '', location.pathname + '?key=PRIVATE-ACCESS-KEY#PRIVATE-SHARE-TOKEN');
+      Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async text => { window.copiedReport = text; }}});
+    });
+    assert.equal(await page.locator('#report-context').isVisible(), false);
+    const requestsBeforeReport = apiRequests;
+    await page.locator('#prepare-report').click();
+    const report = await page.locator('#report-context').inputValue();
+    assert.match(report, /Mode: Browser demo \(recorded results\)/);
+    assert.match(report, /Sandbox: Not applicable/);
+    assert.match(report, /No node runs in the browser demo/);
+    assert.doesNotMatch(report, /PRIVATE|wallet.dat|rpcpassword|127\.0\.0\.1|https?:/);
+    await page.locator('#copy-report-context').click();
+    assert.equal(await page.evaluate(() => window.copiedReport), report, 'copy includes exactly the reviewed preview');
+    assert.equal(apiRequests, requestsBeforeReport, 'preparing/copying a report makes no API request');
+    await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('clipboard unavailable'); }; });
+    await page.locator('#copy-report-context').click();
+    await page.locator('#report-status').filter({hasText: 'copy it manually'}).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'report-context', 'manual copy fallback has keyboard focus');
+    assert.equal(await page.locator('#report-context').evaluate(input => input.readOnly && input.selectionStart === 0 && input.selectionEnd === input.value.length), true, 'manual fallback selects only the safe context for keyboard copying');
+    await page.evaluate(() => history.replaceState(null, '', location.pathname));
+    await page.locator('#wish').fill('');
     await page.locator('#start-learning').click();
     await page.locator('#predict-dialog').waitFor();
     await page.keyboard.press('Escape');
@@ -271,6 +304,7 @@ function token(value) {
         if (path === '/demo.html') {
           const start = await page.locator('#start-learning').boundingBox();
           assert.ok(start && start.y >= 0 && start.y < 900, `the starting action is visible at ${width}px`);
+          assert.equal(await page.locator('.topbar a[href*="template=bug.yml"]').isVisible(), true, 'bug reporting remains discoverable on narrow screens');
         }
         if (width === 390 && path === '/demo.html') await capture('demo-mobile.png');
       }

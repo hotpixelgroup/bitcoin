@@ -21,6 +21,7 @@
   <span class="pill" id="environment">Connecting…</span>
   <span class="connection" id="connection" role="status">Connecting to console…</span>
   <a class="quiet" href="https://github.com/hotpixelgroup/bitcoin">Source ↗</a>
+  <a class="quiet" href="https://github.com/hotpixelgroup/bitcoin/issues/new?template=bug.yml" target="_blank" rel="noopener noreferrer">Report a problem ↗</a>
 </header>
 
 <div id="demo-banner" class="demo-banner" hidden>
@@ -329,6 +330,19 @@
 
 <section id="setup" class="panel help" aria-labelledby="setup-heading">
   <h2 id="setup-heading">Setup &amp; help</h2>
+
+  <div id="beta-help" tabindex="-1">
+    <h3>Beta help and bug reports</h3>
+    <p>Testing the closed beta? Follow the <a href="https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes-beta.md" target="_blank" rel="noopener noreferrer">tester guide ↗</a> for the test build, first steps and known limits.</p>
+    <p>Describe the steps, what you expected and what happened. GitHub reports are public. Review any screenshot before sharing it; keep access links, keys, local paths, prompts, patches, wallet details and logs out of the report.</p>
+    <div class="toolbar">
+      <a class="button-link" href="https://github.com/hotpixelgroup/bitcoin/issues/new?template=bug.yml" target="_blank" rel="noopener noreferrer">Report a problem ↗</a>
+      <button id="prepare-report">Preview report context</button>
+      <button id="copy-report-context" hidden>Copy context</button>
+    </div>
+    <textarea id="report-context" class="report-context" rows="10" readonly aria-label="Report context to review and copy" hidden></textarea>
+    <p id="report-status" class="subtle" role="status"></p>
+  </div>
 
   <div data-local-only>
   <h3>Undo and reset</h3>

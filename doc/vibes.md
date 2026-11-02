@@ -22,6 +22,10 @@ yourself.
 That table is satire. Bitcoin Vibes is not an alternative to Bitcoin Core or
 Bitcoin Knots and is not meant for holding or moving real funds. It is a lab.
 
+Invited testers should follow the [closed-beta guide](vibes-beta.md) for the
+assigned candidate, separate lab, test tasks and reporting flow. The ordinary
+`latest` links below select the stable release.
+
 ## Quickstart
 
 ### One line
@@ -69,10 +73,12 @@ Support/Bitcoin Vibes`, prepares the node and opens the console, reporting
 progress in the browser. It never updates itself; the console tells you when a
 newer release exists and updates only when you ask.
 
-The app is not notarised by Apple yet, so macOS blocks the first launch. On
-macOS 15 and later, try to open it once, then go to System Settings, Privacy &
-Security, and choose Open Anyway. On macOS 14 and earlier, right-click the app
-and choose Open. You can also build it yourself with
+The prepared app and programs require Apple silicon and macOS 15 or later.
+Signing and notarisation are deferred, so macOS may block the first launch.
+Beta testers should record the warning and follow the tester guide's stop and
+report instructions; do not disable system protections. Older Macs need a
+compatible source build and are outside the prepared-release test matrix.
+You can build the launcher yourself with
 `sh contrib/vibes/macos/build-app.sh`.
 
 ### Docker

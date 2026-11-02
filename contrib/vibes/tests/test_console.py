@@ -6,6 +6,7 @@ also run the two-node lab scenes and the activation tests against it.
 """
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -1211,6 +1212,21 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(console.upstream_status()['ref'], 'v31.99-10')
 
 
+    def test_stable_release_updates_ignore_a_newer_beta_prefixed_tag(self):
+        self.og('tag', 'v31.99-10')
+        console = self.install('v31.99-10')
+        self.rg('checkout', '-q', '-b', 'vibes')
+        before = self.rg('rev-parse', 'HEAD')
+        self.upstream_commit('beta-only')
+        self.og('tag', 'beta-v31.99-11')
+        job = self.run_update(console)
+        self.assertEqual(job.state, 'done', job.meta.get('error'))
+        self.assertEqual(self.rg('rev-parse', 'HEAD'), before)
+        self.assertEqual(console.upstream_status()['ref'], 'v31.99-10')
+        self.assertFalse(console.upstream_status()['available'])
+        self.assertFalse((self.repo / 'beta-only.txt').exists())
+
+
 class ReadyMadeTests(ConsoleCase):
     """Changed nodes that let an experiment run without a compile."""
 
@@ -1751,6 +1767,201 @@ class SandboxProfileTests(ConsoleCase):
         self.assertIn('reviewed', container.summary()['detail'])
 
 
+class ReopenTests(ConsoleCase):
+    def setUp(self):
+        super().setUp()
+        class Handler(vibes.Handler):
+            pass
+        Handler.console = self.console
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.port = self.server.server_port
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(5)
+        super().tearDown()
+
+    def locked_console(self):
+        held = vibes.Console._lab_locks.pop(str(self.console.state_dir))
+        try:
+            return vibes.Console(self.opts)
+        finally:
+            vibes.Console._lab_locks[str(self.console.state_dir)] = held
+
+    def test_second_constructor_does_not_repair_or_modify_an_owned_lab(self):
+        (self.console.state_dir / 'key').write_text('damaged-key')
+        (self.console.state_dir / 'baseline.json').unlink()
+        self.console.state_dir.chmod(0o750)
+        before = {str(path.relative_to(self.console.state_dir)): (path.read_bytes(), path.stat().st_mtime_ns)
+                  for path in self.console.state_dir.rglob('*') if path.is_file()}
+        with patch.object(vibes, 'Sandbox') as sandbox:
+            second = self.locked_console()
+        self.assertFalse(second.owns_lab)
+        sandbox.assert_not_called()
+        after = {str(path.relative_to(self.console.state_dir)): (path.read_bytes(), path.stat().st_mtime_ns)
+                 for path in self.console.state_dir.rglob('*') if path.is_file()}
+        self.assertEqual(after, before)
+        self.assertEqual(stat.S_IMODE(self.console.state_dir.stat().st_mode), 0o750)
+
+    def test_app_reopens_the_existing_console_without_starting_or_printing_a_key(self):
+        argv = ['bitcoin-vibes', '--repo', str(self.repo), '--port', str(self.port),
+                '--app', '--print-key', '--no-autostart', '--engine', 'mock']
+        held = vibes.Console._lab_locks.pop(str(self.console.state_dir))
+        try:
+            with patch.object(sys, 'argv', argv), patch.object(vibes.webbrowser, 'open', return_value=True) as opened, \
+                    patch.object(vibes, 'ThreadingHTTPServer') as second_server, \
+                    patch.object(vibes.Console, 'start_node') as start, patch('sys.stdout', new_callable=io.StringIO) as output:
+                vibes.main()
+        finally:
+            vibes.Console._lab_locks[str(self.console.state_dir)] = held
+        opened.assert_called_once_with(f'http://127.0.0.1:{self.port}/?key=' + self.console.key)
+        self.assertNotIn(self.console.key, output.getvalue())
+        self.assertNotIn('?key=', output.getvalue())
+        second_server.assert_not_called()
+        start.assert_not_called()
+        self.assertIsNone(self.console.job)
+
+    def test_browser_failure_does_not_copy_a_keyed_url_into_support_output(self):
+        opts = SimpleNamespace(port=self.port, chain='regtest', no_open=False, app=True, print_key=False)
+        second = self.locked_console()
+        with patch.object(vibes.webbrowser, 'open', side_effect=RuntimeError('private?key=' + self.console.key)), \
+                patch('sys.stdout', new_callable=io.StringIO) as output:
+            self.assertTrue(vibes.reopen_existing_console(second, opts))
+        self.assertIn('browser could not be opened', output.getvalue())
+        self.assertNotIn(self.console.key, output.getvalue())
+        self.assertNotIn('private?key=', output.getvalue())
+
+    def test_first_app_launch_does_not_print_a_key_even_when_requested_for_scripting(self):
+        argv = ['bitcoin-vibes', '--repo', str(self.repo), '--app', '--print-key',
+                '--no-open', '--no-autostart', '--engine', 'mock']
+        with patch.object(sys, 'argv', argv), patch.object(vibes, 'Console', return_value=self.console), \
+                patch.object(vibes, 'ThreadingHTTPServer'), patch('sys.stdout', new_callable=io.StringIO) as output:
+            vibes.main()
+        self.assertNotIn(self.console.key, output.getvalue())
+        self.assertNotIn('?key=', output.getvalue())
+
+    def test_reopen_respects_no_open_and_different_repo_or_network(self):
+        opts = SimpleNamespace(port=self.port, chain='regtest', no_open=True, app=True, print_key=False)
+        second = self.locked_console()
+        with patch.object(vibes.webbrowser, 'open') as opened, patch('sys.stdout', new_callable=io.StringIO) as output:
+            self.assertTrue(vibes.reopen_existing_console(second, opts))
+        opened.assert_not_called()
+        self.assertNotIn(self.console.key, output.getvalue())
+        replies = ({'app': 'bitcoin-vibes', 'repo': 'another-lab', 'chain': 'regtest'},
+                   {'app': 'bitcoin-vibes', 'repo': second.repo_id, 'chain': 'main'},
+                   {'app': 'bitcoin-vibes', 'repo': second.repo_id}, None)
+        for reply in replies:
+            with self.subTest(reply=reply), patch.object(vibes, 'probe_console', return_value=reply) as probe, \
+                    patch.object(vibes.webbrowser, 'open') as opened:
+                self.assertFalse(vibes.reopen_existing_console(second, opts))
+            self.assertEqual(probe.call_count, 20)
+            opened.assert_not_called()
+        second.key = 'damaged-key'
+        with patch.object(vibes, 'probe_console') as probe:
+            self.assertFalse(vibes.reopen_existing_console(second, opts))
+        probe.assert_not_called()
+
+    def test_ping_challenge_is_strict_and_proves_this_actual_port_without_disclosing_the_key(self):
+        nonce = 'a' * 32
+        with urllib.request.urlopen(f'http://127.0.0.1:{self.port}/api/ping?nonce={nonce}') as response:
+            raw = response.read()
+            proof = json.loads(raw)
+            self.assertNotIn('Set-Cookie', response.headers)
+        self.assertNotIn(self.console.key.encode(), raw)
+        self.assertEqual(proof['nonce'], nonce)
+        self.assertEqual(proof['proof'], vibes.console_proof(self.console.key, self.console.repo_id, 'regtest', self.port, nonce))
+        self.assertNotEqual(proof['proof'], vibes.console_proof(self.console.key, self.console.repo_id, 'regtest', self.port + 1, nonce))
+        for invalid in ('', 'bad', 'g' * 32, 'a' * 31, 'a' * 33, 'a' * 32 + '&nonce=' + 'b' * 32):
+            with self.subTest(nonce=invalid), self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(f'http://127.0.0.1:{self.port}/api/ping?nonce={invalid}')
+            self.assertEqual(error.exception.code, 400)
+            error.exception.close()
+
+    def test_forged_replayed_forwarded_and_tampered_proofs_never_receive_a_key(self):
+        opts = SimpleNamespace(port=self.port + 1, chain='regtest', no_open=False, app=True, print_key=False)
+        second = self.locked_console()
+        cases = ('missing', 'wrong-key', 'forwarded', 'replayed', 'wrong-chain', 'wrong-repo', 'bad-shape')
+        for case in cases:
+            def pretend(port, nonce):
+                response = {'app': 'bitcoin-vibes', 'repo': second.repo_id, 'chain': 'regtest', 'nonce': nonce}
+                if case == 'missing':
+                    return response
+                if case == 'forwarded':
+                    # A fake service forwards a fresh nonce to the real lab.
+                    # It obtains a genuine proof, bound to that other port.
+                    with urllib.request.urlopen(f'http://127.0.0.1:{self.port}/api/ping?nonce={nonce}') as real:
+                        return json.load(real)
+                key = 'wrong-key' if case == 'wrong-key' else second.key
+                chain = 'main' if case == 'wrong-chain' else 'regtest'
+                repo = 'different-repo' if case == 'wrong-repo' else second.repo_id
+                signed_nonce = 'b' * 32 if case == 'replayed' else nonce
+                response['proof'] = vibes.console_proof(key, repo, chain, port, signed_nonce)
+                if case == 'bad-shape':
+                    response['proof'] = response['proof'].upper()
+                return response
+            with self.subTest(case=case), patch.object(vibes, 'probe_console', side_effect=pretend) as probe, \
+                    patch.object(vibes.webbrowser, 'open') as opened:
+                self.assertFalse(vibes.reopen_existing_console(second, opts))
+            self.assertEqual(probe.call_count, 20)
+            self.assertEqual(len({call.args[1] for call in probe.call_args_list}), 20)
+            opened.assert_not_called()
+
+    def test_slow_local_service_cannot_hold_the_second_launcher_open(self):
+        release = threading.Event()
+        finished = threading.Event()
+        class Stalled:
+            def read(self, limit):
+                self.limit = limit
+                release.wait(5)
+                return b'{}'
+        response = Stalled()
+        with patch.object(vibes.urllib.request, 'build_opener') as build:
+            context = build.return_value.open.return_value
+            context.__enter__.return_value = response
+            context.__exit__.side_effect = lambda *_: finished.set()
+            started = time.monotonic()
+            try:
+                self.assertIsNone(vibes.probe_console(21212))
+                self.assertLess(time.monotonic() - started, 1)
+                self.assertEqual(response.limit, 4096)
+            finally:
+                release.set()
+                self.assertTrue(finished.wait(2))
+
+    def test_probe_is_local_bounded_and_does_not_follow_redirects(self):
+        requests = []
+        from http.server import BaseHTTPRequestHandler
+        class Redirect(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                self.send_response(302)
+                self.send_header('Location', f'http://127.0.0.1:{self.server.server_port}/redirected')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Redirect)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.assertIsNone(vibes.probe_console(server.server_port))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(5)
+        self.assertEqual(requests, ['/api/ping'])
+        body = io.BytesIO(b'x' * 5000)
+        with patch.object(vibes.urllib.request, 'build_opener') as build:
+            build.return_value.open.return_value.__enter__.return_value = body
+            self.assertIsNone(vibes.probe_console(21212))
+        build.return_value.open.assert_called_once_with('http://127.0.0.1:21212/api/ping', timeout=0.15)
+        self.assertEqual(body.tell(), 4096)
+
+
 class HttpTests(ConsoleCase):
     def setUp(self):
         super().setUp()
@@ -1864,11 +2075,69 @@ class HttpTests(ConsoleCase):
         self.assertTrue(json.load(self.get('/api/status'))['console_restart_required'])
 
     def test_failed_node_start_is_an_error_job(self):
-        with patch.object(self.console, 'start_node', return_value=False):
+        # This exercises an installed program failing to start, not first-run
+        # setup. Never allow this hermetic test to download a real program.
+        with patch.object(self.console, 'bin_path', return_value=Path('/fixture/bitcoind')), \
+                patch.object(self.console, 'start_node', return_value=False):
             self.post('/api/node', {'action': 'start'})
             job = self.wait()
         self.assertEqual(job.state, 'error')
         self.assertIn('did not start', job.meta['error'])
+
+    def test_failed_first_setup_can_retry_prepared_node_without_compiling_or_losing_state(self):
+        self.console.conf_path.write_text('networkactive=0\nmaxconnections=7\n')
+        self.console.record_learning(lessons.BELIEFS[0]['id'], 'before', 'unsure', False)
+        key = (self.console.state_dir / 'key').read_bytes()
+        config = self.console.conf_path.read_bytes()
+        learning = self.console.learning_summary()
+        with patch.object(self.console, 'bin_path', return_value=None), \
+                patch.object(self.console, 'try_prebuilt', return_value=False), \
+                patch.object(self.console, 'missing_deps', return_value=['cmake']), \
+                patch.object(self.console, 'install_deps', return_value=False), \
+                patch.object(self.console, '_build') as build:
+            first = json.load(self.post('/api/node', {'action': 'start'}))
+            failed = self.wait()
+        self.assertEqual(first['job']['kind'], 'setup')
+        self.assertEqual(failed.state, 'error')
+        build.assert_not_called()
+        with patch.object(self.console, 'bin_path', return_value=None), \
+                patch.object(self.console, 'try_prebuilt', return_value=True) as prepared, \
+                patch.object(self.console, '_adopt_installed_reference'), \
+                patch.object(self.console, '_bootstrap_release'), \
+                patch.object(self.console, 'start_node', return_value=True) as start, \
+                patch.object(self.console, 'missing_deps') as missing, \
+                patch.object(self.console, 'install_deps') as deps, \
+                patch.object(self.console, '_build') as build:
+            reply = json.load(self.post('/api/node', {'action': 'start'}))
+            retried = self.wait()
+        self.assertEqual(reply['job']['kind'], 'setup')
+        self.assertEqual(retried.state, 'done', retried.meta.get('error'))
+        prepared.assert_called_once()
+        start.assert_called_once()
+        missing.assert_not_called()
+        deps.assert_not_called()
+        build.assert_not_called()
+        self.assertEqual((self.console.state_dir / 'key').read_bytes(), key)
+        self.assertEqual(self.console.conf_path.read_bytes(), config)
+        self.assertEqual(self.console.learning_summary(), learning)
+        self.assertEqual(self.console.experiment(failed.id)['summary']['state'], 'error')
+        self.assertNotEqual(failed.id, retried.id)
+
+    def test_first_setup_retry_still_obeys_busy_and_restart_guards(self):
+        for restart in (False, True):
+            self.console.console_restart_required = restart
+            self.console.job = None if restart else vibes.Job('vibe')
+            if self.console.job:
+                self.console.job.state = 'review'
+            try:
+                with patch.object(self.console, 'setup_runner') as setup, self.assertRaises(urllib.error.HTTPError) as error:
+                    self.post('/api/node', {'action': 'start'})
+                self.assertEqual(error.exception.code, 409)
+                error.exception.close()
+                setup.assert_not_called()
+            finally:
+                self.console.console_restart_required = False
+                self.console.job = None
 
     def test_external_lab_update_blocks_http_before_a_status_poll(self):
         self.commit_cached_lab_change()

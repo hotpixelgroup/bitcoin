@@ -36,7 +36,7 @@ def require(condition, message):
 
 
 def release_version(tag):
-    match = re.fullmatch(r'v([0-9]+)\.([0-9]+)-([0-9]+)', tag)
+    match = re.fullmatch(r'(?:beta-)?v([0-9]+)\.([0-9]+)-([0-9]+)', tag)
     require(match is not None, 'Use a release tag such as v31.99-9')
     return '.'.join(match.groups())
 
@@ -213,6 +213,19 @@ def command(args, **kwargs):
                           stderr=subprocess.STDOUT, timeout=kwargs.pop('timeout', 180), **kwargs).stdout
 
 
+def app_bundle_name():
+    return 'Bitcoin Vibes Beta.app' if os.environ.get('PRERELEASE') == 'true' else 'Bitcoin Vibes.app'
+
+
+def verify_app_channel(info, launcher):
+    if os.environ.get('PRERELEASE') == 'true':
+        verify_pin(launcher, 'PINNED_BETA', '1')
+        require(info.get('CFBundleIdentifier') == 'group.hotpixel.bitcoinvibes.beta',
+                'The beta app must use its separate bundle identifier')
+        require(info.get('CFBundleDisplayName') == 'Bitcoin Vibes Beta',
+                'The beta app must identify itself as Bitcoin Vibes Beta')
+
+
 def verify_dmg(path, tag, commit, copy_to=None):
     require(sys.platform == 'darwin', 'DMG verification needs a macOS runner')
     command(['hdiutil', 'verify', path])
@@ -221,7 +234,7 @@ def verify_dmg(path, tag, commit, copy_to=None):
         mount.mkdir()
         command(['hdiutil', 'attach', '-readonly', '-nobrowse', '-mountpoint', mount, path])
         try:
-            app = mount / 'Bitcoin Vibes.app'
+            app = mount / app_bundle_name()
             with (app / 'Contents/Info.plist').open('rb') as stream:
                 info = plistlib.load(stream)
             version = release_version(tag)
@@ -233,6 +246,7 @@ def verify_dmg(path, tag, commit, copy_to=None):
             text = launcher.read_text()
             verify_pin(text, 'PINNED_REF', tag)
             verify_pin(text, 'PINNED_COMMIT', commit)
+            verify_app_channel(info, text)
             command(['sh', '-n', launcher])
             command(['codesign', '--verify', '--deep', '--strict', app])
             require((app / 'Contents/Resources/AppIcon.icns').stat().st_size > 0, 'Mac app icon is missing')
@@ -406,6 +420,21 @@ def first_launch_smoke(installer, assets, tag, commit, platform, repository, pre
                     require(result.get('compare', {}).get('verdict') == verdict,
                             f'Downloaded variant {item} gave the wrong outcome')
                 require(all(api('/api/status')['variants'].values()), 'Not every published variant was installed')
+                # Double-clicking a running app must reopen its console, not
+                # fail its ownership lock or start a second lab process.
+                before_reopen = api('/api/status')
+                learning_before_reopen = api('/api/learning')
+                key_before_reopen = (source / '.vibes/key').read_bytes()
+                reopened = command(args, env=env, stdin=subprocess.DEVNULL, timeout=15)
+                require(proc.poll() is None, 'Reopening the shipped entry stopped its original console')
+                require(key not in reopened and '?key=' not in reopened, 'Reopening the app leaked its access key to stdout')
+                after_reopen = api('/api/status')
+                require((source / '.vibes/key').read_bytes() == key_before_reopen, 'Reopening the app changed its access key')
+                for field in ('source', 'chain', 'job', 'experiments', 'vibes'):
+                    require(after_reopen[field] == before_reopen[field], f'Reopening the app changed {field}')
+                require(after_reopen['node']['blocks'] == before_reopen['node']['blocks'] == 1,
+                        'Reopening the app changed its private-chain height')
+                require(api('/api/learning') == learning_before_reopen, 'Reopening the app changed saved learning')
                 stop(proc)
                 proc = None
                 # Relaunch the exact same shipped entry with automatic startup.
@@ -430,7 +459,7 @@ def first_launch_smoke(installer, assets, tag, commit, platform, repository, pre
                             tail = tail.replace(key, '<redacted>')
                         tail = re.sub(r'([?&]key=)[^\s&]+', r'\1<redacted>', tail)
                         print(f'First-launch {path.name} tail (access key redacted):\n{tail}', file=sys.stderr)
-        print(f'First launch passed for {platform}: full installer, shipped entry, automatic setup, session/assets, first lesson, variants and persistent relaunch', flush=True)
+        print(f'First launch passed for {platform}: full installer, shipped entry, automatic setup, session/assets, first lesson, variants, safe reopen and persistent relaunch', flush=True)
 
 
 def public_smoke(tag, commit, platform, repository):

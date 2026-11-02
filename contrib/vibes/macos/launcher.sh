@@ -11,8 +11,14 @@ set -u
 # fetches the source of its own release. Empty in the repository.
 PINNED_REF=""
 PINNED_COMMIT=""
+PINNED_BETA=""
 
-APP_SUPPORT="${VIBES_HOME:-$HOME/Library/Application Support/Bitcoin Vibes}"
+if [ "$PINNED_BETA" = "1" ]; then
+  DEFAULT_HOME="$HOME/Library/Application Support/Bitcoin Vibes Beta/${PINNED_REF:-development}"
+else
+  DEFAULT_HOME="$HOME/Library/Application Support/Bitcoin Vibes"
+fi
+APP_SUPPORT="${VIBES_HOME:-$DEFAULT_HOME}"
 SRC="$APP_SUPPORT/source"
 LOG="$APP_SUPPORT/launch.log"
 REPO="${VIBES_REPO:-https://github.com/hotpixelgroup/bitcoin.git}"

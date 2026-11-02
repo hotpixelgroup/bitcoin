@@ -34,11 +34,13 @@ const rules = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'];
       await inspect(width, 'finished experiment');
       await page.locator('#beliefs-summary').click();
       await inspect(width, 'questionnaire');
+      await page.locator('#prepare-report').click();
+      await inspect(width, 'report context');
     }
     fs.writeFileSync('/tmp/vibes-axe-results.json', JSON.stringify(results, null, 2));
     const total = results.reduce((count, result) => count + result.violations.length, 0);
     if (total) console.log(JSON.stringify(results.filter(result => result.violations.length), null, 2));
     assert.equal(total, 0, 'accessibility violations');
-    console.log('accessibility audit passed: 4 states at 3 widths');
+    console.log('accessibility audit passed: 5 states at 3 widths');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

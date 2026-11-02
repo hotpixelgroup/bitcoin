@@ -1,12 +1,59 @@
-name: Something is broken
-description: The node, the console, or the installer did something wrong.
+name: Report a problem
+description: Setup, a lesson, the console or an experiment did something unexpected.
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting it. You do not need to know C++ to file a good bug —
-        "I clicked Manifest and nothing happened" is a perfectly good bug.
+        Describe what you tried and what happened. You do not need to know C++.
+        This issue is public. Keep access links, passwords, wallet information,
+        private requests and unreviewed logs out of it. For a possible security
+        vulnerability, use the private security-report link instead.
+  - type: input
+    id: version
+    attributes:
+      label: App version or source revision
+      description: Use the release tag you downloaded, or the source revision shown in the console. Website and installed versions can differ.
+      placeholder: beta-v31.99-11 closed beta / v31.99-10 / source commit
+    validations: {required: true}
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How are you using the app?
+      options:
+        - Installed Mac app
+        - Installed lab from the shell installer
+        - Browser demo (recorded results)
+        - Docker
+        - Source checkout
+        - Other
+    validations: {required: true}
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and browser
+      placeholder: macOS 15, Apple silicon, Safari 26 / Ubuntu 24.04, x86_64, Firefox
+    validations: {required: true}
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Was this a new lab or an existing one?
+      options:
+        - New lab / first installation
+        - Existing lab / update or relaunch
+        - Browser demo
+        - Not sure
+    validations: {required: true}
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the lesson, slider value or control name. Use a harmless example request rather than private text.
+      placeholder: |
+        1. Open the installed lab.
+        2. Choose "Are your coins in your wallet?".
+        3. Select an answer and run the experiment.
+    validations: {required: true}
   - type: textarea
     id: what
     attributes:
@@ -25,21 +72,32 @@ body:
       options:
         - Installing it
         - Starting the console or the node
-        - Issuing a decree (the text box)
-        - The settings panel
+        - A ready-made experiment or its explanation
+        - Check your thinking / saved progress
+        - Propose a change / review / apply / revert
+        - Node settings
+        - Importing or sharing a request
+        - Layout, keyboard or screen-reader use
         - The node itself — syncing, peers, RPC
         - Somewhere else
     validations: {required: true}
-  - type: input
-    id: os
+  - type: textarea
+    id: context
     attributes:
-      label: Operating system
-      placeholder: macOS 15.1 / Ubuntu 24.04 / Debian in Docker
-    validations: {required: true}
+      label: Reviewed report context (optional)
+      description: In newer builds, Setup & help → Report a problem lets you preview and copy limited context. Review it before pasting. Older builds can leave this blank.
+      render: text
+    validations: {required: false}
   - type: textarea
     id: logs
     attributes:
-      label: Anything the terminal or console said
-      description: Paste it as-is. Redact anything that looks like a key.
-      render: text
+      label: Reviewed error message or screenshot (optional)
+      description: Include only the relevant excerpt. Remove the entire ?key= access link, credentials, local usernames/paths, private requests and wallet information. Do not upload .vibes or full launch logs.
     validations: {required: false}
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before submitting
+      options:
+        - label: I reviewed this public report and removed access links, credentials and private information.
+          required: true

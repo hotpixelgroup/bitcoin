@@ -88,6 +88,10 @@ It does not require a running node or a paid AI session.
 | Installer build provenance and container first/repeated startup | `test_packaging.py` | no |
 | Native form alignment, wrapping, label targets and keyboard focus across browser engines | `form_layout_qa.cjs` | no |
 | Release completeness, checksums, architecture, source/patch provenance, Mac system-library/minimum-OS guards, existing-lab notices and cold launcher retries | `test_release.py` | no |
+| Existing-console reopen: read-only ownership failure, nonce/HMAC identity proof, bounded discovery, wrong-network refusal and no access-key logging | `test_console.py` ReopenTests | no |
+| Failed first preparation can retry through Start, preserving settings/history and preferring prepared programs | `test_console.py` HttpTests, `first_launch_qa.cjs` | no |
+| Beta/stable channel separation, latest-release publication flags, incomplete-asset refusal, tester checksum instructions and distinct Mac beta bundle | `test_beta.py`, `test_release.py`, `test_install.py` | no |
+| Report context uses an explicit allowlist, previews before copying, excludes private fields and works when clipboard access is denied | `browser_qa.cjs`, `live_browser_qa.cjs` | no |
 
 CI additionally builds the node and Bitcoin Core's unit tests from source,
 checks that `src/` differs from the upstream base in one file only, applies
@@ -109,8 +113,10 @@ prepare and start its node. Linux runs the installed `./vibes` entry. Neither
 uses `--no-autostart` or replaces `HOME`. The check uses `--no-open` and the mock
 engine, authenticates through the strict HttpOnly cookie bootstrap, fetches
 the HTML and its assets, mines a private regtest block, runs the first lesson,
-saves its prediction, runs all three changed nodes, and relaunches the same
-entry to confirm its block, lesson result and learning record survive.
+saves its prediction and runs all three changed nodes. It reopens the shipped
+entry while the console is still running, requiring the original process,
+key, source, chain, history, learning and block height to remain unchanged.
+It then stops and relaunches the entry to confirm persistence.
 
 `verify_release.py --assets DIR --tag TAG --commit FULL_SHA` inspects the full
 download set without running its programs. `--first-launch-assets DIR
@@ -120,6 +126,10 @@ candidate archive URL through both installer and app setup. The release tag
 must already exist on the configured repository. `--public --platform SLUG
 --tag TAG --commit FULL_SHA` verifies attestations and exercises the public
 assets. These checks make no paid AI calls and do not change an existing lab.
+Use `PRERELEASE=true` when inspecting a closed-beta DMG so verification requires
+the separate `Bitcoin Vibes Beta.app` path, beta identifier and launcher stamp.
+The release workflow supplies this channel automatically. Native launch tests
+must run on isolated CI runners, not on the maintainer's host.
 
 ## What is not covered by automated tests
 
