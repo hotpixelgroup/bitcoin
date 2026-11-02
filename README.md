@@ -5,14 +5,18 @@ Bitcoin Vibes
 
 **→ [hotpixelgroup.github.io/bitcoin](https://hotpixelgroup.github.io/bitcoin/)**
 
-Fifteen years of mailing lists, BIPs, IRC flame wars, and filtering discourse,
+Invited closed-beta testers: start with the [tester guide](doc/vibes-beta.md).
+It identifies the pinned prerelease and keeps its lab separate from the
+unchanged stable `v31.99-10` baseline. Signing remains deferred.
+
+Years of mailing lists, BIPs, IRC flame wars, and filtering discourse,
 and somehow neither Core nor Knots ever shipped the one feature people
 actually wanted: **a big text area where you type what Bitcoin should be, and
 the node rewrites its own source code to match.**
 
-So here it is. And here is the catch, which is the whole point: you really can
-make your own node do anything in one sentence. What you cannot do is make
-anyone else's node agree. Bitcoin Vibes builds your change, runs it beside an
+So here it is. Describe a change in a sentence, then inspect whether the
+proposal builds and what it does. Other nodes still apply their own checks.
+Bitcoin Vibes builds your change, runs it beside an
 unmodified node on a private chain, and shows you what each one does with the
 other's blocks.
 
@@ -151,8 +155,8 @@ What happens to a request
 -------------------------
 
 1. **Predict.** Before anything runs you are asked what an unmodified node will
-   do with your change. People who commit to a prediction learn more from what
-   they then see.
+   do with your change. This makes your expectation explicit before you inspect
+   the result.
 2. **Propose.** The agent writes a proposal in an isolated copy of the source.
    It can read and edit files there and nothing else: no commands, no network.
 3. **Build.** The lab compiles the proposal inside an operating-system sandbox
@@ -247,14 +251,14 @@ Troubleshooting
 | Symptom | Fix |
 |---|---|
 | Console says Claude Code is not signed in | `claude auth login` |
-| `Address already in use` | A console is already running: `kill $(lsof -tiTCP:21212 -sTCP:LISTEN)` |
+| `Address already in use` | Reopen an existing console if it is yours. Otherwise choose another `--port`; do not kill an unidentified process. |
 | A proposal did not compile | Nothing changed. Read the compiler output under Technical activity, then refine the request or use **Ask the agent to fix the build error**. |
 | "Not compared" on a build | No reference node yet: use **Prepare reference node** on the node card. |
 | The node "refused a block" | An experiment tightened a rule. On regtest, **Reset my private chain** under Setup & help. |
-| `.git/index.lock` exists | A git process died mid-commit: `rm ~/bitcoin-vibes/.git/index.lock` |
-| Want unmodified rules back | **Restore the baseline source** under Setup & help |
-| Want to start over | `rm -rf ~/bitcoin-vibes/.vibes` wipes chain data, build records, experiment records and the access key. Your saved experiments remain in git. |
-| Want it gone entirely | `rm -rf ~/bitcoin-vibes` |
+| `.git/index.lock` exists | A git operation may still be active. Stop the console, preserve your source and check before removing a stale lock; beta testers should report it first. |
+| Want unmodified rules back | **Restore the baseline source** under Setup & help; changing source alone does not undo chain data. |
+| Want a fresh lab | Use a new folder. For a chain-only reset use **Reset my private chain**; deleting `.vibes` also loses build/experiment records, learning answers and the access key. Stop the console and preserve needed data before any manual removal. |
+| Want it gone entirely | Stop the console, preserve any experiments or learning record you want, then remove only the selected lab folder. |
 
 More
 ----

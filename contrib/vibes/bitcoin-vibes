@@ -46,7 +46,7 @@ import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -502,14 +502,25 @@ class Console:
         self.logs_dir = self.state_dir / "logs"
         self.reference_dir = self.state_dir / "reference"
         self.runtime_dir = self.state_dir / "runtime"
-        for d in (self.data_dir, self.jobs_dir, self.logs_dir, self.runtime_dir):
-            d.mkdir(parents=True, exist_ok=True)
-        self.state_dir.chmod(0o700)
+        self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
+        self.state_dir.mkdir(parents=True, exist_ok=True)
         # Only the one console process that looks after this lab folder may
         # write to it or tidy up after an interrupted build. A second console
         # started while the first is building must not move the build folder
         # or the branch from under it.
         self.owns_lab = self._claim_lab()
+        if not self.owns_lab:
+            # Reopening the app may read the existing access link, but must
+            # never repair keys, change permissions or recover another
+            # console's in-progress source/build state.
+            try:
+                self.key = (self.state_dir / "key").read_text().strip()
+            except (OSError, ValueError):
+                self.key = ""
+            return
+        for d in (self.data_dir, self.jobs_dir, self.logs_dir, self.runtime_dir):
+            d.mkdir(parents=True, exist_ok=True)
+        self.state_dir.chmod(0o700)
         self.checkout_problem = ""
         self.build_folder_problem = ""
         self.build_folder_lock = threading.RLock()
@@ -541,9 +552,6 @@ class Console:
             with os.fdopen(os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
                 f.write(self.key)
             key_file.chmod(0o600)
-        # Anonymous fingerprint of the repo path, so a second launcher can tell
-        # "that port is MY console for THIS repo" apart from a stranger's socket.
-        self.repo_id = hashlib.sha256(str(self.repo).encode()).hexdigest()[:12]
         self.job = None
         self.console_restart_required = False
         self.job_lock = threading.Lock()
@@ -3311,7 +3319,7 @@ class Console:
                     job.state = "error"
                     job.emit(t="phase", name="error",
                              detail="Could not install: " + ", ".join(missing) +
-                                    ". Install them by hand and reopen Bitcoin Vibes.")
+                                    ". Install them by hand, then use the node's start button to retry.")
                     return
             else:
                 job.emit(t="log", line="Build tools already present")
@@ -3691,8 +3699,16 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         path, query = url.path, parse_qs(url.query)
         c = self.console
-        if path == "/api/ping":  # unauthenticated: only says "a console lives here"
-            self._send(200, {"app": "bitcoin-vibes", "repo": c.repo_id})
+        if path == "/api/ping":  # public discovery, never an access key
+            found = {"app": "bitcoin-vibes", "repo": c.repo_id, "chain": c.opts.chain}
+            nonces = parse_qs(url.query, keep_blank_values=True).get("nonce")
+            if nonces is not None:
+                if len(nonces) != 1 or not re.fullmatch(r"[0-9a-f]{32}", nonces[0]):
+                    self._send(400, {"error": "Use one 32-character hexadecimal nonce"})
+                    return
+                found["nonce"] = nonces[0]
+                found["proof"] = console_proof(c.key, c.repo_id, c.opts.chain, self.server.server_port, nonces[0])
+            self._send(200, found)
             return
         if path == "/import":
             # A link from another site arrives without the console's cookie
@@ -3895,6 +3911,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._job_reply(c.start_job("playground", f"Produce {blocks} blocks on my private chain", c.playground_runner(blocks)))
                 elif action == "restart":
                     self._job_reply(c.start_job("activate", "Restart the checked build", c.activate_runner()))
+                elif action == "start" and not c.bin_path("bitcoind") and not c.build_state.get("path"):
+                    # A failed first setup can be retried in the existing
+                    # console after connectivity/tools have been fixed.
+                    self._job_reply(c.start_job("setup", "Prepare and start the local node", c.setup_runner()))
                 elif action in ("start", "stop"):
                     def lifecycle(job):
                         job.emit(t="phase", name="node", detail="Starting the node" if action == "start" else "Stopping the node")
@@ -4094,6 +4114,80 @@ def confirm_mainnet(opts):
     print()
 
 
+class _NoProbeRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def console_proof(key, repo, chain, port, nonce):
+    # Bind the real listening port, not the request Host header. A different
+    # local service cannot forward a challenge to the real console and use
+    # its answer to obtain the access key on that service's own port.
+    message = json.dumps(["bitcoin-vibes", repo, chain, port, nonce], separators=(",", ":")).encode()
+    return hmac.new(key.encode(), message, hashlib.sha256).hexdigest()
+
+
+def probe_console(port, nonce=None):
+    """Bounded loopback discovery; no key, cookies, redirects or proxies."""
+    if nonce is not None and (not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce)):
+        return None
+    result = queue.Queue(maxsize=1)
+    def fetch():
+        body = None
+        try:
+            suffix = "?nonce=" + nonce if nonce is not None else ""
+            local = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoProbeRedirects())
+            with local.open(f"http://127.0.0.1:{port}/api/ping" + suffix, timeout=0.15) as response:
+                value = json.loads(response.read(4096))
+                body = value if isinstance(value, dict) else None
+        except urllib.error.HTTPError as error:
+            error.close()
+        except Exception:  # another local service is not a console
+            pass
+        result.put(body)
+    # A local service streaming an unfinished response must not stall app
+    # reopening. Daemon probes never keep this second launcher alive.
+    threading.Thread(target=fetch, daemon=True).start()
+    try:
+        return result.get(timeout=0.2)
+    except queue.Empty:
+        return None
+
+
+def reopen_existing_console(console, opts):
+    """Reuse the owner of this lab, leaving its node and work untouched."""
+    if len(console.key) < 16:
+        return False
+    for port in range(opts.port, min(opts.port + 20, 65536)):
+        nonce = secrets.token_hex(16)
+        found = probe_console(port, nonce)
+        if (not found or found.get("app") != "bitcoin-vibes" or
+                found.get("repo") != console.repo_id or found.get("chain") != opts.chain or
+                found.get("nonce") != nonce):
+            continue
+        proof = found.get("proof")
+        if (not isinstance(proof, str) or not re.fullmatch(r"[0-9a-f]{64}", proof) or
+                not hmac.compare_digest(proof, console_proof(console.key, console.repo_id, opts.chain, port, nonce))):
+            continue
+        base = f"http://127.0.0.1:{port}/"
+        # App stdout is a support log. Only the browser receives the key;
+        # the same rule applies when a second launcher reuses this process.
+        print(f"A Bitcoin Vibes console for this lab is already running at {base}")
+        if opts.print_key and not opts.app:
+            print(f"  key     : {console.key}")
+        if not opts.no_open:
+            try:
+                opened = webbrowser.open(base + "?" + urlencode({"key": console.key}))
+            except Exception:
+                # Browser-tool exceptions can echo their URL. This message is
+                # safe to retain in an app launch log or a support excerpt.
+                opened = False
+            if not opened:
+                print("The existing console is still running, but its browser could not be opened. Use its original access link.")
+        return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Bitcoin Vibes console: change a Bitcoin node in plain words, then see "
@@ -4140,19 +4234,15 @@ def main():
 
     console = Console(opts)
     if not console.owns_lab:
+        if reopen_existing_console(console, opts):
+            return
         sys.exit("\nA Bitcoin Vibes console is already running for this source.\n"
-                 "Use that one: its link is in the terminal where it started. Or stop it first.\n")
+                 "A matching console for the requested network was not found on these ports. "
+                 "Use its original access link or launch with its --port, or stop that console first.\n")
     if not (HERE / "index.html").exists():
         sys.exit(f"console UI missing: {HERE / 'index.html'}")
     Handler.console = console
     Handler.load_assets(HERE, live=opts.dev)
-
-    def probe_console(port):
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1) as r:
-                return json.load(r)
-        except Exception:  # noqa: BLE001 - anything means "not a vibe console"
-            return None
 
     httpd = None
     port = opts.port
@@ -4167,8 +4257,7 @@ def main():
             if other and other.get("app") == "bitcoin-vibes" and other.get("repo") == console.repo_id:
                 sys.exit(
                     f"\nA console for this repo is already running at http://127.0.0.1:{port}/\n"
-                    f"Open the link printed in the terminal where it started, or stop it:\n"
-                    f"  kill $(lsof -tiTCP:{port} -sTCP:LISTEN)\n")
+                    "Open its original access link, or stop that console from the terminal where it started.\n")
             port += 1
     if httpd is None:
         sys.exit(f"no free port found in {opts.port}-{opts.port + 19}")
@@ -4189,7 +4278,7 @@ def main():
     print(f"  console : {url if not opts.app else f'http://127.0.0.1:{port}/ (opened in your browser)'}")
     if port != opts.port:
         print(f"  note    : port {opts.port} was busy; using {port}")
-    if opts.print_key:
+    if opts.print_key and not opts.app:
         print(f"  key     : {console.key}")
     print()
     if not sandbox["contained"]:

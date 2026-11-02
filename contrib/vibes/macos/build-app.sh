@@ -16,10 +16,18 @@ OUT="$ROOT/dist"
 APP="$OUT/Bitcoin Vibes.app"
 VERSION=$(sed -n 's/^set(CLIENT_VERSION_MAJOR \([0-9]*\))/\1/p' CMakeLists.txt).$(sed -n 's/^set(CLIENT_VERSION_MINOR \([0-9]*\))/\1/p' CMakeLists.txt)
 RELEASE_REF=$(sed -n 's/^PINNED_REF="\([^"]*\)"$/\1/p' contrib/vibes/macos/launcher.sh)
+BETA_BUILD=$(sed -n 's/^PINNED_BETA="\([^"]*\)"$/\1/p' contrib/vibes/macos/launcher.sh)
+BUNDLE_ID="group.hotpixel.bitcoinvibes"
+DISPLAY_NAME="Bitcoin Vibes"
+case "$BETA_BUILD" in
+  '') ;;
+  1) BUNDLE_ID="group.hotpixel.bitcoinvibes.beta"; DISPLAY_NAME="Bitcoin Vibes Beta"; APP="$OUT/Bitcoin Vibes Beta.app" ;;
+  *) echo "Invalid beta launcher stamp" >&2; exit 1 ;;
+esac
 if [ -n "$RELEASE_REF" ]; then
-  printf '%s\n' "$RELEASE_REF" | grep -Eq '^v[0-9]+\.[0-9]+-[0-9]+$' \
+  printf '%s\n' "$RELEASE_REF" | grep -Eq '^(beta-)?v[0-9]+\.[0-9]+-[0-9]+$' \
     || { echo "Invalid pinned release tag: $RELEASE_REF" >&2; exit 1; }
-  VERSION=$(printf '%s\n' "$RELEASE_REF" | sed 's/^v//; s/-/./')
+  VERSION=$(printf '%s\n' "$RELEASE_REF" | sed 's/^beta-//; s/^v//; s/-/./')
 fi
 
 echo "→ building Bitcoin Vibes.app $VERSION"
@@ -31,9 +39,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key>              <string>Bitcoin Vibes</string>
-  <key>CFBundleDisplayName</key>       <string>Bitcoin Vibes</string>
-  <key>CFBundleIdentifier</key>        <string>group.hotpixel.bitcoinvibes</string>
+  <key>CFBundleName</key>              <string>$DISPLAY_NAME</string>
+  <key>CFBundleDisplayName</key>       <string>$DISPLAY_NAME</string>
+  <key>CFBundleIdentifier</key>        <string>$BUNDLE_ID</string>
   <key>CFBundleVersion</key>           <string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleExecutable</key>        <string>BitcoinVibes</string>

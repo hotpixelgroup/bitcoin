@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Closed-beta tester guide
+    url: https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes-beta.md
+    about: Pinned candidate, setup, test tasks, known limitations and what to report.
   - name: Security vulnerability
     url: https://github.com/hotpixelgroup/bitcoin/security/advisories/new
     about: Please report privately, not as a public issue.
@@ -8,4 +11,4 @@ contact_links:
     about: Installing, running, and what the settings mean.
   - name: A question about Bitcoin itself
     url: https://bitcoin.stackexchange.com/
-    about: We are a node, not a help desk — but that lot are excellent.
+    about: General Bitcoin questions are best directed to the wider community.

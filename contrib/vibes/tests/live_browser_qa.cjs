@@ -36,6 +36,41 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
     assert.equal(new URL(page.url()).search, '', 'access key is removed from address bar');
 
+    // Only explicitly allowed fields enter a public report, even when status
+    // contains local paths, provider details or other private metadata.
+    let malformedReportFields = false;
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const state = await response.json();
+      await route.fulfill({response, json: {...state, branch: 'PRIVATE-BRANCH', private: 'PRIVATE-STATUS',
+        ...(malformedReportFields ? {source: '/Users/PRIVATE-SOURCE', chain: 'PRIVATE-CHAIN', node: {...state.node, health: 'PRIVATE-HEALTH'}} : {}),
+        sandbox: {...state.sandbox, detail: '/Users/PRIVATE-PATH/wallet.dat', ...(malformedReportFields ? {contained: 'PRIVATE-SANDBOX'} : {})},
+        agent: {...state.agent, private: 'PRIVATE-PROVIDER'}}});
+    });
+    await page.reload();
+    await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
+    await page.locator('#wish').fill('PRIVATE-PROMPT');
+    await page.locator('#prepare-report').click();
+    const report = await page.locator('#report-context').inputValue();
+    assert.match(report, /Mode: Installed local console/);
+    assert.match(report, /Source commit: [a-f0-9]{40}/);
+    assert.match(report, /Network: regtest/);
+    assert.match(report, /Sandbox: Not contained/);
+    assert.match(report, /Node health: stopped/);
+    assert.doesNotMatch(report, /PRIVATE|wallet\.dat|vibekey|127\.0\.0\.1|https?:/);
+    assert.ok(!report.includes(config.key), 'the session access key is excluded');
+    malformedReportFields = true;
+    await page.reload();
+    await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
+    await page.locator('#prepare-report').click();
+    const malformed = await page.locator('#report-context').inputValue();
+    for (const label of ['Source commit', 'Network', 'Sandbox', 'Node health']) assert.match(malformed, new RegExp(label + ': Unavailable'));
+    assert.doesNotMatch(malformed, /PRIVATE/);
+    await page.unroute('**/api/status');
+    await page.reload();
+    await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
+    await page.locator('#wish').fill('');
+
     // Polling must not repeatedly announce the connected live region while a
     // learner is reading. Observe real DOM mutations across two HTTP polls.
     await page.evaluate(() => {

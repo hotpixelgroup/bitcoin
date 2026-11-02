@@ -22,12 +22,17 @@ on:
       tag:
         description: "Existing tag to build and publish"
         required: true
+      prerelease:
+        description: "Publish a closed-beta prerelease without changing the stable latest release"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
 
 jobs:
   build:
@@ -36,7 +41,7 @@ jobs:
     timeout-minutes: 180
     env:
       # Secrets cannot be read in a step's `if`, so their presence is noted here.
-      HAVE_SIGNING_CERT: ${{ secrets.VIBES_CODESIGN_P12_BASE64 != '' }}
+      HAVE_SIGNING_CERT: ${{ !(github.event_name == 'workflow_dispatch' && inputs.prerelease) && secrets.VIBES_CODESIGN_P12_BASE64 != '' }}
     strategy:
       fail-fast: true
       matrix:
@@ -58,7 +63,11 @@ jobs:
       - name: Verify the immutable release target and runner architecture
         run: |
           set -eu
-          printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+-[0-9]+$'
+          case "$PRERELEASE" in
+            true) printf '%s\n' "$TAG" | grep -Eq '^beta-v[0-9]+\.[0-9]+-[0-9]+$' ;;
+            false) printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+-[0-9]+$' ;;
+            *) echo "::error::Invalid release channel"; exit 1 ;;
+          esac
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$TAG^{commit}")"
           # Dispatch from the tag (or its exact commit), so provenance describes
           # the source actually checked out rather than an unrelated master.
@@ -193,9 +202,13 @@ jobs:
           set -e
           test "$(grep -c '^PINNED_REF=""$' contrib/vibes/macos/launcher.sh)" = "1"
           test "$(grep -c '^PINNED_COMMIT=""$' contrib/vibes/macos/launcher.sh)" = "1"
+          test "$(grep -c '^PINNED_BETA=""$' contrib/vibes/macos/launcher.sh)" = "1"
           sed -i '' "s/^PINNED_REF=\"\"\$/PINNED_REF=\"$TAG\"/" contrib/vibes/macos/launcher.sh
           SHA=$(git rev-parse HEAD)
           sed -i '' "s/^PINNED_COMMIT=\"\"\$/PINNED_COMMIT=\"$SHA\"/" contrib/vibes/macos/launcher.sh
+          if [ "$PRERELEASE" = true ]; then
+            sed -i '' 's/^PINNED_BETA=""$/PINNED_BETA="1"/' contrib/vibes/macos/launcher.sh
+          fi
           grep -n '^PINNED_REF=' contrib/vibes/macos/launcher.sh
 
       # Signing is optional. With no secrets the app is ad-hoc signed and not
@@ -226,10 +239,10 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         env:
-          VIBES_CODESIGN_IDENTITY: ${{ secrets.VIBES_CODESIGN_IDENTITY }}
-          VIBES_NOTARY_APPLE_ID: ${{ secrets.VIBES_NOTARY_APPLE_ID }}
-          VIBES_NOTARY_TEAM_ID: ${{ secrets.VIBES_NOTARY_TEAM_ID }}
-          VIBES_NOTARY_PASSWORD: ${{ secrets.VIBES_NOTARY_PASSWORD }}
+          VIBES_CODESIGN_IDENTITY: ${{ env.PRERELEASE != 'true' && secrets.VIBES_CODESIGN_IDENTITY || '' }}
+          VIBES_NOTARY_APPLE_ID: ${{ env.PRERELEASE != 'true' && secrets.VIBES_NOTARY_APPLE_ID || '' }}
+          VIBES_NOTARY_TEAM_ID: ${{ env.PRERELEASE != 'true' && secrets.VIBES_NOTARY_TEAM_ID || '' }}
+          VIBES_NOTARY_PASSWORD: ${{ env.PRERELEASE != 'true' && secrets.VIBES_NOTARY_PASSWORD || '' }}
         run: |
           set -euo pipefail
           sh contrib/vibes/macos/build-app.sh --dmg | tee "$RUNNER_TEMP/app-build.log"
@@ -390,15 +403,30 @@ jobs:
         run: |
           COMMIT=$(git rev-parse "$TAG^{commit}")
           UPSTREAM=$(sed -n 's/^commit=//p' contrib/vibes/UPSTREAM)
-          cat > notes.md <<EOF
-          ## Install
+          : > notes.md
+          if [ "$PRERELEASE" = true ]; then
+            cat >> notes.md <<EOF
+          **Closed-beta candidate.** This prerelease is for the invited test cohort and does not replace the stable latest release. Follow the [tester guide](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/doc/vibes-beta.md), use a separate private-chain lab, and report the exact candidate version. Signing remains deferred; the Mac app is ad-hoc signed and not notarised.
 
+          EOF
+          fi
+          printf '## Install\n\n' >> notes.md
+          if [ "$PRERELEASE" = true ]; then
+            cat >> notes.md <<EOF
+          Follow the [closed-beta tester guide](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/doc/vibes-beta.md) to check your download and install into a new, separate lab. The Mac download contains **Bitcoin Vibes Beta.app**, with its own app identity and per-candidate lab. Do not use stable \`latest\` links for this beta. If macOS or endpoint protection blocks installation, record the warning and stop; do not disable protections or remove quarantine attributes.
+
+          EOF
+          else
+            cat >> notes.md <<EOF
           \`\`\`bash
           curl -fsSL https://github.com/hotpixelgroup/bitcoin/releases/download/$TAG/install.sh | sh
           \`\`\`
 
           This installer installs exactly this release. On a Mac you can instead download \`BitcoinVibes.dmg\`.
 
+          EOF
+          fi
+          cat >> notes.md <<EOF
           ## What is here
 
           | File | What it is |
@@ -422,13 +450,15 @@ jobs:
 
           ## Changes
 
+          - Added closed-beta tester instructions, structured bug and usability feedback forms, and an explicit preview/copy flow for limited report context. Reports are never submitted automatically.
+          - Fixed reopening an already-running local lab so a second app launch can reuse its existing console without altering the node or current experiment.
           - Made the console's humour consistent while keeping observations, errors and recovery instructions precise.
           - Fixed first launch: prepared programs are tried before compiler dependencies, command-line-tool stubs are detected, and Mac source downloads proceed without a blocking dialog. Failed downloads can be retried without replacing existing files.
           - Added release checks for the full noninteractive installer and real shipped app entry through automatic setup, strict-cookie authentication, HTML/assets, the first lesson, all three variants and relaunch persistence. The workflow exercises candidates before publication and public downloads afterward on fresh runners. Browser opening is suppressed; Finder/Gatekeeper permission prompts are not automated.
           - Retains the lesson, scoring, saved learning, settings and exact demo improvements from [PR #13](https://github.com/hotpixelgroup/bitcoin/pull/13), and the layout and packaging fixes from [PR #14](https://github.com/hotpixelgroup/bitcoin/pull/14).
           - Improved the learning flow, mobile layout, long-text wrapping, and radio-button and checkbox alignment.
           - Preserved build provenance through installer updates and made source updates explicitly require reopening the console.
-          - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^v//;s/-/./')\`. Downloading a new launcher preserves an existing lab: use **Setup & help → Check for and take updates**, then close and reopen Bitcoin Vibes to load the new source. Saved experiments are replayed by the console update action.
+          - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^beta-//;s/^v//;s/-/./')\`. Beta launchers use a separate lab by default; stable launchers preserve an existing lab. Use the tester guide for the pinned beta rather than taking source updates midway through a session.
           - Prepared archives contain the monolithic node and CLI with optional multiprocess IPC disabled, so no Cap'n Proto/KJ shared libraries from the builder are needed to run them.
           - The prepared Mac app and programs require **Apple silicon and macOS 15 or later**. Their final load commands are checked for that minimum and for system-only libraries. Other Mac configurations require a compatible source build and are not verified by this release workflow.
           EOF
@@ -442,6 +472,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Bitcoin Vibes ${{ env.TAG }}
           draft: true
+          prerelease: ${{ env.PRERELEASE == 'true' }}
           files: assets/*
           body_path: notes.md
           generate_release_notes: true
@@ -451,13 +482,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -eu
           expected=$(find assets -maxdepth 1 -type f | wc -l)
           attached=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
           if [ "$attached" -ne "$expected" ]; then
             echo "::error::Only $attached of $expected files are attached; the release stays a draft."
             exit 1
           fi
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          case "$PRERELEASE" in
+            true) gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=true --latest=false ;;
+            false) gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest=true ;;
+            *) echo "::error::Invalid release channel"; exit 1 ;;
+          esac
 
   verify-public-downloads:
     name: Public downloads (${{ matrix.slug }})

@@ -130,6 +130,12 @@ async function fixtureServer() {
             await page.locator('#beliefs-summary').click();
             await measure(page,'#beliefs-list .choice',`${engine}/${size.name}/questionnaire`);
             await fieldsFit(page,`${engine}/${size.name}/questionnaire`);
+            await page.locator('#prepare-report').click();
+            await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new Error('manual-copy fixture');}}}));
+            await page.locator('#copy-report-context').click();
+            assert.equal(await page.locator('#report-context').evaluate(input=>input.readOnly && document.activeElement===input && input.selectionStart===0 && input.selectionEnd===input.value.length),true,'manual report copying selects only the reviewed context');
+            assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${engine}/${size.name}: expanded beta help fits the viewport`);
+            if(size.name==='desktop' || size.name==='mobile') await capture(page,`${engine}-${size.name}-beta-help`);
             assert.deepEqual(errors,[]);
 
             // The real console's preference and settings forms, without an AI
@@ -162,7 +168,12 @@ async function fixtureServer() {
             await page.locator('#settings-fields input[type="checkbox"]').first().waitFor();
             await measure(page,'.setting:has(> input[type="checkbox"]) label',`${engine}/${size.name}/settings`,true);
             assert.deepEqual(errors,[]);
-          } finally { await context.close(); }
+          } finally {
+            // Polling can enter an intercepted request as assertions finish.
+            // Let its callback settle before disposing the request context.
+            for (const page of context.pages()) await page.unrouteAll({behavior:'wait'});
+            await context.close();
+          }
         }
       } finally { await browser.close(); }
     }

@@ -64,7 +64,20 @@ if (output) fs.mkdirSync(output, {recursive: true});
         await capture('missing-node');
         await page.locator('#readiness-action').click();
         assert.equal(await page.evaluate(() => document.activeElement.id), 'node-controls', 'setup guidance moves keyboard focus to node setup');
-        assert.equal(await page.locator('#build').isEnabled(), true, 'setup has an available build action');
+        assert.equal(await page.locator('#node-start').innerText(), 'Prepare and start node');
+        assert.equal(await page.locator('#node-start').isEnabled(), true, 'missing programs can retry preparation without forcing a source build');
+        let setupRetries = 0;
+        await page.route('**/api/node', async route => {
+          assert.equal(route.request().method(), 'POST');
+          assert.deepEqual(route.request().postDataJSON(), {action: 'start'});
+          setupRetries++;
+          stage = 'working';
+          await route.fulfill({json: {job}});
+        });
+        await page.locator('#node-start').click();
+        await page.locator('#readiness-title').filter({hasText: 'Preparing your lab'}).waitFor();
+        assert.equal(setupRetries, 1, 'retry sends one existing node-start request');
+        assert.equal(await page.locator('#node-start').isDisabled(), true, 'preparation cannot be started twice while busy');
 
         for (const value of ['working', 'failed']) {
           stage = value;
@@ -84,8 +97,13 @@ if (output) fs.mkdirSync(output, {recursive: true});
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
             assert.equal(await page.evaluate(() => window.preparationAnnouncements), 0, 'unchanged preparation error is not repeatedly announced');
             await page.evaluate(() => window.preparationObserver.disconnect());
+            assert.equal(await page.locator('#node-start').isEnabled(), true, 'failed setup leaves the preparation retry available');
+            await page.locator('#node-start').click();
+            await page.locator('#readiness-title').filter({hasText: 'Preparing your lab'}).waitFor();
+            assert.equal(setupRetries, 2, 'failed preparation can be retried through the same node action');
           }
         }
+        await page.unroute('**/api/node');
 
         stage = 'ready';
         await page.reload();

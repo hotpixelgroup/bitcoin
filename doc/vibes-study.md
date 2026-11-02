@@ -1,14 +1,15 @@
 # Running a session with learners
 
-Nobody has measured whether changing a node teaches Bitcoin. This page is for
-anyone willing to find out: a teacher, a meetup organiser, or the maintainers.
-It asks little of the learner and produces a record you can compare across
-people.
+This page helps a teacher, meetup organiser or maintainer observe where
+learners get stuck and how they explain the results. It does not establish
+that changing a node teaches better than another approach. For a closed beta,
+use the [beta learner protocol](vibes-beta-study.md), which adds consent,
+privacy, separate humour feedback and predefined criteria for widening the beta.
 
 ## Who and what you need
 
-- Five to ten people who do not work on Bitcoin software. Five is enough to
-  see where people get stuck.
+- Five to ten consenting people who do not work on Bitcoin software. A small
+  sample can expose problems; it does not establish how common they are.
 - One machine per person with the lab installed and a reference node ready, or
   the [browser demo](https://hotpixelgroup.github.io/bitcoin/demo.html), which
   replays recorded results and needs nothing installed.
@@ -22,8 +23,8 @@ people.
    answer; write down the reasons, in their words.
 2. **Experiments.** They run these four, in this order, with no help:
    *Are your coins in your wallet?*, *Can a filter keep data out of the
-   chain?*, *Can you raise the block reward?* and *How much mining power does a
-   stricter rule need?* (at one share below half and one above). They make each
+   chain?*, *Can you raise the block reward?* and *How does mining power affect
+   a stricter chain?* (at two well-separated supported shares). They make each
    prediction before running it.
 3. **After.** They answer the ten statements again, then read the comparison
    the console shows.
@@ -36,20 +37,19 @@ people.
   where it was on the page.
 - Every prediction they got wrong, and what they said when they saw the
   result.
-- Anything they concluded that is not true. This matters most: the research
-  behind this lab found that a wrong idea does more harm than a missing one,
-  and that people believe what a tool shows them.
+- Anything they concluded that is not true, in their own words. Check whether
+  the explanation or interface encouraged that conclusion.
 - Anything they tried to do that the lab would not let them.
 
 Do not correct them during the session. Afterwards is fine.
 
 ## What to compare
 
-For each learner the exported record gives three numbers: statements right
-before, statements right after, and follow-up questions right. The follow-up
-questions matter most, because each one asks about a situation the experiment
-did not show. A learner who improves on the statements and misses the
-follow-ups has remembered the answer without the idea.
+The exported record includes before/after, prediction and follow-up scores.
+Follow-ups ask about a different setting, but a correct option alone does not
+demonstrate understanding. Compare scores with the learner's own explanation;
+do not label a learner's understanding from those numbers alone. Repeated
+questions, feedback and prior knowledge can all affect the result.
 
 Be careful what you claim from this. A handful of people and a before-and-after
 design can show where the lab confuses people and whether answers move at all.
@@ -58,7 +58,12 @@ would need a comparison group.
 
 ## Sending results back
 
-Open an issue at
-[github.com/hotpixelgroup/bitcoin](https://github.com/hotpixelgroup/bitcoin/issues)
-with the exported records (they contain answers and times, nothing personal)
-and your notes. The wrong conclusions people reached are the most useful part.
+Sharing notes or **Download my record** exports is optional. Exports contain
+answers and identifiers, and can include times; they are not guaranteed
+anonymous. Review them before sharing and never include seeds, wallet backups,
+access links, keys or account details. Get separate, informed permission before
+attaching participant data or quotations to a public issue at
+[github.com/hotpixelgroup/bitcoin](https://github.com/hotpixelgroup/bitcoin/issues).
+The [beta protocol](vibes-beta-study.md#consent-and-privacy) covers consent and
+retention. A reproducible description of a confusing result can be useful
+without anyone's raw record.

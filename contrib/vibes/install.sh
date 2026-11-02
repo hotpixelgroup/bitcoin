@@ -389,13 +389,22 @@ try_prebuilt() {
   tmp=$(mktemp -d) || return 1
 
   note "looking for a prebuilt node for $slug in $from"
-  if ! curl -fsSL --max-time 300 "$url" -o "$tmp/node.tar.gz" 2>/dev/null; then
-    note "none published for this platform — building instead"
+  if curl -fsSL --max-time 300 "$url" -o "$tmp/node.tar.gz" 2>/dev/null; then
+    :
+  else
+    download_code=$?
+    note "the prepared node download failed (curl exit $download_code). Check your"
+    note "connection and release availability, then re-run this installer to retry."
+    note "existing programs were kept; trying a source build instead"
     rm -rf "$tmp"; return 1
   fi
-  if ! curl -fsSL --max-time 60 "$url.sha256" -o "$tmp/node.sha256" 2>/dev/null; then
-    note "no SHA-256 is published beside it, so the download could not be"
-    note "checked and was not used: building instead"
+  if curl -fsSL --max-time 60 "$url.sha256" -o "$tmp/node.sha256" 2>/dev/null; then
+    :
+  else
+    download_code=$?
+    note "the published SHA-256 could not be downloaded (curl exit $download_code),"
+    note "so the node download was not used. Check your connection or release"
+    note "availability and re-run to retry; trying a source build instead"
     rm -rf "$tmp"; return 1
   fi
   expect=$(awk 'NR == 1 { print tolower($1) }' "$tmp/node.sha256")

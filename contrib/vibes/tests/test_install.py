@@ -164,6 +164,13 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(git(dest, 'describe', '--tags', '--exact-match', 'HEAD'), 'v1.0-1')
 
 
+    def test_explicit_beta_tag_install_gets_the_exact_candidate_and_a_local_branch(self):
+        git(self.origin, 'tag', 'beta-v31.99-11')
+        self.dest = Path(self.tmp.name) / 'beta-candidate'
+        self.install(VIBES_REF='beta-v31.99-11')
+        self.assertEqual(git(self.dest, 'describe', '--tags', '--exact-match', 'HEAD'), 'beta-v31.99-11')
+        self.assertEqual(git(self.dest, 'rev-parse', '--abbrev-ref', 'HEAD'), 'vibes')
+
     def test_initial_download_failure_is_retryable_and_preserves_unrelated_files(self):
         retry = Path(self.tmp.name) / 'retry'
         env = {**os.environ, **GIT_ENV, 'VIBES_INSTALL_ONLY': 'fetch', 'VIBES_REF': 'master',
@@ -230,9 +237,9 @@ class PrebuiltTests(unittest.TestCase):
         digest = checksum or hashlib.sha256(archive.read_bytes()).hexdigest()
         (self.served / f'{folder}.tar.gz.sha256').write_text(f'{digest}  {folder}.tar.gz\n')
 
-    def run_installer(self):
+    def run_installer(self, **extra):
         env = {**os.environ, **GIT_ENV, 'VIBES_INSTALL_ONLY': 'prebuilt', 'NO_COLOR': '1',
-               'VIBES_DIR': str(self.dest), 'VIBES_PREBUILT_URL': 'file://' + str(self.served)}
+               'VIBES_DIR': str(self.dest), 'VIBES_PREBUILT_URL': 'file://' + str(self.served), **extra}
         done = subprocess.run(['sh', str(INSTALL)], capture_output=True, text=True, env=env)
         return done.returncode, done.stdout + done.stderr
 
@@ -245,6 +252,47 @@ class PrebuiltTests(unittest.TestCase):
         # The commit it was built from goes along, so the console can adopt it
         # as the unmodified reference node.
         self.assertEqual((self.dest / 'build/bin/COMMIT').read_text().strip(), self.commit)
+
+    def test_exact_beta_tag_selects_its_own_prepared_archive(self):
+        self.publish()
+        git(self.dest, 'tag', 'beta-v31.99-11')
+        tools = Path(self.tmp.name) / 'beta-tools'
+        tools.mkdir()
+        calls = Path(self.tmp.name) / 'download-urls'
+        curl = tools / 'curl'
+        curl.write_text('#!/usr/bin/env python3\nimport os,sys,shutil\nfrom pathlib import Path\n'
+                        'url=next(arg for arg in sys.argv if arg.startswith("https://"))\n'
+                        'with open(os.environ["DOWNLOAD_URLS"],"a") as out: out.write(url+"\\n")\n'
+                        'shutil.copyfile(Path(os.environ["SERVED_ARCHIVES"])/url.rsplit("/",1)[1],sys.argv[sys.argv.index("-o")+1])\n')
+        curl.chmod(0o755)
+        code, out = self.run_installer(PATH=str(tools) + os.pathsep + os.environ['PATH'], VIBES_PREBUILT_URL='',
+                                       DOWNLOAD_URLS=str(calls), SERVED_ARCHIVES=str(self.served))
+        self.assertEqual(code, 0, out)
+        urls = calls.read_text().splitlines()
+        self.assertEqual(len(urls), 2)
+        self.assertTrue(all('/releases/download/beta-v31.99-11/vibes-node-' in url for url in urls))
+        self.assertEqual((self.dest / 'build/bin/COMMIT').read_text().strip(), self.commit)
+
+    def test_failed_network_download_preserves_programs_and_reports_retry_without_raw_diagnostics(self):
+        self.publish()
+        tools = Path(self.tmp.name) / 'offline-tools'
+        tools.mkdir()
+        curl = tools / 'curl'
+        curl.write_text('#!/bin/sh\necho "private-url?key=do-not-share" >&2\nexit 6\n')
+        curl.chmod(0o755)
+        (self.dest / '.git/info/exclude').write_text('build/\n')
+        binary = self.dest / 'build/bin'
+        binary.mkdir(parents=True)
+        (binary / 'bitcoind').write_text('existing node')
+        (binary / 'bitcoin-cli').write_text('existing cli')
+        code, out = self.run_installer(PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        self.assertNotEqual(code, 0)
+        self.assertIn('curl exit 6', out)
+        self.assertIn('re-run this installer to retry', out)
+        self.assertNotIn('none published', out)
+        self.assertNotIn('do-not-share', out)
+        self.assertEqual((binary / 'bitcoind').read_text(), 'existing node')
+        self.assertEqual((binary / 'bitcoin-cli').read_text(), 'existing cli')
 
     def test_tampered_archive_is_refused(self):
         self.publish(checksum='0' * 64)

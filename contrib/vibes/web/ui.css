@@ -632,6 +632,26 @@ details details {
   align-items: center;
 }
 
+.beta-note {
+  white-space: normal;
+}
+
+.beta-note h2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+  color: inherit;
+}
+
+.beta-note p {
+  margin: 0 0 12px;
+}
+
+.report-context {
+  max-height: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .evidence {
   margin-top: 12px;
 }

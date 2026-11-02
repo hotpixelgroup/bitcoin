@@ -1,0 +1,39 @@
+name: Closed-beta feedback
+description: Share a confusing step, a lesson insight or feedback on the humour.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use "Report a problem" for a reproducible malfunction. This form is for
+        usability and learning feedback. Reports are public; omit identifying
+        study notes, access links, credentials and private requests.
+  - type: input
+    id: version
+    attributes:
+      label: Release and mode
+      placeholder: beta-v31.99-11 installed lab / browser demo
+    validations: {required: true}
+  - type: textarea
+    id: task
+    attributes:
+      label: What were you trying to do?
+      description: Name the lesson or step without including private request text.
+    validations: {required: true}
+  - type: textarea
+    id: experience
+    attributes:
+      label: What was clear, confusing or unexpected?
+      description: Your own words are useful. There is no preferred answer.
+    validations: {required: true}
+  - type: textarea
+    id: learning
+    attributes:
+      label: What did you take away from the lesson? (optional)
+      description: Explain it in your own words. You can also say what remains unclear.
+    validations: {required: false}
+  - type: textarea
+    id: humour
+    attributes:
+      label: How did the humour affect the experience? (optional)
+      description: Helpful, distracting, unclear or simply unfunny are all useful feedback. Mention a specific line if relevant.
+    validations: {required: false}
