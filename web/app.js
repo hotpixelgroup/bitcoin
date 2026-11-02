@@ -119,6 +119,27 @@ function remember(key, value) {
   return null;
 }
 
+function reportContext() {
+  // An allowlist, never a dump of status, URLs, browser storage or agent output.
+  const userAgent = navigator.userAgent;
+  const browsers = [['Edge', /Edg(?:A|iOS)?\/(\d{1,4})/], ['Firefox', /(?:Firefox|FxiOS)\/(\d{1,4})/],
+    ['Opera', /OPR\/(\d{1,4})/], ['Chrome', /(?:Chrome|CriOS)\/(\d{1,4})/], ['Safari', /Version\/(\d{1,4}).*Safari\//]];
+  const browser = browsers.map(([name, pattern]) => { const match = userAgent.match(pattern); return match ? name + ' ' + match[1] : ''; }).find(Boolean) || 'Other browser';
+  const source = typeof status?.source === 'string' && /^[a-f0-9]{40}$/i.test(status.source) ? status.source : 'Unavailable';
+  const chain = ['regtest', 'signet', 'testnet', 'testnet4', 'main'].includes(status?.chain) ? status.chain : 'Unavailable';
+  const health = ['healthy', 'syncing', 'starting', 'stopped', 'diverged'].includes(status?.node?.health) ? status.node.health : 'Unavailable';
+  const sandbox = status?.sandbox?.contained;
+  return ['Bitcoin Vibes report context',
+    'Mode: ' + (demo ? 'Browser demo (recorded results)' : 'Installed local console'),
+    'Source commit: ' + source,
+    'Browser: ' + browser,
+    'Network: ' + chain,
+    'Sandbox: ' + (demo ? 'Not applicable (recorded demo)' : sandbox === true ? 'Contained' : sandbox === false ? 'Not contained' : 'Unavailable'),
+    'Node health: ' + (demo ? 'No node runs in the browser demo' : health),
+    'Status connection: ' + (demo ? 'Local browser replay' : lastSuccess && Date.now() - lastSuccess < 15000 ? 'Connected' : 'Unavailable; any fields above are last known values'),
+  ].join('\n');
+}
+
 async function api(path, body) {
   if (demo) return window.VibesDemo.api(path, body);
   const options = body !== undefined
@@ -534,7 +555,7 @@ function renderNode(next) {
   const health = {healthy: 'Running', syncing: 'Synchronising', starting: 'Starting', stopped: 'Stopped', diverged: 'Refused a block'};
   $('node-health').textContent = health[next.node.health] || title(next.node.health);
   $('node-health').className = 'pill ' + (next.node.health === 'healthy' ? 'good' : next.node.health === 'diverged' ? 'bad' : '');
-  $('node-start').textContent = next.node.running ? 'Stop node' : 'Start node';
+  $('node-start').textContent = next.node.running ? 'Stop node' : next.binary ? 'Start node' : 'Prepare and start node';
   $('chain-note').textContent = next.chain_note || '';
 
   const alertKey = JSON.stringify([next.node.alerts || [], next.source_problem || '']);
@@ -619,7 +640,6 @@ function updateControls() {
   // waits for a restart. Starting or rebuilding it would use stale lab code.
   if (restartRequired && status?.node?.running) $('node-start').disabled = busy || !online;
   document.querySelectorAll('[data-curated]').forEach(button => { button.disabled = busy || restartRequired || !online || (!demo && !status?.binary); });
-  $('node-start').disabled ||= !status?.binary && !status?.node?.running;
   const blocked = !!status?.activation_block;
   $('activate').disabled ||= !status?.build?.verified || blocked;
   $('restart').disabled ||= !status?.build?.verified || !status?.node?.running || blocked;
@@ -1443,6 +1463,22 @@ $('save-settings').onclick = async () => {
   }
 };
 $('import').onclick = () => importRequest($('import-token').value);
+$('prepare-report').onclick = () => {
+  $('report-context').value = reportContext();
+  $('report-context').hidden = false;
+  $('copy-report-context').hidden = false;
+  setText('report-status', 'Only these fields are copied. Review them, then paste the context into your GitHub report. Nothing is sent automatically.');
+};
+$('copy-report-context').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('report-context').value);
+    setText('report-status', 'Context copied. Paste it into your report and add the steps that reproduce the problem.');
+  } catch {
+    setText('report-status', 'Clipboard access is unavailable. Select the context above and copy it manually.');
+    $('report-context').focus();
+    $('report-context').select();
+  }
+};
 $('reset-demo').onclick = async () => {
   if (!await confirmAction('Reset the browser demo?', 'This clears the demo\'s experiments and answers. Your saved draft stays on this device.', 'Reset')) return;
   window.VibesDemo.reset();
