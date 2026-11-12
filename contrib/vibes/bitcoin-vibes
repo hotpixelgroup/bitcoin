@@ -2420,9 +2420,13 @@ class Console:
         rules = []
         for path in SECRET_PATHS:
             rules += [f"Read(~/{path})", f"Read(~/{path}/**)"]
-        for path in (self.state_dir / "key", self.data_dir):
+        # Saved learning notes and job records are private even when a lab
+        # lives outside the home folder covered by the rules below.
+        for path in (self.state_dir / "key", self.data_dir, self.jobs_dir,
+                     self.state_dir / "learning.json", self.state_dir / "study.json"):
             absolute = "/" + str(path)            # "//path" is how an absolute path is written
-            rules += [f"Read({absolute})", f"Read({absolute}/**)", f"Edit({absolute}/**)"]
+            for tool in ("Read", "Edit"):
+                rules += [f"{tool}({absolute})", f"{tool}({absolute}/**)"]
         home = Path.home().resolve()
         target = Path(workspace or self.repo).resolve()
         if home not in target.parents:

@@ -451,7 +451,7 @@ jobs:
 
           ## Changes
 
-          - Keep selected text and baseline comparisons in place while the console receives updates. Show compilation and test progress in the experiment panel.
+          - Keep selected text and baseline comparisons in place while the console receives updates, including for older saved experiments. Show compilation and test progress in the experiment panel.
           - Save custom prediction notes locally and include them in learning exports. Show the configured Claude Code estimate limit before sending a request and label returned estimates in USD.
           - Updated the maintained upstream baseline to Bitcoin Core 32.1. The default node keeps its consensus rules; only the existing peer user-agent branding differs under source code.
           - Added a five-foundation learning path and Learning / Full lab views. The landing page now leads with learning through evidence.

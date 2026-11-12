@@ -55,6 +55,7 @@ let nodeAlertKey = null;
 let readinessTarget = 'node-controls';
 let learningUI = null;
 const recordingPredictions = new Set();
+const experimentKey = job => job?.id || job?.sha;
 const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
 document.body.classList.toggle('demo-mode', demo);
@@ -904,7 +905,7 @@ function renderDiffFiles(job) {
   const box = $('diff-files');
   const files = job.files || [];
   if (files.length < 2 || !files.some(file => file.path === diffFilter)) diffFilter = null;
-  const key = JSON.stringify([job.id, files]);
+  const key = JSON.stringify([experimentKey(job), files]);
   if (key !== diffFilesKey) {
     diffFilesKey = key;
     box.replaceChildren();
@@ -929,7 +930,7 @@ function renderDiffFiles(job) {
 }
 
 function renderDiffPanel(job) {
-  if (baselineDiff && (baselineDiff.job !== job.id || baselineDiff.source !== status?.source)) baselineDiff = null;
+  if (baselineDiff && (baselineDiff.job !== experimentKey(job) || baselineDiff.source !== status?.source)) baselineDiff = null;
   renderDiffFiles(job);
   const files = job.files || [];
   $('diff-details').hidden = !job.patch;
@@ -974,7 +975,7 @@ function eventText(event) {
 }
 
 function renderJob(value) {
-  if (selected?.summary.id !== value.summary.id) diffFilter = null;
+  if (experimentKey(selected?.summary) !== experimentKey(value.summary)) diffFilter = null;
   selected = value;
   const job = value.summary;
   $('empty-current').hidden = true;
@@ -1138,8 +1139,10 @@ async function refresh() {
     if (next.job && !selectedId) selectedId = next.job.id;
     if (next.job && next.job.id === selectedId) {
       const value = await api('/api/experiment?id=' + encodeURIComponent(selectedId));
-      if (selectedId === value.summary.id) renderJob(value);
-      openStream(next.job);
+      if (selectedId === value.summary.id) {
+        renderJob(value);
+        openStream(next.job);
+      }
     }
     renderHistory();
     const completed = completedExperiments();
@@ -1188,9 +1191,12 @@ function renderHistory() {
         selectJob(job.id).catch(error => toast(error.message));
         return;
       }
+      selectedId = job.sha;
+      closeStream();
       api('/api/diff?sha=' + job.sha).then(result => {
+        if (selectedId !== job.sha) return;
         renderJob({summary: {...job, patch: result.patch, explanation: 'Saved by an earlier version of the console. No build or comparison record exists for it.'}, events: []});
-        $('current').scrollIntoView();
+        showSection('current', true);
       }).catch(error => toast(error.message));
     };
     const state = reverted.has(job.sha) ? 'Reverted'
@@ -1502,9 +1508,9 @@ $('node-log').onclick = async () => {
   }
 };
 $('compare-baseline').onclick = async () => {
-  const job = selected?.summary.id;
+  const job = experimentKey(selected?.summary);
   const source = status?.source;
-  if (!job || !source) return;
+  if (!job || selectedId !== job || !source) return;
   if (baselineDiff) {
     baselineDiff = null;
     renderDiffPanel(selected.summary);
@@ -1512,7 +1518,7 @@ $('compare-baseline').onclick = async () => {
   }
   try {
     const result = await api('/api/diff?sha=' + encodeURIComponent(source) + '&base=baseline');
-    if (selected?.summary.id !== job || selectedId !== job || status?.source !== source) return;
+    if (experimentKey(selected?.summary) !== job || selectedId !== job || status?.source !== source) return;
     baselineDiff = {job, source, patch: result.patch};
     renderDiffPanel(selected.summary);
   } catch (error) {
@@ -1523,7 +1529,7 @@ $('download-diff').onclick = () => {
   const patch = baselineDiff ? baselineDiff.patch : selected?.summary.patch;
   if (!patch) return;
   const url = URL.createObjectURL(new Blob([patch], {type: 'text/plain'}));
-  const name = baselineDiff ? 'baseline' : selected.summary.id;
+  const name = baselineDiff ? 'baseline' : experimentKey(selected.summary);
   const anchor = el('a', {href: url, download: 'bitcoin-vibes-' + name + '.diff'});
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

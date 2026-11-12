@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {spawn} = require('node:child_process');
+const {execFileSync, spawn} = require('node:child_process');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 (async () => {
@@ -156,6 +156,23 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('.history-top button').filter({hasText: 'Browser audit discarded note'}).click();
     await page.locator('#job-state').filter({hasText: 'Cancelled'}).waitFor();
     assert.equal(await page.locator('#apply').isVisible(), false, 'old history cannot be applied');
+
+    // A commit from before the console stored job records still has a diff.
+    fs.writeFileSync(path.join(config.repo, 'doc/legacy.md'), 'Legacy note\n');
+    const git = (...args) => execFileSync('git', ['-C', config.repo, '-c', 'commit.gpgSign=false', ...args], {
+      env: {...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null'},
+    });
+    git('add', 'doc/legacy.md');
+    git('commit', '-m', 'vibe: Saved by an older console');
+    await page.getByRole('button', {name: 'Saved by an older console', exact: true}).click();
+    await page.locator('#job-state').filter({hasText: 'Saved earlier'}).waitFor();
+    if (await page.locator('#diff-details').getAttribute('open') === null) await page.locator('#diff-details summary').click();
+    assert.match(await diff.innerText(), /Legacy note/);
+    await page.locator('#compare-baseline').click();
+    await diff.filter({hasText: 'Browser audit saved note'}).waitFor();
+    await page.getByRole('button', {name: 'Show experiment diff', exact: true}).click();
+    assert.match(await diff.innerText(), /Legacy note/);
+    assert.doesNotMatch(await diff.innerText(), /Browser audit saved note/);
 
     for (const width of [768, 390, 320]) {
       await page.setViewportSize({width, height: 900});
