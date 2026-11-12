@@ -8,9 +8,12 @@
 <meta name="theme-color" content="#f7f5ef">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2726%27 font-size=%2730%27 fill=%27%23765d24%27%3E%E2%9C%A6%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="web/ui.css">
+<link rel="stylesheet" href="web/learning.css">
 <script defer src="web/lessons.js"></script>
 <script defer src="web/demo-data.js"></script>
+<script defer src="web/study.js"></script>
 <script defer src="web/demo.js"></script>
+<script defer src="web/learning.js"></script>
 <script defer src="web/app.js"></script>
 </head>
 <body>
@@ -20,6 +23,7 @@
   <a class="brand" href="https://hotpixelgroup.github.io/bitcoin/"><span aria-hidden="true">✦</span> BITCOIN VIBES</a>
   <span class="pill" id="environment">Connecting…</span>
   <span class="connection" id="connection" role="status">Connecting to console…</span>
+  <label class="view-control" for="learning-view">View <select id="learning-view"><option value="learning">Learning</option><option value="lab">Full lab</option></select></label>
   <a class="quiet" href="https://github.com/hotpixelgroup/bitcoin">Source ↗</a>
   <a class="quiet" href="https://github.com/hotpixelgroup/bitcoin/issues/new?template=bug.yml" target="_blank" rel="noopener noreferrer">Report a problem ↗</a>
 </header>
@@ -38,12 +42,14 @@
   <nav aria-label="Lab sections">
     <a href="#curated">◈ Ready-made experiments</a>
     <a href="#beliefs">✓ Check your thinking</a>
-    <a href="#composer">✦ Your own experiment</a>
+    <a href="#practice-section">↻ Practice &amp; review</a>
+    <a href="#workshops">◇ Interactive models</a>
+    <a href="#composer" data-advanced>✦ Your own experiment</a>
     <a href="#current">↳ Current experiment</a>
-    <a href="#node-controls" data-local-only>⚙ Your node</a>
-    <a href="#playground" data-local-only>⛏ Private chain</a>
+    <a href="#node-controls" data-local-only data-advanced>⚙ Your node</a>
+    <a href="#playground" data-local-only data-advanced>⛏ Private chain</a>
     <a href="#history-section">⎌ Experiment history</a>
-    <a href="#settings-section" data-local-only>⚙ Node settings</a>
+    <a href="#settings-section" data-local-only data-advanced>⚙ Node settings</a>
     <a href="#setup">? Setup &amp; help</a>
   </nav>
   <div class="sidebar-foot">Change one node.<br><span>Then ask a second one.</span></div>
@@ -55,6 +61,7 @@
   <a href="#curated">Experiments</a>
   <a href="#current">Results</a>
   <a href="#beliefs">Your thinking</a>
+  <a href="#practice-section">Practice</a>
   <a href="#history-section">History</a>
   <a href="#setup">Help</a>
 </nav>
@@ -72,7 +79,9 @@
   <div class="eyebrow">ONE CHANGE. TWO NODES.</div>
   <h1>Learn Bitcoin by changing one node.</h1>
   <p id="intro-copy">Explore coins, fees, mining and the rules that nodes check. Start with a ready-made experiment; no AI account is needed.</p>
-  <div class="journey-line intro-action"><button id="start-learning" class="primary">Start with coins and keys</button><span id="journey-progress" class="subtle" role="status">Ten experiments to explore</span></div>
+  <label class="route-control" for="learning-route">Your path <select id="learning-route"><option value="beginner">Start here: five foundations</option><option value="all">Explore all thirteen experiments</option></select></label>
+  <p id="route-description" class="subtle">Coins and keys → inputs and change → fees → relay policy → consensus rules.</p>
+  <div class="journey-line intro-action"><button id="start-learning" class="primary">Start with coins and keys</button><span id="journey-progress" class="subtle" role="status">Five foundations to explore</span><button id="baseline-start" class="text-button">Check what I know first (optional)</button></div>
   <ol class="learning-steps" aria-label="How the lab works">
     <li><span aria-hidden="true">1</span><div><b>Make a prediction</b><small>Choose an experiment and say what you expect.</small></div></li>
     <li><span aria-hidden="true">2</span><div><b>Inspect the evidence</b><small>Compare what the two nodes accepted or refused.</small></div></li>
@@ -143,13 +152,16 @@
       <p id="prediction-result" class="notice" hidden></p>
       <p id="ready-note" class="subtle" hidden>This ran a ready-made node built from exactly the change shown below. Bitcoin Core's unit tests were not run on it; run the experiment again with "Compile it myself" to see which of them the change breaks.</p>
       <div id="chain-picture" class="chain-picture" hidden></div>
-      <div id="comparison-rows" class="comparison"></div>
+      <div id="evidence-stepper" class="evidence-stepper" hidden></div>
+      <details id="full-observations" open><summary>All observations</summary><div id="comparison-rows" class="comparison"></div></details>
       <h3 id="mainnet-heading">What this would mean on a real network</h3>
       <p id="verdict-mainnet"></p>
       <div id="lesson" hidden>
+        <p id="lesson-takeaway" class="takeaway"></p>
         <h3>Why it went this way</h3>
         <p id="lesson-belief" class="belief"></p>
         <p id="lesson-text"></p>
+        <div id="lesson-terms"></div>
         <fieldset id="followup" class="question" hidden>
           <legend id="followup-question"></legend>
           <div id="followup-options"></div>
@@ -157,6 +169,7 @@
           <p id="followup-result" role="status"></p>
         </fieldset>
         <div id="lesson-sources" class="subtle"></div>
+        <div id="reflection"></div>
         <div class="toolbar lesson-next"><button id="try-again" hidden>Try a different share</button><button id="next-experiment" class="primary" hidden>Next experiment →</button><a href="#curated">Choose another experiment</a></div>
       </div>
     </div>
@@ -214,7 +227,22 @@
   </details>
 </section>
 
-<section id="composer" class="composer panel" aria-labelledby="composer-heading">
+<section id="practice-section" class="panel" tabindex="-1" aria-labelledby="practice-heading">
+  <h2 id="practice-heading">Practice &amp; review</h2>
+  <p>Try a different question after an experiment. Return later to see what you remember. Your first answers stay in your original record.</p>
+  <p class="subtle">Review suggestions: tomorrow after a mistake, or in a week after a correct answer. These are simple reminders, not a measure of mastery. Nothing is sent or scheduled outside this device.</p>
+  <div id="practice-queue"></div>
+  <div id="practice-question" tabindex="-1"></div>
+  <button id="study-export" class="text-button">Download my learning record</button>
+</section>
+
+<section id="workshops" class="panel" tabindex="-1" aria-labelledby="workshops-heading">
+  <h2 id="workshops-heading">Interactive models</h2>
+  <p>Explore proof of work, privacy and Lightning. These simplified models run in your browser. They do not run Bitcoin nodes or move money.</p>
+  <div id="workshop-list"></div>
+</section>
+
+<section id="composer" class="composer panel" data-advanced aria-labelledby="composer-heading">
   <div class="section-line">
     <h2 id="composer-heading">Your own experiment</h2>
     <span class="subtle" id="engine-label">AI engine</span>
@@ -427,6 +455,7 @@
 <dialog id="predict-dialog" aria-labelledby="predict-title" aria-describedby="predict-summary">
   <h2 id="predict-title">Make a prediction first</h2>
   <p id="predict-summary" class="subtle"></p>
+  <div id="predict-terms"></div>
   <form method="dialog">
     <div id="predict-slider" class="slider" hidden>
       <label for="predict-share" id="predict-share-label"></label>
@@ -437,6 +466,11 @@
       <legend id="predict-question"></legend>
       <div id="predict-options"></div>
     </fieldset>
+    <details id="predict-reflection"><summary>Add your reasoning (optional)</summary>
+      <label for="predict-confidence">How confident are you?</label>
+      <select id="predict-confidence"><option value="">Prefer not to say</option><option value="low">Not confident yet</option><option value="medium">Somewhat confident</option><option value="high">Very confident</option></select>
+      <label for="predict-reason">Why do you expect this?</label><textarea id="predict-reason" maxlength="1000" rows="2"></textarea>
+    </details>
     <label id="predict-compile-row" class="choice" hidden><input id="predict-compile" type="checkbox"> <span id="predict-compile-text"></span></label>
     <p class="subtle">Choose a prediction to test your understanding, or run without answering. Your answers stay on this machine.</p>
     <div class="toolbar">

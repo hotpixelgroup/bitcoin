@@ -110,7 +110,7 @@ window.VibesLessons = {
     },
     {
      "title": "Bitcoin Core: output descriptors and spending conditions",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/descriptors.md"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/descriptors.md"
     }
    ],
    "followup": {
@@ -150,6 +150,57 @@ window.VibesLessons = {
    "answer": "chain"
   },
   {
+   "id": "utxos",
+   "group": "money",
+   "kind": "scene",
+   "title": "Where does the change in a payment come from?",
+   "summary": "Spend two 50 BTC outputs to make a 60 BTC payment. Inspect the new outputs and the fee on both nodes.",
+   "needs": "No AI and no compiling. Runs on a private chain.",
+   "belief": "A payment subtracts an amount from an on-chain account balance.",
+   "lesson": "Bitcoin payments spend whole unspent transaction outputs, or UTXOs. This wallet selected two inputs totaling 100 BTC and created a 60 BTC recipient output plus change. The difference between the input and output totals is the fee. Both original outputs are spent; the change is a new output with its own spending conditions. Wallet software normally constructs the change before broadcasting. No miner sends a refund. This scene deliberately fixes the inputs; a real wallet's coin selection may choose differently.",
+   "sources": [
+    {
+     "title": "Bitcoin developer guide: transactions and change",
+     "url": "https://developer.bitcoin.org/devguide/transactions.html"
+    }
+   ],
+   "followup": {
+    "question": "An input is worth 20,000 satoshis. A payment output is 12,000 and the fee is 500. How much change is created?",
+    "options": [
+     {
+      "id": "7500",
+      "text": "7,500 satoshis."
+     },
+     {
+      "id": "8000",
+      "text": "8,000 satoshis."
+     },
+     {
+      "id": "refund",
+      "text": "Whatever the miner refunds."
+     }
+    ],
+    "answer": "7500",
+    "why": "20,000 = 12,000 + 7,500 + 500. The fee is the input total minus the output total."
+   },
+   "question": "Two whole outputs total 100 BTC. You send 60 BTC with a fee. What happens to the rest?",
+   "options": [
+    {
+     "id": "change",
+     "text": "The transaction creates a change output for the sender."
+    },
+    {
+     "id": "miner",
+     "text": "The miner refunds it in a later payment."
+    },
+    {
+     "id": "balance",
+     "text": "Part of each original output remains unspent."
+    }
+   ],
+   "answer": "change"
+  },
+  {
    "id": "fees",
    "group": "money",
    "kind": "scene",
@@ -169,7 +220,7 @@ window.VibesLessons = {
     },
     {
      "title": "Bitcoin Core: transaction relay policy",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/policy/README.md"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/README.md"
     }
    ],
    "followup": {
@@ -207,6 +258,120 @@ window.VibesLessons = {
     }
    ],
    "answer": "small"
+  },
+  {
+   "id": "fee-size",
+   "group": "money",
+   "kind": "scene",
+   "title": "Can two equal payments have different fees?",
+   "summary": "Send 1 BTC with one input, then 1 BTC with two inputs. Keep the fee rate and output types the same.",
+   "needs": "No AI and no compiling. Runs on a private chain.",
+   "belief": "Two payments of the same value always cost the same fee.",
+   "lesson": "The requested fee rate is 2 satoshis per virtual byte in both payments. The two-input transaction has a larger virtual size and pays a larger total fee. Both send 1 BTC. Input and output types, signatures and other data affect virtual size, so input count is not a universal fee formula. A wallet can sometimes replace an unconfirmed transaction with one paying more, or a recipient can pay for a child transaction; node policies and transaction dependencies matter. Neither method guarantees confirmation or reverses a confirmed payment.",
+   "sources": [
+    {
+     "title": "BIP 141: transaction weight and virtual size",
+     "url": "https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki"
+    },
+    {
+     "title": "Bitcoin Core: transaction relay policy",
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/README.md"
+    },
+    {
+     "title": "Bitcoin Core: mempool replacement policy",
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/mempool-replacements.md"
+    }
+   ],
+   "followup": {
+    "question": "A transaction is 200 virtual bytes at 5 satoshis per virtual byte. What is its total fee?",
+    "options": [
+     {
+      "id": "1000",
+      "text": "1,000 satoshis."
+     },
+     {
+      "id": "5",
+      "text": "5 satoshis."
+     },
+     {
+      "id": "percent",
+      "text": "5% of the payment."
+     }
+    ],
+    "answer": "1000",
+    "why": "200 \u00d7 5 = 1,000 satoshis. A fee rate prices space, not the amount sent."
+   },
+   "question": "At the same fee rate, which of these otherwise similar payments costs more in total fees?",
+   "options": [
+    {
+     "id": "same",
+     "text": "They cost the same because both send 1 BTC."
+    },
+    {
+     "id": "two",
+     "text": "The two-input payment, because it uses more space here."
+    },
+    {
+     "id": "one",
+     "text": "The one-input payment, because it is simpler."
+    }
+   ],
+   "answer": "two"
+  },
+  {
+   "id": "watch-only",
+   "group": "money",
+   "kind": "scene",
+   "title": "Does seeing a balance mean you can spend it?",
+   "summary": "Copy public wallet descriptors to a second node, then ask both wallets to sign the same payment.",
+   "needs": "No AI and no compiling. Uses temporary lab wallets only.",
+   "belief": "A wallet displaying my coins necessarily holds their spending keys.",
+   "lesson": "A watch-only wallet can recognize outputs and help prepare payments without possessing spending keys. In this single-signature scene, only the original wallet completed the signatures. The second node could still validate the signed payment. With a hardware signer, watching and signing can be deliberately separated. Recovery requires the secrets and wallet information for the actual spending conditions: a passphrase, descriptor or multiple signers may also be needed. Public descriptors can reveal wallet activity, even when they cannot authorize spending. This lab uses disposable keys, never a personal wallet backup.",
+   "sources": [
+    {
+     "title": "Bitcoin Core: output descriptors",
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/descriptors.md"
+    },
+    {
+     "title": "Bitcoin developer guide: wallets",
+     "url": "https://developer.bitcoin.org/devguide/wallets.html"
+    }
+   ],
+   "followup": {
+    "question": "A 2-of-3 wallet has three independent signing keys. Is a backup of just one key sufficient to spend by itself?",
+    "options": [
+     {
+      "id": "yes",
+      "text": "Yes, any seed is enough."
+     },
+     {
+      "id": "no",
+      "text": "No. Two keys and the required wallet information are needed."
+     },
+     {
+      "id": "public",
+      "text": "Yes, if the balance is visible."
+     }
+    ],
+    "answer": "no",
+    "why": "The threshold is two signatures. Recovery must also reconstruct the wallet's spending script; a seed count alone is not a complete recovery plan."
+   },
+   "question": "Node B has the wallet's public information but no private keys. Which wallet can complete the signatures here?",
+   "options": [
+    {
+     "id": "both",
+     "text": "Both wallets, because both see the coins."
+    },
+    {
+     "id": "signer",
+     "text": "Only node A's wallet, which has the private keys."
+    },
+    {
+     "id": "network",
+     "text": "Neither; the network must sign first."
+    }
+   ],
+   "answer": "signer"
   },
   {
    "id": "reorg",
@@ -275,7 +440,7 @@ window.VibesLessons = {
    "sources": [
     {
      "title": "Bitcoin Core: transaction relay policy",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/policy/README.md"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/README.md"
     },
     {
      "title": "Bitcoin Core 30.0 release notes",
@@ -330,11 +495,11 @@ window.VibesLessons = {
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/validation.cpp"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/validation.cpp"
     },
     {
      "title": "Bitcoin Core source: MAX_MONEY is \"not the total money supply\"",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/consensus/amount.h"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/consensus/amount.h"
     }
    ],
    "followup": {
@@ -397,7 +562,7 @@ window.VibesLessons = {
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/validation.cpp"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/validation.cpp"
     },
     {
      "title": "Bitcoin developer guide: consensus and chain selection",
@@ -464,11 +629,11 @@ window.VibesLessons = {
    "sources": [
     {
      "title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/validation.cpp"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/validation.cpp"
     },
     {
      "title": "Bitcoin Core source: regtest halves every 150 blocks (chainparams.cpp)",
-     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/kernel/chainparams.cpp"
+     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/kernel/chainparams.cpp"
     }
    ],
    "followup": {
@@ -695,6 +860,802 @@ window.VibesLessons = {
    "answer": "accept"
   }
  ],
+ "learning": {
+  "beginner_route": [
+   "keys",
+   "utxos",
+   "fees",
+   "relay-filter",
+   "double-reward"
+  ],
+  "glossary": {
+   "BTC": "One bitcoin. One BTC contains 100,000,000 satoshis.",
+   "UTXO": "An unspent transaction output: an amount with conditions that must be satisfied to spend it.",
+   "input": "A reference to a previous output that this transaction spends in full.",
+   "change": "A new output returning the remainder to the sender after the payment and fee.",
+   "private key": "A secret used to make signatures that satisfy particular spending conditions.",
+   "descriptor": "A description of a wallet's output scripts and keys. Public descriptors can reveal activity without granting spending access.",
+   "sat/vB": "Satoshis per virtual byte: a fee rate per unit of transaction size. Virtual size accounts for Bitcoin's transaction-weight rules.",
+   "mempool": "One node's local collection of unconfirmed transactions. Nodes can have different collections.",
+   "confirmation": "Inclusion in the active chain; each later block adds another confirmation. Reorganisations can change this count.",
+   "proof of work": "Evidence of computational work meeting a block's target. A node first checks validity, then compares accumulated work.",
+   "policy": "A node's local choices about unconfirmed transactions, including what it stores and relays.",
+   "consensus rule": "A rule a node uses to decide whether a block or transaction in a block is valid.",
+   "OP_RETURN": "A script instruction commonly used in outputs carrying data that cannot be spent.",
+   "subsidy": "The maximum newly issued bitcoin a block may claim. The miner may also collect transaction fees.",
+   "soft fork": "A pure tightening of validity rules: every block valid under the stricter rules is also valid under the older rules.",
+   "hash rate": "The rate of proof-of-work attempts. A share of hash rate is not a guaranteed share of blocks in a finite time.",
+   "time lock": "A spending condition requiring a specified block height or time to be reached."
+  },
+  "terms": {
+   "keys": [
+    "BTC",
+    "private key",
+    "UTXO"
+   ],
+   "utxos": [
+    "UTXO",
+    "input",
+    "change"
+   ],
+   "fees": [
+    "BTC",
+    "sat/vB",
+    "mempool"
+   ],
+   "fee-size": [
+    "input",
+    "sat/vB"
+   ],
+   "watch-only": [
+    "private key",
+    "descriptor"
+   ],
+   "reorg": [
+    "confirmation",
+    "proof of work"
+   ],
+   "relay-filter": [
+    "policy",
+    "consensus rule",
+    "OP_RETURN"
+   ],
+   "double-reward": [
+    "subsidy",
+    "consensus rule"
+   ],
+   "halve-reward": [
+    "subsidy",
+    "soft fork"
+   ],
+   "faster-halving": [
+    "subsidy",
+    "consensus rule"
+   ],
+   "miners": [
+    "subsidy",
+    "proof of work"
+   ],
+   "power": [
+    "hash rate",
+    "soft fork",
+    "proof of work"
+   ],
+   "softfork": [
+    "soft fork",
+    "time lock"
+   ]
+  },
+  "takeaways": {
+   "keys": "The chain records the outputs; the wallet supplies information needed to spend them.",
+   "utxos": "Inputs are spent whole. The transaction creates payment and change outputs; the difference is the fee.",
+   "fees": "The configured miner chose the better bid for space, not the larger payment.",
+   "fee-size": "The same amount and fee rate can produce different total fees when transaction sizes differ.",
+   "watch-only": "Recognizing a payment and authorizing a spend are different capabilities.",
+   "reorg": "Confirmations can change when a node adopts a valid chain with more accumulated work.",
+   "relay-filter": "Refusing to relay a transaction does not make it invalid inside a block.",
+   "double-reward": "The second node still applies its own subsidy limit.",
+   "halve-reward": "A stricter node rejects blocks that break its rule, even when other nodes accept them.",
+   "faster-halving": "A rule difference stays invisible until a block exercises it.",
+   "miners": "Extra proof of work cannot make a rule-breaking block valid to an unchanged node.",
+   "power": "Following a stricter chain does not mean independently checking its extra rule.",
+   "softfork": "A node that omits a new check cannot independently detect violations of that check."
+  },
+  "practice": {
+   "keys": [
+    {
+     "id": "keys-backup-1",
+     "question": "A laptop fails, but its complete usable wallet backup survives. Did the on-chain outputs disappear?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, the coins were on the laptop."
+      },
+      {
+       "id": "1",
+       "text": "No; restoring the required spending information can restore access."
+      },
+      {
+       "id": "2",
+       "text": "Miners must create replacement coins."
+      }
+     ],
+     "answer": "1",
+     "why": "Device loss does not delete outputs. Access depends on recovering the information required by their spending conditions."
+    },
+    {
+     "id": "keys-watch-1",
+     "question": "An app shows an address balance but holds no signing keys. What does that establish?",
+     "options": [
+      {
+       "id": "0",
+       "text": "It can see the outputs, but that alone does not show it can spend."
+      },
+      {
+       "id": "1",
+       "text": "It can spend because it can see the balance."
+      },
+      {
+       "id": "2",
+       "text": "It owns a copy of the coins."
+      }
+     ],
+     "answer": "0",
+     "why": "Visibility and signing authority are separate. A watch-only wallet can display outputs it cannot spend."
+    }
+   ],
+   "utxos": [
+    {
+     "id": "utxo-sum-1",
+     "question": "Two inputs total 30,000 satoshis. The payment is 18,000 and the fee is 600. What is the change?",
+     "options": [
+      {
+       "id": "0",
+       "text": "12,000 satoshis."
+      },
+      {
+       "id": "1",
+       "text": "600 satoshis."
+      },
+      {
+       "id": "2",
+       "text": "11,400 satoshis."
+      }
+     ],
+     "answer": "2",
+     "why": "30,000 \u2212 18,000 \u2212 600 = 11,400. The sender constructs a new change output."
+    },
+    {
+     "id": "utxo-whole-1",
+     "question": "You spend a 40,000-satoshi output to pay 25,000, with change and a fee. What remains of the original output?",
+     "options": [
+      {
+       "id": "0",
+       "text": "It remains worth 15,000."
+      },
+      {
+       "id": "1",
+       "text": "It is spent in full; change is a new output."
+      },
+      {
+       "id": "2",
+       "text": "It becomes the miner's account."
+      }
+     ],
+     "answer": "1",
+     "why": "An input consumes the whole referenced output. Remaining value is represented by a new output, less the fee."
+    }
+   ],
+   "fees": [
+    {
+     "id": "fees-equal-space-1",
+     "question": "Two independent payments use equal virtual space. One sends less BTC but pays a higher fee rate. What does this lab's configured miner prefer?",
+     "options": [
+      {
+       "id": "0",
+       "text": "The one sending more BTC."
+      },
+      {
+       "id": "1",
+       "text": "The one with the higher fee rate."
+      },
+      {
+       "id": "2",
+       "text": "Always the older one."
+      }
+     ],
+     "answer": "1",
+     "why": "The configured assembler compares the fee bid for space. Actual miners can choose other policies, and dependencies matter."
+    },
+    {
+     "id": "fees-no-guarantee-1",
+     "question": "You broadcast a very low-fee payment. Does an eventually empty block guarantee confirmation?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, every payment is eventually included."
+      },
+      {
+       "id": "1",
+       "text": "Yes, if it sends enough BTC."
+      },
+      {
+       "id": "2",
+       "text": "No; relay/mining floors and miner choices can still prevent it."
+      }
+     ],
+     "answer": "2",
+     "why": "Unconfirmed transactions have no universal inclusion guarantee, even when some blocks have room."
+    }
+   ],
+   "fee-size": [
+    {
+     "id": "fee-size-math-1",
+     "question": "A transaction uses 150 virtual bytes at 4 sat/vB. What total fee does that describe?",
+     "options": [
+      {
+       "id": "0",
+       "text": "600 satoshis."
+      },
+      {
+       "id": "1",
+       "text": "4% of its value."
+      },
+      {
+       "id": "2",
+       "text": "150 satoshis."
+      }
+     ],
+     "answer": "0",
+     "why": "150 \u00d7 4 = 600 satoshis."
+    },
+    {
+     "id": "fee-bump-1",
+     "question": "A wallet offers to increase an unconfirmed transaction's fee. What can that promise?",
+     "options": [
+      {
+       "id": "0",
+       "text": "It reverses a confirmed payment."
+      },
+      {
+       "id": "1",
+       "text": "It may improve the bid if accepted under node policy; confirmation is still not guaranteed."
+      },
+      {
+       "id": "2",
+       "text": "The next miner must include it."
+      }
+     ],
+     "answer": "1",
+     "why": "Replacement is a policy-governed change to an unconfirmed transaction. A higher fee does not command miners or undo confirmations."
+    }
+   ],
+   "watch-only": [
+    {
+     "id": "watch-recovery-1",
+     "question": "For a 2-of-3 wallet, you recover two signing keys but lose the information describing the wallet's script. Is recovery automatically assured?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, every pair of seeds reconstructs every wallet."
+      },
+      {
+       "id": "1",
+       "text": "Yes, if an explorer shows a balance."
+      },
+      {
+       "id": "2",
+       "text": "No; the required wallet/script information must also be recovered."
+      }
+     ],
+     "answer": "2",
+     "why": "Recovery must reconstruct the actual spending conditions, not just reach a count of seed phrases."
+    },
+    {
+     "id": "watch-public-1",
+     "question": "Is sharing a public descriptor always harmless because it cannot sign?",
+     "options": [
+      {
+       "id": "0",
+       "text": "No. It can reveal addresses and link wallet activity."
+      },
+      {
+       "id": "1",
+       "text": "Yes, it contains no useful information."
+      },
+      {
+       "id": "2",
+       "text": "It gives the recipient all private keys."
+      }
+     ],
+     "answer": "0",
+     "why": "A public descriptor can expose wallet structure and activity without granting spending authority."
+    }
+   ],
+   "reorg": [
+    {
+     "id": "reorg-conflict-1",
+     "question": "A higher-work valid branch contains a conflicting spend of your payment's input. Must your original payment return to the mempool?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, every displaced payment returns."
+      },
+      {
+       "id": "1",
+       "text": "No; the conflict can make it invalid on the new active chain."
+      },
+      {
+       "id": "2",
+       "text": "It is automatically paid twice."
+      }
+     ],
+     "answer": "1",
+     "why": "The original scene had no conflicting spend. With a conflict, a displaced transaction may no longer be valid."
+    },
+    {
+     "id": "reorg-valid-1",
+     "question": "A branch has more work but contains a block your node rejects. Must your node follow it?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, work overrides all checks."
+      },
+      {
+       "id": "1",
+       "text": "Only if most visible nodes follow it."
+      },
+      {
+       "id": "2",
+       "text": "No; chain selection considers branches that satisfy its rules."
+      }
+     ],
+     "answer": "2",
+     "why": "Validity is checked before comparing accumulated work."
+    }
+   ],
+   "relay-filter": [
+    {
+     "id": "relay-route-1",
+     "question": "A miner receives a valid transaction through a private route after your node refuses to relay it. What determines your node's acceptance of its block?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Its block-validity rules."
+      },
+      {
+       "id": "1",
+       "text": "Whether its own mempool contained the transaction."
+      },
+      {
+       "id": "2",
+       "text": "Whether the miner used your route."
+      }
+     ],
+     "answer": "0",
+     "why": "Local relay policy does not become an extra consensus check on transactions inside a block."
+    },
+    {
+     "id": "relay-effect-1",
+     "question": "Does a local relay policy have no effect at all?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Correct; policy is meaningless."
+      },
+      {
+       "id": "1",
+       "text": "No. It can affect propagation, mempools and mining templates without changing block validity."
+      },
+      {
+       "id": "2",
+       "text": "It rewrites all peers' rules."
+      }
+     ],
+     "answer": "1",
+     "why": "Policy affects local and network behavior even when it does not change block validity."
+    }
+   ],
+   "double-reward": [
+    {
+     "id": "reward-unmined-1",
+     "question": "A node allows a larger subsidy, but nobody mines a block using that permission. Must it immediately leave the old chain?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, editing code always creates a chain."
+      },
+      {
+       "id": "1",
+       "text": "Yes, its name changed."
+      },
+      {
+       "id": "2",
+       "text": "No; it can keep following blocks that satisfy both sets of rules."
+      }
+     ],
+     "answer": "2",
+     "why": "A permission difference becomes visible when a block exercises it."
+    },
+    {
+     "id": "reward-fees-1",
+     "question": "A miner's payout exceeds the subsidy but includes permitted transaction fees. Is the amount alone evidence of excess issuance?",
+     "options": [
+      {
+       "id": "0",
+       "text": "No. Allowed fees must be separated from the subsidy."
+      },
+      {
+       "id": "1",
+       "text": "Yes, all payout is newly issued."
+      },
+      {
+       "id": "2",
+       "text": "Yes, fees are forbidden."
+      }
+     ],
+     "answer": "0",
+     "why": "The coinbase can claim the allowed subsidy plus transaction fees. Only the subsidy is new issuance."
+    }
+   ],
+   "halve-reward": [
+    {
+     "id": "strict-minority-1",
+     "question": "A minority of miners follows stricter compatible rules. Can that branch grow?",
+     "options": [
+      {
+       "id": "0",
+       "text": "No block can ever be produced."
+      },
+      {
+       "id": "1",
+       "text": "Yes, if those miners produce valid blocks; convergence with other nodes is a separate question."
+      },
+      {
+       "id": "2",
+       "text": "Only after every old node upgrades."
+      }
+     ],
+     "answer": "1",
+     "why": "Minority hash rate can produce a branch. Its growth does not guarantee it becomes the most-work branch accepted by other nodes."
+    },
+    {
+     "id": "strict-subset-1",
+     "question": "In a pure tightening, how do blocks valid under the new rules relate to the old rules?",
+     "options": [
+      {
+       "id": "0",
+       "text": "They are all invalid under the old rules."
+      },
+      {
+       "id": "1",
+       "text": "There is no relationship."
+      },
+      {
+       "id": "2",
+       "text": "They are also valid under the old rules."
+      }
+     ],
+     "answer": "2",
+     "why": "That subset relationship defines a pure soft fork; it does not by itself coordinate activation."
+    }
+   ],
+   "faster-halving": [
+    {
+     "id": "latent-test-1",
+     "question": "Two builds agree on ordinary payments but differ on a script condition that was never tested. What can you conclude?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Agreement was observed only on the tested inputs."
+      },
+      {
+       "id": "1",
+       "text": "Every consensus rule is identical."
+      },
+      {
+       "id": "2",
+       "text": "The script difference cannot matter."
+      }
+     ],
+     "answer": "0",
+     "why": "Unexercised differences remain possible. Test coverage limits every compatibility claim."
+    },
+    {
+     "id": "halving-boundary-1",
+     "question": "A node halves its subsidy earlier than a reference. When can the difference first affect a block's acceptance?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Whenever someone opens its UI."
+      },
+      {
+       "id": "1",
+       "text": "When a block claims more subsidy than the earlier schedule permits."
+      },
+      {
+       "id": "2",
+       "text": "Only when all nodes upgrade."
+      }
+     ],
+     "answer": "1",
+     "why": "The rule must be exercised by a block; simply following earlier compatible blocks does not test the boundary."
+    }
+   ],
+   "miners": [
+    {
+     "id": "miners-invalid-1",
+     "question": "A miner produces 100 rule-breaking blocks while another produces one valid block. Does the count alone make the first branch acceptable?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, the majority wins every check."
+      },
+      {
+       "id": "1",
+       "text": "Yes, after ten minutes."
+      },
+      {
+       "id": "2",
+       "text": "No; invalid blocks are rejected before chain selection."
+      }
+     ],
+     "answer": "2",
+     "why": "Work and block counts do not waive a node's validity rules."
+    },
+    {
+     "id": "miners-censor-1",
+     "question": "Can a powerful miner choose to leave a particular valid payment out of its blocks?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes. Choosing inclusion is different from making invalid issuance valid."
+      },
+      {
+       "id": "1",
+       "text": "No; every valid payment must be included immediately."
+      },
+      {
+       "id": "2",
+       "text": "Only by changing the supply limit."
+      }
+     ],
+     "answer": "0",
+     "why": "Miners choose their block contents. Inclusion power is not permission to violate the rules of unchanged nodes."
+    }
+   ],
+   "power": [
+    {
+     "id": "power-random-1",
+     "question": "A miner has 60% of hash rate. Must it find exactly 24 of the next 40 blocks?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, the protocol schedules them."
+      },
+      {
+       "id": "1",
+       "text": "No; real discoveries are random, unlike the lab's controlled schedule."
+      },
+      {
+       "id": "2",
+       "text": "Yes, if its software is newer."
+      }
+     ],
+     "answer": "1",
+     "why": "A finite schedule illustrates a mechanism, not a universal prediction or activation threshold."
+    },
+    {
+     "id": "power-follow-1",
+     "question": "An older node follows a stricter branch. Is that proof it checks the new restriction?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, following a chain installs its rules."
+      },
+      {
+       "id": "1",
+       "text": "Yes, work updates software."
+      },
+      {
+       "id": "2",
+       "text": "No; compatible blocks can pass its older checks."
+      }
+     ],
+     "answer": "2",
+     "why": "Following compatible blocks and independently enforcing the extra rule are different behaviors."
+    }
+   ],
+   "softfork": [
+    {
+     "id": "soft-check-1",
+     "question": "A node does not enforce a new spending condition. Where does assurance about that condition have to come from?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Other participants enforcing it; this node cannot independently detect its violations."
+      },
+      {
+       "id": "1",
+       "text": "The condition's name."
+      },
+      {
+       "id": "2",
+       "text": "The number of old nodes."
+      }
+     ],
+     "answer": "0",
+     "why": "The missing check remains missing even if the active chain happens to comply."
+    },
+    {
+     "id": "soft-signal-1",
+     "question": "A miner signals support for an upgrade. Does the signal itself prove it validates every new condition?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, signaling is validation."
+      },
+      {
+       "id": "1",
+       "text": "No; signaling, activation and enforcement are separate."
+      },
+      {
+       "id": "2",
+       "text": "Yes, the signal changes all nodes."
+      }
+     ],
+     "answer": "1",
+     "why": "Coordination signals are not direct evidence of all the software checks a participant performs."
+    }
+   ],
+   "work": [
+    {
+     "id": "work-target-1",
+     "question": "In a hash-target model, requiring another leading hexadecimal zero makes success per independent trial approximately\u2026",
+     "options": [
+      {
+       "id": "0",
+       "text": "Twice as likely."
+      },
+      {
+       "id": "1",
+       "text": "Unchanged."
+      },
+      {
+       "id": "2",
+       "text": "Sixteen times less likely."
+      }
+     ],
+     "answer": "2",
+     "why": "Each hexadecimal digit has sixteen possible values. This toy condition illustrates probability, not Bitcoin's complete header and target rules."
+    },
+    {
+     "id": "work-clock-1",
+     "question": "Bitcoin targets an average block interval. Does that mean every block arrives on a ten-minute timer?",
+     "options": [
+      {
+       "id": "0",
+       "text": "No; individual intervals vary, and difficulty adjusts over many blocks."
+      },
+      {
+       "id": "1",
+       "text": "Yes, all miners wait for the timer."
+      },
+      {
+       "id": "2",
+       "text": "Yes, except for small payments."
+      }
+     ],
+     "answer": "0",
+     "why": "Proof-of-work discoveries are probabilistic. An average is not a schedule."
+    }
+   ],
+   "privacy": [
+    {
+     "id": "privacy-owner-1",
+     "question": "Two payments use the same address. What does the public chain establish by itself?",
+     "options": [
+      {
+       "id": "0",
+       "text": "The recipient's legal name."
+      },
+      {
+       "id": "1",
+       "text": "The repeated destination script; identity still needs outside evidence."
+      },
+      {
+       "id": "2",
+       "text": "The recipient's password."
+      }
+     ],
+     "answer": "1",
+     "why": "Visible transaction links do not automatically identify a person."
+    },
+    {
+     "id": "privacy-fresh-1",
+     "question": "Does using a fresh address guarantee that nobody can link your transactions?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, permanently."
+      },
+      {
+       "id": "1",
+       "text": "Yes, if the amount is small."
+      },
+      {
+       "id": "2",
+       "text": "No; other transaction patterns and outside information can still link activity."
+      }
+     ],
+     "answer": "2",
+     "why": "Avoiding reuse removes one obvious link. It is not a guarantee of anonymity."
+    }
+   ],
+   "lightning": [
+    {
+     "id": "lightning-capacity-1",
+     "question": "A channel has enough total capacity, but too little spendable balance on your side. Can capacity alone guarantee your outgoing payment?",
+     "options": [
+      {
+       "id": "0",
+       "text": "No; directional liquidity and other channel/route constraints matter."
+      },
+      {
+       "id": "1",
+       "text": "Yes, total capacity is all that matters."
+      },
+      {
+       "id": "2",
+       "text": "Yes, because off-chain payments have no constraints."
+      }
+     ],
+     "answer": "0",
+     "why": "Channel capacity and outgoing liquidity are different. Real channels also reserve value for fees and other requirements."
+    },
+    {
+     "id": "lightning-settle-1",
+     "question": "Do ordinary channel balance updates each create a newly confirmed base-chain transaction?",
+     "options": [
+      {
+       "id": "0",
+       "text": "Yes, every update must be mined first."
+      },
+      {
+       "id": "1",
+       "text": "No; participants update enforceable channel state, with opening and closing interacting with the chain."
+      },
+      {
+       "id": "2",
+       "text": "No; channels have no relationship to Bitcoin."
+      }
+     ],
+     "answer": "1",
+     "why": "Channels use Bitcoin's on-chain enforcement while allowing updates without confirming each payment separately."
+    }
+   ]
+  },
+  "workshops": [
+   {
+    "id": "work",
+    "title": "Try a proof-of-work model",
+    "summary": "Hash a toy message and change the target. Compare effort with a probability, not a timer.",
+    "source": "https://developer.bitcoin.org/devguide/block_chain.html#proof-of-work"
+   },
+   {
+    "id": "privacy",
+    "title": "Trace address reuse",
+    "summary": "Compare a repeated destination with fresh destinations in a fictional transaction graph.",
+    "source": "https://developer.bitcoin.org/devguide/transactions.html#avoiding-key-reuse"
+   },
+   {
+    "id": "lightning",
+    "title": "Move a channel balance",
+    "summary": "Explore outgoing liquidity in a simplified two-party channel, then settle the latest balance.",
+    "source": "https://github.com/lightning/bolts/blob/master/02-peer-protocol.md"
+   }
+  ]
+ },
  "beliefs": [
   {
    "id": "coins-in-wallet-v2",

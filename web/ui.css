@@ -21,7 +21,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 90px;
+  scroll-padding-top: var(--topbar-clearance, 90px);
 }
 
 body {
@@ -1103,7 +1103,7 @@ dialog form {
     flex-wrap: wrap;
   }
   html {
-    scroll-padding-top: 120px;
+    scroll-padding-top: var(--topbar-clearance, 120px);
   }
 }
 

@@ -1,0 +1,44 @@
+.learning-mode [data-advanced] { display: none !important; }
+.view-control, .route-control { display: inline-flex; align-items: center; gap: .6rem; }
+.view-control { font-size: .85rem; margin: 0; }
+.view-control select { padding: .3rem; }
+.route-control { flex-wrap: wrap; margin-top: .5rem; }
+.route-control select { max-width: 100%; }
+.takeaway { background: var(--green-soft); border-left: 3px solid var(--green); padding: 1rem; font-weight: 600; }
+.terms { margin: 1rem 0; }
+.terms dt { font-weight: 650; }
+.terms dd { margin: 0 0 .8rem; color: var(--dim); }
+.evidence-stepper { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.evidence-frame h4 { margin: 0 0 .8rem; font-size: 1.1rem; }
+.evidence-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .7rem; }
+.evidence-values > div { min-width: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow-wrap: anywhere; }
+.evidence-values p { margin: .3rem 0; }
+.evidence-values small { color: var(--dim); }
+.review-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--line); }
+.review-row p { margin: .3rem 0 0; }
+.review-row button { flex-shrink: 0; }
+#practice-question:empty { display: none; }
+#practice-question { margin: 1.5rem 0; }
+#practice-question > button { margin: .3rem; }
+.workshop { border-top: 1px solid var(--line); padding: 1.2rem 0; }
+.workshop > summary { font-size: 1.1rem; font-weight: 600; }
+.model-body > label, #reflection label, #predict-reflection label { display: block; margin: .8rem 0 .3rem; }
+.model-body > select, .model-body > input { display: block; max-width: 100%; margin-bottom: 1rem; }
+.toy-hash { display: block; overflow-wrap: anywhere; font-size: .85rem; }
+.flow-row { margin: .5rem 0; padding: .8rem; background: var(--gold-soft); border-radius: 6px; }
+#reflection { margin: 1.2rem 0; }
+#reflection textarea, #predict-reflection textarea { width: 100%; }
+@media (max-width: 600px) {
+  .review-row { align-items: stretch; flex-direction: column; }
+  .evidence-stepper { padding: .7rem; }
+  .evidence-stepper .toolbar { align-items: stretch; flex-direction: column; }
+}
+@media (min-width: 300px) and (max-width: 760px) {
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; }
+  .topbar .brand { grid-area: 1 / 1; }
+  .topbar a[href="https://github.com/hotpixelgroup/bitcoin"] { grid-area: 1 / 2; }
+  .topbar #environment { grid-area: 2 / 1 / 3 / 3; justify-self: start; }
+  .topbar .view-control { grid-area: 3 / 1; margin: 0; }
+  .topbar a[href*="template=bug.yml"] { grid-area: 3 / 2; }
+  .topbar .connection { grid-area: 4 / 1 / 5 / 3; }
+}

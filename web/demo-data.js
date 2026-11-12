@@ -1,6 +1,7 @@
 'use strict';
-// Results recorded from real runs of the lab on 2026-11-01T06:08:14+00:00: two real nodes on
+// Results recorded from real runs of the lab on 2026-11-12T00:54:21+00:00: two real nodes on
 // a throwaway regtest chain. Regenerate with contrib/vibes/record_demo.py.
+// Bitcoin Core 32.1, upstream commit f0de87f040621468b956f01f526a43a010310501.
 // Each slider position has its own recording; no inputs are rounded.
 window.VibesDemoData = {
  "double-reward": {
@@ -81,7 +82,7 @@ window.VibesDemoData = {
    ],
    "ref_rejects": {
     "height": 153,
-    "hash": "734a55b1fcb20f6c",
+    "hash": "6d153bdcec557c81",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -93,22 +94,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 152,
-     "hash": "0e65685b93c0a524a29c687a201101e471028f7fe7144829d165c17a0ce3fbb2"
+     "hash": "398a85c3f502aac94a6bb9c976ae7a244a48a7a39b123e144cf55f553d545bc2"
     },
     "candidate_tip": {
      "height": 154,
-     "hash": "5aee53703f08d497fd56b1a33321e124cf6e042327046af67a0a5410ae7a0346"
+     "hash": "7d8ead9a8519f62a7ae3c1c15be2a34cd06454fd12199c0bb1de3e6d53c4d9d9"
     },
     "reference_chains": [
      {
       "height": 153,
-      "hash": "734a55b1fcb20f6c",
+      "hash": "6d153bdcec557c81",
       "status": "invalid",
       "branchlen": 1
      },
      {
       "height": 152,
-      "hash": "0e65685b93c0a524",
+      "hash": "398a85c3f502aac9",
       "status": "active",
       "branchlen": 0
      }
@@ -116,7 +117,7 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 154,
-      "hash": "5aee53703f08d497",
+      "hash": "7d8ead9a8519f62a",
       "status": "active",
       "branchlen": 0
      }
@@ -243,7 +244,7 @@ window.VibesDemoData = {
    "ref_rejects": null,
    "cand_rejects": {
     "height": 1,
-    "hash": "5841e9497f884d0c",
+    "hash": "1c37f7b5ba6c5096",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -254,22 +255,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 110,
-     "hash": "4a0cbac70ae159a4f48f550ae04ff5fde2e530d70dc7e70601dfbfc425f2710d"
+     "hash": "26bc384bbaf3c7bf802dbaeeb557b7efc3218be6d5ad1d15d2980782b760f826"
     },
     "candidate_tip": {
      "height": 2,
-     "hash": "3838ebb91ac2e54ceafc41b08297292f57405ca3383c72ce09b5e20b94de0538"
+     "hash": "27f8a809bdef3bf03f037e1e1632a8cf5f59221698a3d6b90fa6bddf923d8f5d"
     },
     "reference_chains": [
      {
       "height": 110,
-      "hash": "4a0cbac70ae159a4",
+      "hash": "26bc384bbaf3c7bf",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 2,
-      "hash": "3838ebb91ac2e54c",
+      "hash": "27f8a809bdef3bf0",
       "status": "valid-fork",
       "branchlen": 2
      }
@@ -277,13 +278,13 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 2,
-      "hash": "3838ebb91ac2e54c",
+      "hash": "27f8a809bdef3bf0",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 1,
-      "hash": "5841e9497f884d0c",
+      "hash": "1c37f7b5ba6c5096",
       "status": "invalid",
       "branchlen": 1
      }
@@ -426,7 +427,7 @@ window.VibesDemoData = {
    "ref_rejects": null,
    "cand_rejects": {
     "height": 75,
-    "hash": "373c28ddb7c59de5",
+    "hash": "169eb5a0ce341be0",
     "reason": "bad-cb-amount",
     "plain": "the block pays its miner more than the rules allow (bad-cb-amount)"
    },
@@ -437,22 +438,22 @@ window.VibesDemoData = {
     "converged": false,
     "reference_tip": {
      "height": 110,
-     "hash": "0a9fc8075de654b6e950805cb4a05b2bd6738813304109c5fe82d5df30ed8ee4"
+     "hash": "351f36d0bcad9208d26459a47bd5b98a075bedc3cc38ada1f3edf59931da715a"
     },
     "candidate_tip": {
      "height": 76,
-     "hash": "3f8e1ea7d69bef8ddd8724e697f49fb8b888f1a464f972d4fa64dbf5670d6bab"
+     "hash": "1ee7ad3b154c683bf4c7116146146c5c846e6420cc7f8fbe9a887080cb5faaec"
     },
     "reference_chains": [
      {
       "height": 110,
-      "hash": "0a9fc8075de654b6",
+      "hash": "351f36d0bcad9208",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 76,
-      "hash": "3f8e1ea7d69bef8d",
+      "hash": "1ee7ad3b154c683b",
       "status": "valid-fork",
       "branchlen": 2
      }
@@ -460,13 +461,13 @@ window.VibesDemoData = {
     "candidate_chains": [
      {
       "height": 76,
-      "hash": "3f8e1ea7d69bef8d",
+      "hash": "1ee7ad3b154c683b",
       "status": "active",
       "branchlen": 0
      },
      {
       "height": 75,
-      "hash": "373c28ddb7c59de5",
+      "hash": "169eb5a0ce341be0",
       "status": "invalid",
       "branchlen": 1
      }
@@ -699,8 +700,8 @@ window.VibesDemoData = {
      "id": "reorganised",
      "title": "Node A: which chain does it follow now?",
      "status": "differs",
-     "reference": "was at block 102 (7bf5c96f6650)",
-     "candidate": "now at block 103 (55b5f6dc76ee)",
+     "reference": "was at block 102 (6384f8ed6564)",
+     "candidate": "now at block 103 (408be3311c42)",
      "plain": "Node A switched to node B's chain because it contains more proof of work. The block that confirmed the payment is no longer part of the chain node A follows. This is called a reorganisation."
     },
     {
@@ -5277,6 +5278,121 @@ window.VibesDemoData = {
      }
     ]
    }
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "utxos": {
+  "compare": {
+   "rows": [
+    {
+     "id": "inputs",
+     "status": "info",
+     "title": "Select two whole outputs",
+     "reference": "2 inputs: 100 BTC",
+     "candidate": "Send 60 BTC",
+     "plain": "An input spends a previous output in full. The payment does not shave 60 BTC off a balance field."
+    },
+    {
+     "id": "outputs",
+     "status": "info",
+     "title": "Create the recipient and change outputs",
+     "reference": "Recipient: 60 BTC",
+     "candidate": "Change: 39.99999584 BTC",
+     "plain": "The wallet constructed both outputs before broadcasting. The 416 satoshi difference is the transaction fee, not a separate payment output."
+    },
+    {
+     "id": "confirmed",
+     "status": "same",
+     "title": "The second node checks the payment in a block",
+     "reference": "Original outputs spent",
+     "candidate": "Inputs = recipient + change + 416 satoshis fee",
+     "plain": "Both nodes checked the same transaction. Change is a new output controlled by the sender; it is not a refund sent later by a miner."
+    }
+   ],
+   "verdict": "none",
+   "observed_answer": "change",
+   "headline": "Two outputs became a payment, change and a fee"
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "fee-size": {
+  "compare": {
+   "rows": [
+    {
+     "id": "one",
+     "status": "info",
+     "title": "One input pays 1 BTC",
+     "reference": "141 virtual bytes",
+     "candidate": "282 satoshis fee",
+     "plain": "The wallet was asked to use one input and a fee rate of 2 satoshis per virtual byte."
+    },
+    {
+     "id": "two",
+     "status": "differs",
+     "title": "Two inputs also pay 1 BTC",
+     "reference": "208 virtual bytes",
+     "candidate": "416 satoshis fee",
+     "plain": "This payment uses the same output types and requested fee rate, but another input needs more transaction data."
+    },
+    {
+     "id": "checked",
+     "status": "same",
+     "title": "Both payments reach the other node in a block",
+     "reference": "Both send 1 BTC",
+     "candidate": "The two-input payment costs more",
+     "plain": "In this controlled comparison, input count changed virtual size and the total fee. Input and output types, witness data and wallet estimation also affect size; input count alone is not a universal price list."
+    }
+   ],
+   "verdict": "none",
+   "observed_answer": "two",
+   "headline": "The same amount cost more when the transaction used more space"
+  },
+  "patch": "",
+  "files": [],
+  "unit_failures": null,
+  "ready_made": false,
+  "build_status": "not run",
+  "test_status": "passed",
+  "risk": [],
+  "sensitive": []
+ },
+ "watch-only": {
+  "compare": {
+   "rows": [
+    {
+     "id": "watch",
+     "status": "info",
+     "title": "Copy public wallet information to node B",
+     "reference": "Node A has the private keys",
+     "candidate": "Node B recognizes 1 unspent output(s)",
+     "plain": "A public descriptor tells the second wallet what to watch. It does not include the private key needed by these single-signature outputs."
+    },
+    {
+     "id": "sign",
+     "status": "differs",
+     "title": "Ask both wallets to sign the same payment",
+     "reference": "Node A completed the signatures",
+     "candidate": "Node B could not complete them",
+     "plain": "A displayed balance is not spending authority. In this scene the signer supplied the missing signatures, and the other node validated the signed payment."
+    }
+   ],
+   "verdict": "none",
+   "observed_answer": "signer",
+   "headline": "The watching wallet could see the coins but could not sign"
   },
   "patch": "",
   "files": [],
