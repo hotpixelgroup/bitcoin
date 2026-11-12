@@ -601,6 +601,10 @@ class SafetyTests(ConsoleCase):
         deny = settings['permissions']['deny']
         self.assertIn('Read(~/.ssh/**)', deny)
         self.assertIn(f'Read(/{self.console.state_dir}/key)', deny)
+        self.assertIn(f'Read(/{self.console.jobs_dir}/**)', deny)
+        for filename in ('learning.json', 'study.json'):
+            for tool in ('Read', 'Edit'):
+                self.assertIn(f'{tool}(/{self.console.state_dir}/{filename})', deny)
 
     def test_stub_agent_session_end_to_end(self):
         """Drive the real agent path with a recorded-style stand-in for the CLI."""

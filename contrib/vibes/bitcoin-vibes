@@ -865,7 +865,7 @@ class Console:
                 "chain": self.opts.chain, "chain_note": lessons.NETWORKS[self.opts.chain],
                 "engine": self.opts.engine,
                 "agent": {"model": self.opts.model, "turns": self.opts.agent_turns,
-                          "minutes": self.opts.agent_minutes},
+                          "minutes": self.opts.agent_minutes, "budget": self.opts.agent_budget or None},
                 "binary": bool(self.bin_path("bitcoind") or self.build_state.get("path")), "node": node,
                 "build": self.brief_build(self.build_state), "baseline": {"sha": self.stock_rev()},
                 "sandbox": self.sandbox.summary(), "reference": self.reference_state(),
@@ -2420,9 +2420,13 @@ class Console:
         rules = []
         for path in SECRET_PATHS:
             rules += [f"Read(~/{path})", f"Read(~/{path}/**)"]
-        for path in (self.state_dir / "key", self.data_dir):
+        # Saved learning notes and job records are private even when a lab
+        # lives outside the home folder covered by the rules below.
+        for path in (self.state_dir / "key", self.data_dir, self.jobs_dir,
+                     self.state_dir / "learning.json", self.state_dir / "study.json"):
             absolute = "/" + str(path)            # "//path" is how an absolute path is written
-            rules += [f"Read({absolute})", f"Read({absolute}/**)", f"Edit({absolute}/**)"]
+            for tool in ("Read", "Edit"):
+                rules += [f"{tool}({absolute})", f"{tool}({absolute}/**)"]
         home = Path.home().resolve()
         target = Path(workspace or self.repo).resolve()
         if home not in target.parents:
@@ -3842,16 +3846,14 @@ class Handler(BaseHTTPRequestHandler):
                     prompt.strip(), bool(body.get("autobuild", True)),
                     bool(body.get("autorestart", False)) and not imported, review,
                     origin="imported" if imported else "typed",
-                    prediction=self._prediction(body), sender=sender, repair=repair)))
+                    prediction=self._prediction(body), sender=sender, repair=repair),
+                    meta={"prediction_context": self._prediction_context(body)}))
             elif path == "/api/curated":
                 item = lessons.curated(str(body.get("id", "")))
                 if not item:
                     raise ValueError("Unknown ready-made experiment")
                 prediction = self._prediction(body, item["options"] if item["kind"] == "scene" else None)
-                confidence, reason = body.get("confidence", ""), body.get("reason", "")
-                if confidence not in ("", "low", "medium", "high") or not isinstance(reason, str) or len(reason) > 1000:
-                    raise ValueError("Use a short reason and one of the confidence choices")
-                meta = {"prediction_context": {"confidence": confidence, "reason": reason.strip()}}
+                meta = {"prediction_context": self._prediction_context(body)}
                 if item["kind"] == "scene":
                     share = None
                     if item.get("slider"):
@@ -3989,6 +3991,13 @@ class Handler(BaseHTTPRequestHandler):
             if hidden or selector:
                 raise ValueError("This shared request contains an invisible or control character "
                                  f"(U+{ord(ch):04X}) and was refused. Ask the sender to retype it as plain text.")
+
+    @staticmethod
+    def _prediction_context(body):
+        confidence, reason = body.get("confidence", ""), body.get("reason", "")
+        if confidence not in ("", "low", "medium", "high") or not isinstance(reason, str) or len(reason) > 1000:
+            raise ValueError("Use a short reason and one of the confidence choices")
+        return {"confidence": confidence, "reason": reason.strip()}
 
     @staticmethod
     def _prediction(body, options=None):
@@ -4248,6 +4257,9 @@ def main():
                     help="serve the page fresh from disk on every request (for working on the console)")
     ap.add_argument("--print-key", action="store_true", help="print the access key (for scripting)")
     opts = ap.parse_args()
+
+    if opts.agent_budget is not None and (not math.isfinite(opts.agent_budget) or opts.agent_budget < 0):
+        ap.error("--agent-budget must be a finite nonnegative USD estimate")
 
     if opts.repo is None:
         code, out, _ = run(["git", "-C", str(HERE), "rev-parse", "--show-toplevel"])

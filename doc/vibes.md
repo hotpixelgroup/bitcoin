@@ -480,10 +480,12 @@ are not included until the base moves.
 
 ## Cost
 
-The software is free and MIT licensed. Each request in your own words is a
-Claude Code session billed by your provider; the amount it reports is shown
-afterwards. The ready-made experiments, the mock engine and the browser demo
-make no AI calls.
+The software is free and MIT licensed. Each custom request goes to Claude
+Code and uses your account plan. The console shows Claude Code's estimated
+cost in USD after a request. Billing and included usage depend on your plan.
+If you set `--agent-budget`, the confirmation shows that estimate limit
+before sending the request. The ready-made experiments, the mock engine and
+the browser demo make no AI calls.
 
 ## Bitcoin Core's AI policy
 

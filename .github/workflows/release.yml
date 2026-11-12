@@ -451,6 +451,8 @@ jobs:
 
           ## Changes
 
+          - Keep selected text and baseline comparisons in place while the console receives updates, including for older saved experiments. Show compilation and test progress in the experiment panel.
+          - Save custom prediction notes locally and include them in learning exports. Show the configured Claude Code estimate limit before sending a request and label returned estimates in USD.
           - Updated the maintained upstream baseline to Bitcoin Core 32.1. The default node keeps its consensus rules; only the existing peer user-agent branding differs under source code.
           - Added a five-foundation learning path and Learning / Full lab views. The landing page now leads with learning through evidence.
           - Added three real two-node experiments: inputs and change, transaction size and total fees, and watch-only wallets versus signing wallets. All 29 exact browser recordings were regenerated from Core 32.1.
@@ -458,7 +460,7 @@ jobs:
           - Added varied practice and local later-review suggestions. Original scores remain separate; each day's first practice answer and each run's first reflection are preserved. Downloads include both records. No study data is uploaded automatically.
           - Added clearly labeled browser models for proof of work, address reuse and a single Lightning channel. These are illustrative models, not Bitcoin nodes or real payments.
           - Pinned current workflow actions and browser QA dependencies, expanded learner-journey and accessibility tests, and kept cold-launch, sandbox, persistence and public-download checks.
-          - Prepared a learner observation sheet and seven-day follow-up protocol. No cohort study, independent educator validation or paid live-AI test is claimed. Apple signing and notarisation remain deferred.
+          - Tested two Claude Code requests end to end on macOS with private regtest chains, including review, builds, activation and restore. A learner observation sheet and seven-day follow-up protocol are available. Apple signing and notarisation are deferred.
           - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^beta-//;s/^v//;s/-/./')\`. Beta launchers use a separate lab by default; stable launchers preserve an existing lab. Use the tester guide for the pinned beta rather than taking source updates midway through a session.
           - Prepared archives contain the monolithic node and CLI with optional multiprocess IPC disabled, so no Cap'n Proto/KJ shared libraries from the builder are needed to run them.
           - The prepared Mac app and programs require **Apple silicon and macOS 15 or later**. Their final load commands are checked for that minimum and for system-only libraries. Other Mac configurations require a compatible source build and are not verified by this release workflow.

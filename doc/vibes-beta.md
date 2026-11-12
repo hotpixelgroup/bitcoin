@@ -4,8 +4,8 @@ This beta is for the invited test group. You can stop at any time. We are
 testing setup, usability, recovery and the explanations; you do not need to
 know C++ or get every prediction right.
 
-**Candidate: `beta-v32.1-1` (closed-beta prerelease).** Start only after its
-[release page](https://github.com/hotpixelgroup/bitcoin/releases/tag/beta-v32.1-1)
+**Candidate: `beta-v32.1-2` (closed-beta prerelease).** Start only after its
+[release page](https://github.com/hotpixelgroup/bitcoin/releases/tag/beta-v32.1-2)
 shows the complete downloads and the coordinator confirms verification is
 finished. `v31.99-10` is the unchanged stable baseline. The `latest` download
 links select stable releases and are not the beta installation route.
@@ -39,7 +39,7 @@ Python from Homebrew also works. Missing tools are a setup result to report.
 **Mac app:** download `BitcoinVibes.dmg` from the candidate release. Copy
 **Bitcoin Vibes Beta.app** to Applications, keeping your stable app. The beta
 has a separate bundle identifier and defaults to
-`~/Library/Application Support/Bitcoin Vibes Beta/beta-v32.1-1`; an explicit
+`~/Library/Application Support/Bitcoin Vibes Beta/beta-v32.1-2`; an explicit
 `VIBES_HOME` override takes priority. Its first download needs network access.
 Leave it open until the console reports preparation finished or an error.
 
@@ -68,8 +68,8 @@ Choose a new lab directory. If the example below already exists, choose a
 different path rather than overwriting or deleting it:
 
 ```sh
-VIBES_DIR="$HOME/bitcoin-vibes-beta-v32.1-1" VIBES_NONINTERACTIVE=1 sh ./install.sh
-"$HOME/bitcoin-vibes-beta-v32.1-1/vibes" --chain regtest
+VIBES_DIR="$HOME/bitcoin-vibes-beta-v32.1-2" VIBES_NONINTERACTIVE=1 sh ./install.sh
+"$HOME/bitcoin-vibes-beta-v32.1-2/vibes" --chain regtest
 ```
 
 The installer can download matching prepared programs instead of compiling.
