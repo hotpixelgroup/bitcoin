@@ -51,7 +51,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import lab_runner                              # noqa: E402
-from vibeslib import health, lessons           # noqa: E402
+from vibeslib import health, lessons, study    # noqa: E402
 from vibeslib.sandbox import Sandbox           # noqa: E402
 
 CONSOLE_RESTART_NOTE = ("Close and reopen Bitcoin Vibes, or stop and rerun ./vibes, to load the new "
@@ -3515,6 +3515,22 @@ class Console:
                     {"choice": entry.get("choice"), "correct": entry.get("correct", False)})
         return {"summary": summary, "beliefs": beliefs, "entries": entries}
 
+    def study_record(self, body=None):
+        # Practice never rewrites the original prediction/follow-up scores.
+        with self.learning_lock:
+            path = self.state_dir / "study.json"
+            entries = self._read_json(path, [])
+            if body is not None:
+                if body.get("stage") == "reflection":
+                    job = self.experiment(str(body.get("job", "")))["summary"]
+                    if (job.get("curated") != body.get("experiment") or job.get("state") not in ("done", "review")
+                            or job.get("compare", {}).get("verdict") in (None, "inconclusive", "error")):
+                        raise ValueError("Reflect on a completed, matching experiment")
+                entries, saved = study.record(entries, body)
+                self._write_json(path, entries)
+                return {"entry": saved, **study.snapshot(entries)}
+            return study.snapshot(entries)
+
     # ----- how old is the base ------------------------------------------------------
 
     def upstream_facts(self):
@@ -3564,6 +3580,8 @@ class Handler(BaseHTTPRequestHandler):
     asset_root = None   # set with --dev to serve the files fresh from disk
 
     ASSET_TYPES = {"/": "text/html; charset=utf-8", "/web/app.js": "text/javascript",
+                   "/web/study.js": "text/javascript", "/web/learning.js": "text/javascript",
+                   "/web/learning.css": "text/css",
                    "/web/demo.js": "text/javascript", "/web/demo-data.js": "text/javascript",
                    "/web/import.js": "text/javascript", "/web/ui.css": "text/css",
                    "/web/session.js": "text/javascript", "/web/entry.css": "text/css"}
@@ -3779,6 +3797,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"log": tail})
         elif path == "/api/learning":
             self._send(200, c.learning_summary())
+        elif path == "/api/study":
+            self._send(200, c.study_record())
         elif path == "/api/stream":
             self._stream_events()
         else:
@@ -3793,14 +3813,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._body()
             c._check_console_revision()
-            after_update = path in ("/api/cancel", "/api/learning", "/api/check-upstream") or \
+            after_update = path in ("/api/cancel", "/api/learning", "/api/study", "/api/check-upstream") or \
                 (path == "/api/node" and body.get("action") == "stop")
             if c.console_restart_required and not after_update:
                 self._send(409, {"error": "The lab's files were updated. " + CONSOLE_RESTART_NOTE,
                                  "console_restart_required": True})
                 return
             active = c.job and c.job.state in ("running", "cancelling", "review")
-            passive = ("/api/cancel", "/api/apply", "/api/learning", "/api/check-upstream")
+            passive = ("/api/cancel", "/api/apply", "/api/learning", "/api/study", "/api/check-upstream")
             if active and path not in passive:
                 self._send(409, {"error": "Finish or discard the current experiment first"})
                 return
@@ -3828,6 +3848,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not item:
                     raise ValueError("Unknown ready-made experiment")
                 prediction = self._prediction(body, item["options"] if item["kind"] == "scene" else None)
+                confidence, reason = body.get("confidence", ""), body.get("reason", "")
+                if confidence not in ("", "low", "medium", "high") or not isinstance(reason, str) or len(reason) > 1000:
+                    raise ValueError("Use a short reason and one of the confidence choices")
+                meta = {"prediction_context": {"confidence": confidence, "reason": reason.strip()}}
                 if item["kind"] == "scene":
                     share = None
                     if item.get("slider"):
@@ -3837,14 +3861,14 @@ class Handler(BaseHTTPRequestHandler):
                                 or (share - slider["min"]) % slider["step"]):
                             raise ValueError("Choose a whole-number share on the slider")
                     self._job_reply(c.start_job("scene", item["title"],
-                                                c.scene_runner(item["scene"], item, prediction, share)))
+                                                c.scene_runner(item["scene"], item, prediction, share), meta=meta))
                 elif body.get("compile"):
                     self._job_reply(c.start_job("vibe", item["prompt"], c.vibe_runner(
                         item["prompt"], True, False, True, origin="curated", curated=item,
-                        prediction=prediction)))
+                        prediction=prediction), meta=meta))
                 else:
                     self._job_reply(c.start_job("ready", item["title"],
-                                                c.ready_made_runner(item, prediction)))
+                                                c.ready_made_runner(item, prediction), meta=meta))
             elif path == "/api/compare-external":
                 program = str(body.get("path", ""))[:1000]
                 self._job_reply(c.start_job("ready", "Compare with " + program,
@@ -3902,6 +3926,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"cancelled": c.cancel_job()})
             elif path == "/api/learning":
                 self._send(200, self._learning(body))
+            elif path == "/api/study":
+                self._send(200, c.study_record(body))
             elif path == "/api/node":
                 action = body.get("action")
                 if action == "mine":

@@ -8,6 +8,8 @@ const demo = location.pathname.endsWith('demo.html') || new URLSearchParams(loca
 const lessons = window.VibesLessons || {prediction: {question: '', options: []}, verdicts: {}, networks: {}, groups: [], curated: [], beliefs: []};
 const startupProblem = !window.VibesLessons || !Array.isArray(lessons.curated) || !lessons.curated.length
   ? 'The experiment lessons did not load. Reload this page. If it continues, rebuild the site or restart the installed lab.'
+  : !window.VibesStudy || !window.VibesLearning
+    ? 'The learning tools did not load. Reload this page. If it continues, rebuild the site or restart the installed lab.'
   : demo && (!window.VibesDemo || !window.VibesDemoData)
     ? 'The demo recordings did not load. Reload this page or try again when the site has finished updating.' : '';
 const storageKey = demo ? 'vibes-demo-draft-v3' : 'vibes-draft-v3';
@@ -48,13 +50,23 @@ let learningEntries = [];
 let beliefsSaving = false;
 let nodeAlertKey = null;
 let readinessTarget = 'node-controls';
+let learningUI = null;
 const recordingPredictions = new Set();
 const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
 document.body.classList.toggle('demo-mode', demo);
 
+// The header wraps with narrow windows, zoom and connection messages. Keep
+// anchor navigation clear of its actual height, including after it changes.
+const topbar = document.querySelector('.topbar');
+const updateScrollClearance = () => document.documentElement.style.setProperty(
+  '--topbar-clearance', `${Math.ceil(topbar.getBoundingClientRect().height) + 16}px`);
+updateScrollClearance();
+new ResizeObserver(updateScrollClearance).observe(topbar);
+
 function showSection(id, focus = false) {
   const section = $(id);
+  if (section.closest('[data-advanced]')) learningUI?.setView('lab');
   section.scrollIntoView({behavior: scrollBehavior(), block: 'start'});
   if (focus) section.focus({preventScroll: true});
 }
@@ -208,6 +220,13 @@ function askPrediction(heading, summary, question, options, item) {
   $('predict-summary').textContent = summary;
   $('predict-question').textContent = question;
   radioGroup($('predict-options'), 'prediction', options);
+  // The native modal starts on an answer, keeping radio arrow navigation
+  // intact. The optional glossary remains reachable with Shift+Tab.
+  if (!item?.slider) $('predict-options').querySelector('input')?.setAttribute('autofocus', '');
+  learningUI?.terms($('predict-terms'), item?.id);
+  $('predict-confidence').value = '';
+  $('predict-reason').value = '';
+  $('predict-reflection').open = false;
 
   const slider = item?.slider;
   $('predict-slider').hidden = !slider;
@@ -241,7 +260,8 @@ function askPrediction(heading, summary, question, options, item) {
       }
       const share = slider ? Number($('predict-share').value) : undefined;
       if (slider) remember('vibes-share', String(share));
-      resolve({choice: chosen('prediction') || '', share, compile: compilable && $('predict-compile').checked});
+      resolve({choice: chosen('prediction') || '', share, compile: compilable && $('predict-compile').checked,
+        confidence: $('predict-confidence').value, reason: $('predict-reason').value});
     }, {once: true});
     dialog.returnValue = '';
     dialog.showModal();
@@ -281,6 +301,7 @@ async function refreshLearning() {
     const result = await api('/api/learning');
     const {prediction, followup} = result.summary;
     learningEntries = result.entries || [];
+    learningUI?.update(learningEntries, completedExperiments());
     beliefState = result.beliefs || {};
     renderBeliefs();
     if (selected) restoreFollowup(selected.summary);
@@ -326,7 +347,8 @@ async function runCurated(item) {
   }
   const answer = await askPrediction(item.title, item.summary, item.question, item.options, item);
   if (answer === null) return;
-  action('/api/curated', {id: item.id, prediction: answer.choice, share: answer.share, compile: answer.compile});
+  action('/api/curated', {id: item.id, prediction: answer.choice, share: answer.share, compile: answer.compile,
+    confidence: answer.confidence, reason: answer.reason});
 }
 
 // ----- before and after ----------------------------------------------------------
@@ -411,6 +433,13 @@ async function saveBeliefs() {
 async function exportLearning() {
   try {
     const record = await api('/api/learning');
+    record.study = await api('/api/study');
+    record.prediction_context = [];
+    for (const job of status?.experiments || []) {
+      if (!job.curated) continue;
+      const detail = await api('/api/experiment?id=' + encodeURIComponent(job.id));
+      if (detail.summary.prediction_context) record.prediction_context.push({job: job.id, experiment: job.curated, ...detail.summary.prediction_context});
+    }
     const url = URL.createObjectURL(new Blob([JSON.stringify(record, null, 2)], {type: 'application/json'}));
     el('a', {href: url, download: 'bitcoin-vibes-learning-record.json'}).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -769,7 +798,8 @@ function renderComparison(job) {
   const canExplain = item && observed && !['error', 'inconclusive'].includes(compare.verdict);
   $('lesson').hidden = !canExplain;
   $('next-experiment').hidden = !canExplain;
-  setText('next-experiment', lessons.curated[lessons.curated.indexOf(item) + 1] ? 'Next experiment →' : 'Check your thinking');
+  const route = learningUI?.route() || lessons.curated;
+  setText('next-experiment', route[route.indexOf(item) + 1] ? 'Next experiment →' : 'Check your thinking');
   if (!canExplain) $('try-again').hidden = true;
   if (canExplain) {
     $('lesson-belief').textContent = 'A common belief: ' + item.belief;
@@ -790,6 +820,7 @@ function renderComparison(job) {
     }
     restoreFollowup(job);
   }
+  learningUI?.result(job, canExplain);
 }
 
 function restoreFollowup(job) {
@@ -1049,8 +1080,7 @@ async function refresh() {
     }
     renderHistory();
     const completed = completedExperiments();
-    setText('journey-progress', `${completed.size} of ${lessons.curated.length} experiments explored`);
-    setText('start-learning', completed.size === lessons.curated.length ? 'Explore experiments again' : completed.size ? 'Continue learning' : 'Start with coins and keys');
+    learningUI?.update(learningEntries, completed);
     document.querySelectorAll('[data-curated]').forEach(button => {
       button.classList.toggle('explored', completed.has(button.dataset.curated));
       const item = lessons.curated.find(entry => entry.id === button.dataset.curated);
@@ -1228,7 +1258,7 @@ async function importRequest(raw) {
   renderImportedNote();
   saveDraft();
   updateControls();
-  $('composer').scrollIntoView();
+  showSection('composer');
   $('wish').focus();
   if (demo) {
     $('share-output').hidden = false;
@@ -1297,13 +1327,15 @@ document.querySelectorAll('[data-category]').forEach(button => {
 $('manifest').onclick = manifest;
 $('start-learning').onclick = () => {
   const completed = completedExperiments();
-  const next = lessons.curated.find(item => !completed.has(item.id));
+  const route = learningUI?.route() || lessons.curated;
+  const next = route.find(item => !completed.has(item.id)) || route[0];
   if (next) runCurated(next);
   else showSection('curated', true);
 };
 $('next-experiment').onclick = () => {
   const item = selected && curatedItem(selected.summary);
-  const next = lessons.curated[lessons.curated.indexOf(item) + 1];
+  const route = learningUI?.route() || lessons.curated;
+  const next = route[route.indexOf(item) + 1];
   if (next) runCurated(next);
   else {
     $('beliefs-details').open = true;
@@ -1314,6 +1346,7 @@ $('readiness-action').onclick = () => showSection(readinessTarget, true);
 $('reconnect').onclick = refresh;
 $('beliefs-save').onclick = saveBeliefs;
 $('learning-export').onclick = exportLearning;
+$('study-export').onclick = exportLearning;
 $('earlier-demo-export').onclick = async () => {
   try {
     const record = await api('/api/earlier-record');
@@ -1384,7 +1417,7 @@ $('refine').onclick = () => {
   renderImportedNote();
   saveDraft();
   updateControls();
-  $('composer').scrollIntoView();
+  showSection('composer');
   $('wish').focus();
 };
 $('repair').onclick = () => {
@@ -1482,6 +1515,7 @@ $('copy-report-context').onclick = async () => {
 $('reset-demo').onclick = async () => {
   if (!await confirmAction('Reset the browser demo?', 'This clears the demo\'s experiments and answers. Your saved draft stays on this device.', 'Reset')) return;
   window.VibesDemo.reset();
+  learningUI?.reset();
   selectedId = null;
   selected = null;
   followupFor = null;
@@ -1513,6 +1547,7 @@ if (demo) {
 }
 loadDraft();
 renderImportedNote();
+if (window.VibesLearning && lessons.learning) learningUI = window.VibesLearning.create({$, el, api, lessons, remember, toast, showSection, runCurated});
 renderCurated();
 renderExamples('Customize');
 modeHelp();

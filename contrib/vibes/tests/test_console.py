@@ -2003,7 +2003,7 @@ class HttpTests(ConsoleCase):
         status = json.load(self.get('/api/status'))
         for key in ('source', 'sandbox', 'reference', 'chain_note', 'upstream', 'activation_block'):
             self.assertIn(key, status)
-        self.assertEqual(status['upstream']['commit'][:10], '6b059d9dbd')
+        self.assertEqual(status['upstream']['commit'], 'f0de87f040621468b956f01f526a43a010310501')
         self.assertFalse(status['node']['wallet'])
         self.assertFalse(status['console_restart_required'])
         catalogue = json.load(self.get('/api/lessons'))
@@ -2173,6 +2173,31 @@ class HttpTests(ConsoleCase):
         self.console.job = job
         self.console._save_job(job)
         return job
+
+    def test_study_api_preserves_original_scores_and_validates_reflections(self):
+        job = self.completed_scene()
+        original = self.console.learning_summary()
+        state = json.load(self.get('/api/study'))
+        body = {'stage': 'practice', 'experiment': 'utxos', 'question': 'utxo-sum-1', 'choice': '0', 'round': state['round']}
+        self.assertFalse(json.load(self.post('/api/study', body))['entry']['correct'])
+        self.assertEqual(json.load(self.post('/api/study', {**body, 'choice': '2'}))['entry']['choice'], '0')
+        self.assertEqual(self.console.learning_summary(), original)
+        reflection = {'stage': 'reflection', 'experiment': 'relay-filter', 'job': job.id, 'note': 'Policy differs from validity.', 'confidence': 'medium'}
+        saved = json.load(self.post('/api/study', reflection))['entry']
+        self.assertEqual(saved['note'], reflection['note'])
+        self.assertEqual(json.load(self.post('/api/study', {**reflection, 'note': 'replacement'}))['entry'], saved)
+        # A compiled comparison can be reflected on while the source proposal
+        # awaits review; learning must not require applying a source change.
+        job.state = 'review'
+        self.console._save_job(job)
+        self.assertEqual(json.load(self.post('/api/study', reflection))['entry'], saved)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/study', {**reflection, 'experiment': 'keys'})
+        with self.assertRaises(urllib.error.HTTPError):
+            self.get('/api/study', auth=False)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/study', body, origin='https://untrusted.example')
+        self.assertTrue((self.console.state_dir / 'study.json').exists())
 
     def test_learning_is_scored_by_the_console_and_kept_locally(self):
         job = self.completed_scene()

@@ -1440,8 +1440,9 @@ std::optional<std::string> V2Transport::GetMessageType(std::span<const uint8_t>&
 
     size_t msg_type_len{0};
     while (msg_type_len < CMessageHeader::MESSAGE_TYPE_SIZE && contents[msg_type_len] != 0) {
-        // Verify that message type bytes before the first 0x00 are in range.
-        if (contents[msg_type_len] < ' ' || contents[msg_type_len] > 0x7F) {
+        // Verify that message type bytes before the first 0x00 are in range. BIP324 specifies the
+        // long message type encoding as "an ASCII message type (as in the v1 P2P protocol)".
+        if (contents[msg_type_len] < ' ' || contents[msg_type_len] > 0x7E) {
             return {};
         }
         ++msg_type_len;
@@ -1674,7 +1675,11 @@ std::pair<size_t, bool> CConnman::SocketSendData(CNode& node) const
         }
     }
 
-    node.fPauseSend = node.m_send_memusage + node.m_transport->GetSendMemoryUsage() > nSendBufferMaxSize;
+    const bool pause_send{node.m_send_memusage + node.m_transport->GetSendMemoryUsage() > nSendBufferMaxSize};
+    if (pause_send && !node.fPauseSend) {
+        node.m_pause_send_since = NodeClock::now();
+    }
+    node.fPauseSend = pause_send;
 
     if (it == node.vSendMsg.end()) {
         assert(node.m_send_memusage == 0);
@@ -2076,6 +2081,17 @@ bool CConnman::InactivityCheck(const CNode& node, NodeClock::time_point now) con
             node.DisconnectMsg()
         );
         return true;
+    }
+
+    if (node.fPauseSend) {
+        const auto last_pause{node.m_pause_send_since.load()};
+        if (now > last_pause + TIMEOUT_INTERVAL) {
+            LogDebug(BCLog::NET,
+                "send buffer full for %is, %s", Ticks<std::chrono::seconds>(now - last_pause),
+                node.DisconnectMsg()
+            );
+            return true;
+        }
     }
 
     if (!node.fSuccessfullyConnected) {
@@ -3921,13 +3937,13 @@ bool CConnman::DisconnectNode(std::string_view strNode)
     return false;
 }
 
-bool CConnman::DisconnectNode(const CSubNet& subnet)
+bool CConnman::DisconnectNode(const CSubNet& subnet, bool disconnect_private_broadcast)
 {
     AssertLockNotHeld(m_nodes_mutex);
     bool disconnected = false;
     LOCK(m_nodes_mutex);
     for (CNode* pnode : m_nodes) {
-        if (subnet.Match(pnode->addr)) {
+        if (subnet.Match(pnode->addr) && (disconnect_private_broadcast || !pnode->IsPrivateBroadcastConn())) {
             LogDebug(BCLog::NET, "disconnect by subnet%s match, %s", (fLogIPs ? strprintf("=%s", subnet.ToString()) : ""), pnode->DisconnectMsg());
             pnode->fDisconnect = true;
             disconnected = true;
@@ -4202,7 +4218,10 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
 
         // Update memory usage of send buffer.
         pnode->m_send_memusage += msg.GetMemoryUsage();
-        if (pnode->m_send_memusage + pnode->m_transport->GetSendMemoryUsage() > nSendBufferMaxSize) pnode->fPauseSend = true;
+        if (pnode->m_send_memusage + pnode->m_transport->GetSendMemoryUsage() > nSendBufferMaxSize && !pnode->fPauseSend) {
+            pnode->m_pause_send_since = NodeClock::now();
+            pnode->fPauseSend = true;
+        }
         // Move message to vSendMsg queue.
         pnode->vSendMsg.push_back(std::move(msg));
 

@@ -136,7 +136,7 @@ have saved experiments it prints exactly what they changed.
 
 ## Start with a ready-made experiment
 
-The console offers ten controlled experiments. None needs an AI.
+The console offers thirteen controlled experiments. None needs an AI.
 Each asks you for a prediction, runs two real nodes on a throwaway private
 chain, shows what each node did (with a drawing of the two chains when they
 part), and then explains why, with its sources.
@@ -152,12 +152,15 @@ part), and then explains why, with its sources.
 | Can you raise the block reward? | Your node permits a larger subsidy. The reference rejects the overpaying block; its extra outputs are invalid under unchanged rules. |
 | What if your node demands a smaller reward? | Your node rejects reference blocks claiming the full subsidy, while blocks claiming less can satisfy both sets of rules. |
 | What if the reward halved sooner? | The two nodes agree for 74 blocks and split at block 75. A changed rule can sit silent until something exercises it. |
+| Where does the change in a payment come from? | Two whole inputs fund a payment and a new change output. The difference is the fee. |
+| Can two equal payments have different fees? | At the same requested fee rate, the two-input transaction uses more virtual space and pays a higher total fee. |
+| Does seeing a balance mean you can spend it? | The public-descriptor wallet sees outputs but cannot complete the signatures; the private-key wallet can. |
 | **Mining power and upgrades** | |
 | Can most of the mining power break the rules? | A miner produces thirty rule-breaking blocks to an honest miner's two. The unmodified node refuses all thirty. Most work wins only among valid chains. |
 | How does mining power affect a stricter chain? | You choose a share in a controlled schedule of forty discoveries. Compare which valid branch has more work and whether the reference adopts it. This is not a universal activation threshold. |
 | What does a node miss when it does not enforce a soft fork? | Two modern nodes differ in enforcement of BIP 65. One accepts an early spend the other refuses. This demonstrates the check, rather than replaying the 2015 network. |
 
-Seven of the ten change no source and run in seconds. Three apply a one-line
+Ten of the thirteen change no source and run in seconds. Three apply a one-line
 change bundled with the lab. For those, a release ships nodes already built
 with each change, checked by the release workflow to disagree with the
 unmodified node in the documented direction; the lab uses one only if it was
@@ -166,6 +169,33 @@ only on a throwaway private chain inside the sandbox. Tick "Compile it myself"
 to build the change on your own machine instead, which also runs Bitcoin
 Core's unit tests on it and keeps the result for next time. Two of the
 mining-power experiments use those changed nodes as their second node.
+
+### A guided path and optional review
+
+The default **Learning** view starts with five foundations: coins and keys,
+inputs and change, fees, relay policy, and consensus. Choose **Full lab** for
+custom requests, node controls and settings; no capability is removed. The
+path selector can also guide you through all thirteen experiments.
+
+The evidence stepper displays the actual result rows, with **All observations**
+available underneath. A takeaway and definitions accompany completed results.
+Optional confidence and reasoning are saved with the prediction; the first
+post-result reflection is kept for that run.
+
+**Practice & review** uses two varied questions per concept. The first answer
+to each question on a UTC calendar day is retained; a later day creates a new
+attempt. After a mistake the suggested review is tomorrow, and after a correct
+answer it is in a week. These are simple scheduling heuristics, not validated
+mastery scores. There are no notifications or remote analytics. Practice and
+reflections live in `.vibes/study.json`, separate from original scores; browser
+demo data extends the existing storage record without resetting it. The export
+includes both records and saved prediction context. Notes are optional and
+should contain no wallet secrets.
+
+Three **Interactive models** illustrate proof of work, address reuse and a
+single Lightning channel. Their limits and primary sources are shown alongside
+the controls. These models do not run nodes or create real transactions, in
+either the installed app or the recorded demo.
 
 ### Check your thinking
 
@@ -427,9 +457,9 @@ history and node stopping remain available.
 
 **How far behind Bitcoin Core is this?** asks GitHub how many changes Bitcoin
 Core's main line has made since the commit recorded in
-`contrib/vibes/UPSTREAM`, and what the latest releases are. The base is a
-development snapshot of Bitcoin Core, not a released version, and security
-fixes made upstream after it are not included until the base moves.
+`contrib/vibes/UPSTREAM`, and what the latest releases are. The current base is
+the Bitcoin Core 32.1 release. Fixes made upstream after that pinned revision
+are not included until the base moves.
 
 ## The console itself
 

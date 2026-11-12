@@ -1,0 +1,9 @@
+{
+  "name": "bitcoin-vibes-browser-qa",
+  "private": true,
+  "description": "Development-only browser and accessibility checks; the app has no npm dependencies",
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "playwright": "1.65.0"
+  }
+}

@@ -56,7 +56,7 @@ jobs:
             label: Linux (ARM64)
             slug: linux-arm64
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
 
@@ -325,7 +325,7 @@ jobs:
           python3 contrib/vibes/tests/verify_release.py --first-launch-assets out --platform '${{ matrix.slug }}' \
             --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$(git rev-parse HEAD)"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ matrix.slug }}
           path: out/
@@ -341,12 +341,12 @@ jobs:
       id-token: write        # sign the build provenance attestation
       attestations: write    # store it
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*
           path: assets
@@ -403,6 +403,7 @@ jobs:
         run: |
           COMMIT=$(git rev-parse "$TAG^{commit}")
           UPSTREAM=$(sed -n 's/^commit=//p' contrib/vibes/UPSTREAM)
+          UPSTREAM_KIND=$(sed -n 's/^kind=//p' contrib/vibes/UPSTREAM)
           : > notes.md
           if [ "$PRERELEASE" = true ]; then
             cat >> notes.md <<EOF
@@ -437,7 +438,7 @@ jobs:
           | \`BitcoinVibes.dmg\` | The Mac launcher app |
           | \`SHA256SUMS\` | SHA-256 of every file above |
 
-          Built from commit \`$COMMIT\`, on Bitcoin Core \`$UPSTREAM\` (a development snapshot, not a Bitcoin Core release). Every platform passed Bitcoin Core's unit tests and this project's own tests before anything was published.
+          Built from commit \`$COMMIT\`, based on $UPSTREAM_KIND (\`$UPSTREAM\`). Every platform passed Bitcoin Core's unit tests and this project's own tests before anything was published.
 
           ## Verifying a download
 
@@ -450,14 +451,14 @@ jobs:
 
           ## Changes
 
-          - Added closed-beta tester instructions, structured bug and usability feedback forms, and an explicit preview/copy flow for limited report context. Reports are never submitted automatically.
-          - Fixed reopening an already-running local lab so a second app launch can reuse its existing console without altering the node or current experiment.
-          - Made the console's humour consistent while keeping observations, errors and recovery instructions precise.
-          - Fixed first launch: prepared programs are tried before compiler dependencies, command-line-tool stubs are detected, and Mac source downloads proceed without a blocking dialog. Failed downloads can be retried without replacing existing files.
-          - Added release checks for the full noninteractive installer and real shipped app entry through automatic setup, strict-cookie authentication, HTML/assets, the first lesson, all three variants and relaunch persistence. The workflow exercises candidates before publication and public downloads afterward on fresh runners. Browser opening is suppressed; Finder/Gatekeeper permission prompts are not automated.
-          - Retains the lesson, scoring, saved learning, settings and exact demo improvements from [PR #13](https://github.com/hotpixelgroup/bitcoin/pull/13), and the layout and packaging fixes from [PR #14](https://github.com/hotpixelgroup/bitcoin/pull/14).
-          - Improved the learning flow, mobile layout, long-text wrapping, and radio-button and checkbox alignment.
-          - Preserved build provenance through installer updates and made source updates explicitly require reopening the console.
+          - Updated the maintained upstream baseline to Bitcoin Core 32.1. The default node keeps its consensus rules; only the existing peer user-agent branding differs under source code.
+          - Added a five-foundation learning path and Learning / Full lab views. The landing page now leads with learning through evidence.
+          - Added three real two-node experiments: inputs and change, transaction size and total fees, and watch-only wallets versus signing wallets. All 29 exact browser recordings were regenerated from Core 32.1.
+          - Added an observation-by-observation evidence walkthrough, contextual definitions, plain takeaways and optional confidence, reasoning and reflection notes.
+          - Added varied practice and local later-review suggestions. Original scores remain separate; each day's first practice answer and each run's first reflection are preserved. Downloads include both records. No study data is uploaded automatically.
+          - Added clearly labeled browser models for proof of work, address reuse and a single Lightning channel. These are illustrative models, not Bitcoin nodes or real payments.
+          - Pinned current workflow actions and browser QA dependencies, expanded learner-journey and accessibility tests, and kept cold-launch, sandbox, persistence and public-download checks.
+          - Prepared a learner observation sheet and seven-day follow-up protocol. No cohort study, independent educator validation or paid live-AI test is claimed. Apple signing and notarisation remain deferred.
           - The Mac bundle identifies this release as \`$(printf '%s' "$TAG" | sed 's/^beta-//;s/^v//;s/-/./')\`. Beta launchers use a separate lab by default; stable launchers preserve an existing lab. Use the tester guide for the pinned beta rather than taking source updates midway through a session.
           - Prepared archives contain the monolithic node and CLI with optional multiprocess IPC disabled, so no Cap'n Proto/KJ shared libraries from the builder are needed to run them.
           - The prepared Mac app and programs require **Apple silicon and macOS 15 or later**. Their final load commands are checked for that minimum and for system-only libraries. Other Mac configurations require a compatible source build and are not verified by this release workflow.
@@ -467,7 +468,7 @@ jobs:
       # Created as a draft and published only once every file is attached, so
       # "the latest release" never points at one that is missing its installer
       # or its checksums.
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ env.TAG }}
           name: Bitcoin Vibes ${{ env.TAG }}
@@ -514,7 +515,7 @@ jobs:
           - os: macos-15
             slug: macos-arm64
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
       # A fresh runner, with no build/dependency installation. This uses the

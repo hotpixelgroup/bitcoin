@@ -867,6 +867,132 @@ def scene_fees(miner, other):
                         else "The fee scene did not produce the expected transaction ordering"}
 
 
+def spend_selected(node, wallet, coins, destination, amount, change):
+    """Make a payment from exactly the selected outputs, with a known fee rate."""
+    inputs = [{"txid": coin["txid"], "vout": coin["vout"]} for coin in coins]
+    raw = node.rpc("createrawtransaction", inputs, {destination: amount})
+    funded = node.rpc("fundrawtransaction", raw, {"add_inputs": False, "fee_rate": 2,
+                                                "changeAddress": change}, wallet=wallet)
+    signed = node.rpc("signrawtransactionwithwallet", funded["hex"], wallet=wallet)
+    if not signed.get("complete"):
+        raise RuntimeError("The selected payment could not be fully signed")
+    decoded = node.rpc("decoderawtransaction", signed["hex"])
+    return signed["hex"], decoded, round(Decimal(str(funded["fee"])) * COIN)
+
+
+def scene_utxos(first, second):
+    wallet = make_wallet(first)
+    if not wallet:
+        raise RuntimeError("The outputs scene needs wallet support")
+    address = first.rpc("getnewaddress", wallet=wallet)
+    shuttle(first, second, first.rpc("generatetoaddress", 102, address))
+    coins = first.rpc("listunspent", 1, wallet=wallet)[:2]
+    if len(coins) != 2:
+        raise RuntimeError("Two spendable outputs were not available")
+    destination, change = (first.rpc("getnewaddress", wallet=wallet) for _ in range(2))
+    raw, decoded, fee = spend_selected(first, wallet, coins, destination, 60, change)
+    total = sum(round(Decimal(str(coin["amount"])) * COIN) for coin in coins)
+    outputs = {entry["scriptPubKey"]["address"]: round(Decimal(str(entry["value"])) * COIN)
+               for entry in decoded["vout"]}
+    txid = first.rpc("sendrawtransaction", raw)
+    blocks = first.rpc("generatetoaddress", 1, FIXED_ADDRESS)
+    shuttle(first, second, blocks)
+    spent = all(second.rpc("gettxout", coin["txid"], coin["vout"]) is None for coin in coins)
+    complete = (len(decoded["vin"]) == 2 and outputs.get(destination) == 60 * COIN
+                and outputs.get(change, 0) > 0 and total == sum(outputs.values()) + fee
+                and spent and txid in second.rpc("getblock", blocks[0])["tx"])
+    rows = [
+        {"id": "inputs", "status": "info", "title": "Select two whole outputs",
+         "reference": f"2 inputs: {btc(total)}", "candidate": "Send 60 BTC",
+         "plain": "An input spends a previous output in full. The payment does not shave 60 BTC off a balance field."},
+        {"id": "outputs", "status": "info", "title": "Create the recipient and change outputs",
+         "reference": f"Recipient: {btc(outputs.get(destination, 0))}",
+         "candidate": f"Change: {btc(outputs.get(change, 0))}",
+         "plain": f"The wallet constructed both outputs before broadcasting. The {fee} satoshi difference is the transaction fee, not a separate payment output."},
+        {"id": "confirmed", "status": "same" if complete else "error",
+         "title": "The second node checks the payment in a block",
+         "reference": "Original outputs spent" if spent else "Original outputs not both spent",
+         "candidate": f"Inputs = recipient + change + {fee} satoshis fee",
+         "plain": "Both nodes checked the same transaction. Change is a new output controlled by the sender; it is not a refund sent later by a miner."},
+    ]
+    return {"rows": rows, "verdict": "none" if complete else "inconclusive",
+            "observed_answer": "change" if complete else None,
+            "headline": "Two outputs became a payment, change and a fee" if complete else "The output accounting did not complete"}
+
+
+def scene_fee_size(first, second):
+    wallet = make_wallet(first)
+    if not wallet:
+        raise RuntimeError("The fee-size scene needs wallet support")
+    address = first.rpc("getnewaddress", wallet=wallet)
+    shuttle(first, second, first.rpc("generatetoaddress", 104, address))
+    coins = first.rpc("listunspent", 1, wallet=wallet)
+    if len(coins) < 3:
+        raise RuntimeError("Three spendable outputs were not available")
+    payments = []
+    for selected in (coins[:1], coins[1:3]):
+        destination, change = (first.rpc("getnewaddress", wallet=wallet) for _ in range(2))
+        raw, decoded, fee = spend_selected(first, wallet, selected, destination, 1, change)
+        txid = first.rpc("sendrawtransaction", raw)
+        payments.append((txid, decoded["vsize"], fee, len(decoded["vin"])))
+    blocks = first.rpc("generatetoaddress", 1, FIXED_ADDRESS)
+    shuttle(first, second, blocks)
+    included = second.rpc("getblock", blocks[0])["tx"]
+    one, two = payments
+    complete = (one[3] == 1 and two[3] == 2 and two[1] > one[1] and two[2] > one[2]
+                and all(payment[0] in included for payment in payments))
+    return {"rows": [
+        {"id": "one", "status": "info", "title": "One input pays 1 BTC",
+         "reference": f"{one[1]} virtual bytes", "candidate": f"{one[2]} satoshis fee",
+         "plain": "The wallet was asked to use one input and a fee rate of 2 satoshis per virtual byte."},
+        {"id": "two", "status": "differs", "title": "Two inputs also pay 1 BTC",
+         "reference": f"{two[1]} virtual bytes", "candidate": f"{two[2]} satoshis fee",
+         "plain": "This payment uses the same output types and requested fee rate, but another input needs more transaction data."},
+        {"id": "checked", "status": "same" if complete else "error", "title": "Both payments reach the other node in a block",
+         "reference": "Both send 1 BTC", "candidate": "The two-input payment costs more" if complete else "Comparison incomplete",
+         "plain": "In this controlled comparison, input count changed virtual size and the total fee. Input and output types, witness data and wallet estimation also affect size; input count alone is not a universal price list."},
+    ], "verdict": "none" if complete else "inconclusive", "observed_answer": "two" if complete else None,
+        "headline": "The same amount cost more when the transaction used more space" if complete else "The size comparison did not complete"}
+
+
+def scene_watch_only(first, second):
+    wallet = make_wallet(first, "signer")
+    if not wallet:
+        raise RuntimeError("The signing scene needs wallet support")
+    address = first.rpc("getnewaddress", wallet=wallet)
+    shuttle(first, second, first.rpc("generatetoaddress", 101, address))
+    public = first.rpc("listdescriptors", False, wallet=wallet)["descriptors"]
+    second.named("createwallet", wallet_name="watcher", disable_private_keys=True, blank=True)
+    requests = [{**{key: value for key, value in entry.items() if key in ("desc", "active", "internal", "range")},
+                 "timestamp": 0} for entry in public]
+    imported = second.rpc("importdescriptors", requests, wallet="watcher", timeout=180)
+    if not imported or not all(entry.get("success") for entry in imported):
+        raise RuntimeError("The public descriptors could not be imported")
+    coins = second.rpc("listunspent", 1, wallet="watcher")
+    destination = first.rpc("getnewaddress", wallet=wallet)
+    raw = first.rpc("createrawtransaction", [{"txid": coins[0]["txid"], "vout": coins[0]["vout"]}], {destination: 1})
+    funded = first.rpc("fundrawtransaction", raw, {"add_inputs": False}, wallet=wallet)["hex"]
+    watch_signed = second.rpc("signrawtransactionwithwallet", funded, wallet="watcher")
+    signed = first.rpc("signrawtransactionwithwallet", funded, wallet=wallet)
+    private_disabled = second.rpc("getwalletinfo", wallet="watcher")["private_keys_enabled"] is False
+    complete = private_disabled and not watch_signed.get("complete") and bool(signed.get("complete"))
+    if complete:
+        txid = first.rpc("sendrawtransaction", signed["hex"])
+        blocks = first.rpc("generatetoaddress", 1, FIXED_ADDRESS)
+        shuttle(first, second, blocks)
+        complete = txid in second.rpc("getblock", blocks[0])["tx"]
+    return {"rows": [
+        {"id": "watch", "status": "info", "title": "Copy public wallet information to node B",
+         "reference": "Node A has the private keys", "candidate": f"Node B recognizes {len(coins)} unspent output(s)",
+         "plain": "A public descriptor tells the second wallet what to watch. It does not include the private key needed by these single-signature outputs."},
+        {"id": "sign", "status": "differs" if complete else "error", "title": "Ask both wallets to sign the same payment",
+         "reference": "Node A completed the signatures" if signed.get("complete") else "Node A did not sign",
+         "candidate": "Node B could not complete them" if not watch_signed.get("complete") else "Node B signed",
+         "plain": "A displayed balance is not spending authority. In this scene the signer supplied the missing signatures, and the other node validated the signed payment."},
+    ], "verdict": "none" if complete else "inconclusive", "observed_answer": "signer" if complete else None,
+        "headline": "The watching wallet could see the coins but could not sign" if complete else "The signing comparison did not complete"}
+
+
 def scene_softfork(upgraded, old):
     """Demonstrate CLTV with two modern nodes and a test-only activation override."""
     rows = []
@@ -1116,7 +1242,8 @@ def scene_power(stock, strict, share=60, rounds=40):
 
 SCENES = {"compare": scene_compare, "policy": scene_policy, "reorg": scene_reorg,
           "maturity": scene_maturity, "keys": scene_keys, "fees": scene_fees,
-          "softfork": scene_softfork, "miners": scene_miners, "power": scene_power}
+          "softfork": scene_softfork, "miners": scene_miners, "power": scene_power,
+          "utxos": scene_utxos, "fee-size": scene_fee_size, "watch-only": scene_watch_only}
 # Scenes that give a node a different setting instead of a different program:
 # (options for the first node, options for the second).
 SCENE_ARGS = {

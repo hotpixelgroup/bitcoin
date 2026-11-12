@@ -42,7 +42,7 @@ function token(value) {
   try {
     // Landing page.
     await page.goto(base + '/');
-    await page.getByRole('heading', {name: 'What shall Bitcoin become?'}).waitFor();
+    await page.getByRole('heading', {name: 'Learn Bitcoin by testing it.'}).waitFor();
     assert.equal(await overflow(), false, 'landing page overflows at desktop width');
     assert.equal(await page.locator('#beta-heading').innerText(), 'Closed beta testing');
     assert.equal(await page.locator('.beta-note a').first().getAttribute('href'), 'https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes-beta.md');
@@ -54,7 +54,7 @@ function token(value) {
     // The demo says what it is.
     await page.goto(base + '/demo.html');
     await page.getByText('No AI and no node run here').waitFor();
-    assert.equal(await page.locator('[data-curated]').count(), 10, 'ten ready-made experiments');
+    assert.equal(await page.locator('[data-curated]').count(), 13, 'thirteen ready-made experiments');
     assert.equal(await page.locator('#curated-grid h3').count(), 3, 'in three groups');
     assert.equal(await page.locator('#manifest').isDisabled(), true, 'the demo must not pretend to write code');
     assert.equal(await page.locator('#node-controls').isVisible(), false, 'no fake running node in the demo');
@@ -66,6 +66,7 @@ function token(value) {
     // A bug report starts with an explicit preview, not a dump of the page or
     // browser storage. Private draft text and URL access tokens never enter it.
     const privateText = 'PRIVATE-CONTEXT-MARKER /Users/test/wallet.dat --rpcpassword=private';
+    await page.locator('#learning-view').selectOption('lab');
     await page.locator('#wish').fill(privateText);
     await page.evaluate(() => {
       history.replaceState(null, '', location.pathname + '?key=PRIVATE-ACCESS-KEY#PRIVATE-SHARE-TOKEN');
@@ -104,6 +105,7 @@ function token(value) {
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: /filtering node accepted|policy/i}).waitFor();
     assert.match(await page.locator('#prediction-result').innerText(), /Observed instead/);
+    await page.locator('#full-observations > summary').click();
     const rows = await page.locator('.cmp-row').allInnerTexts();
     assert.equal(rows.length, 3, 'three recorded observations');
     assert.match(rows[0], /refuses to relay it/);
@@ -141,6 +143,7 @@ function token(value) {
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: 'Loosened'}).waitFor();
     assert.match(await page.locator('#prediction-result').innerText(), /You predicted this/);
+    await page.locator('#full-observations > summary').click();
     assert.match(await page.locator('#comparison-rows').innerText(), /bad-cb-amount/);
     assert.match(await page.locator('#verdict-mainnet').innerText(), /hard[ -]fork/);
     assert.match(await page.locator('#outcome-test').innerText(), /Not run|no longer pass/);
@@ -181,6 +184,7 @@ function token(value) {
     await page.locator('#prediction-gone').check();
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: 'The coins were on the chain all along'}).waitFor();
+    await page.locator('#full-observations > summary').click();
     assert.match(await page.locator('#comparison-rows').innerText(), /restored on node B: 50/);
 
     // A transient scoring failure is retried on the next render, not marked saved early.
@@ -202,11 +206,12 @@ function token(value) {
     await page.waitForFunction(async count => (await window.VibesDemo.api('/api/learning')).summary.prediction.answered === count + 1, attemptsBefore);
     assert.equal(await page.locator('#start-learning').innerText(), 'Continue learning');
     await page.locator('#start-learning').click();
-    assert.equal(await page.locator('#predict-title').innerText(), await page.evaluate(() => window.VibesLessons.curated.find(item => item.id === 'fees').title), 'continue skips experiments already explored');
+    assert.equal(await page.locator('#predict-title').innerText(), await page.evaluate(() => window.VibesLessons.curated.find(item => item.id === 'utxos').title), 'continue follows the beginner route and skips explored foundations');
     await page.keyboard.press('Escape');
     assert.match(await page.locator('#beliefs-intro').innerText(), /even if you have already started exploring/, 'late questionnaire does not claim to precede the experiments');
 
     // The last lesson leads into reflection rather than ending without a next step.
+    await page.locator('#learning-route').selectOption('all');
     await page.locator('[data-curated="softfork"]').click();
     await page.locator('#predict-options input').first().check();
     await page.locator('#predict-run').click();
@@ -229,6 +234,8 @@ function token(value) {
     await page.locator('#beliefs-status').filter({hasText: 'Right before: 3 of 10. Right after: 7 of 10.'}).waitFor();
 
     // A shared request is shown as text and never as markup.
+    await page.locator('#learning-view').selectOption('learning');
+    assert.equal(await page.locator('#composer').isVisible(), false);
     const hostile = '<img src=x onerror="window.pwned=1"> Raise the subsidy';
     await page.goto(base + '/demo.html#decree=' + token({v: 1, p: hostile, sha: 'abc', ts: 1, c: [], f: []}));
     await page.getByRole('heading', {name: 'A request from someone else'}).waitFor();
@@ -237,6 +244,9 @@ function token(value) {
     assert.equal(await page.locator('#confirm-copy img').count(), 0);
     await page.locator('#confirm-action').click();
     await page.locator('#imported-note').filter({hasText: 'came from someone else'}).waitFor();
+    assert.equal(await page.locator('#learning-view').inputValue(), 'lab', 'accepting an import reveals its editor');
+    assert.equal(await page.locator('#composer').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'wish');
     assert.equal(await page.locator('#mode').inputValue(), 'review');
 
     // A shared request explicitly asks before replacing work already in the draft.
@@ -287,7 +297,7 @@ function token(value) {
     // Reset clears every visible part of the old learning record.
     await page.locator('#reset-demo').click();
     await page.locator('#confirm-action').click();
-    await page.locator('#journey-progress').filter({hasText: '0 of 10'}).waitFor();
+    await page.locator('#journey-progress').filter({hasText: '0 of 13'}).waitFor();
     await page.locator('#beliefs-stage').filter({hasText: 'Not answered yet'}).waitFor();
     assert.equal(await page.locator('#beliefs-status').innerText(), '');
     assert.equal(await page.locator('#progress-message').innerText(), '');

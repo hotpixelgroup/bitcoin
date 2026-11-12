@@ -67,7 +67,8 @@
 #include <node/peerman_args.h>
 #include <policy/feerate.h>
 #include <policy/fees/block_policy_estimator.h>
-#include <policy/fees/block_policy_estimator_args.h>
+#include <policy/fees/estimator_args.h>
+#include <policy/fees/estimator_man.h>
 #include <policy/policy.h>
 #include <policy/settings.h>
 #include <protocol.h>
@@ -86,6 +87,7 @@
 #include <util/asmap.h>
 #include <util/batchpriority.h>
 #include <util/btcsignals.h>
+#include <util/byte_units.h>
 #include <util/chaintype.h>
 #include <util/check.h>
 #include <util/fs.h>
@@ -113,7 +115,7 @@
 #include <exception>
 #include <fstream>
 #include <functional>
-#include <initializer_list>
+#include <limits>
 #include <list>
 #include <memory>
 #include <new>
@@ -125,7 +127,6 @@
 #include <thread>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #ifndef WIN32
@@ -145,10 +146,6 @@
 using common::InvalidPortErrMsg;
 using common::ResolveErrMsg;
 
-using http_bitcoin::InitHTTPServer;
-using http_bitcoin::InterruptHTTPServer;
-using http_bitcoin::StartHTTPServer;
-using http_bitcoin::StopHTTPServer;
 using node::ApplyArgsManOptions;
 using node::BlockManager;
 using node::CalculateCacheSizes;
@@ -169,6 +166,7 @@ using node::VerifyLoadedChainstate;
 using util::Join;
 using util::ReplaceAll;
 using util::ToString;
+using util::TrimStringView;
 
 static constexpr bool DEFAULT_PROXYRANDOMIZE{true};
 static constexpr bool DEFAULT_REST_ENABLE{false};
@@ -365,15 +363,6 @@ void Shutdown(NodeContext& node)
         DumpMempool(*node.mempool, MempoolPath(*node.args));
     }
 
-    // Drop transactions we were still watching, record fee estimations and unregister
-    // fee estimator from validation interface.
-    if (node.fee_estimator) {
-        node.fee_estimator->Flush();
-        if (node.validation_signals) {
-            node.validation_signals->UnregisterValidationInterface(node.fee_estimator.get());
-        }
-    }
-
     // FlushStateToDisk generates a ChainStateFlushed callback, which we should avoid missing
     if (node.chainman) {
         LOCK(cs_main);
@@ -388,6 +377,14 @@ void Shutdown(NodeContext& node)
     // CValidationInterface callbacks, flush them...
     if (node.validation_signals) node.validation_signals->FlushBackgroundCallbacks();
 
+    // Once callbacks drain, drop tracked transactions, save estimates, and unregister the estimator
+    if (node.fee_estimator_man) {
+        node.fee_estimator_man->ShutdownFlush();
+        if (node.validation_signals) {
+            node.validation_signals->UnregisterValidationInterface(node.fee_estimator_man.get());
+        }
+    }
+
     // Stop and delete all indexes only after flushing background callbacks.
     for (auto* index : node.indexes) index->Stop();
     if (g_txindex) g_txindex.reset();
@@ -396,12 +393,7 @@ void Shutdown(NodeContext& node)
     DestroyAllBlockFilterIndexes();
     node.indexes.clear(); // all instances are nullptr now
 
-    // Any future callbacks will be dropped. This should absolutely be safe - if
-    // missing a callback results in an unrecoverable situation, unclean shutdown
-    // would too. The only reason to do the above flushes is to let the wallet catch
-    // up with our current chain to avoid any strange pruning edge cases and make
-    // next startup faster by avoiding rescan.
-
+    // Callbacks queued by this final chainstate flush will not run during shutdown
     if (node.chainman) {
         LOCK(cs_main);
         for (const auto& chainstate : node.chainman->m_chainstates) {
@@ -429,8 +421,8 @@ void Shutdown(NodeContext& node)
     if (node.validation_signals) {
         node.validation_signals->UnregisterAllValidationInterfaces();
     }
+    node.fee_estimator_man.reset();
     node.mempool.reset();
-    node.fee_estimator.reset();
     node.chainman.reset();
     node.validation_signals.reset();
     node.scheduler.reset();
@@ -521,7 +513,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
                    ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-fastprune", "Use smaller block files and lower minimum prune height for testing purposes", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
 #if HAVE_SYSTEM
-    argsman.AddArg("-blocknotify=<cmd>", "Execute command when the best block changes (%s in cmd is replaced by block hash)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-blocknotify=<cmd>", "Execute command when the best block changes (%s in cmd is replaced by block hash). Not run for blocks connected during initial block download or reindexing.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
     argsman.AddArg("-blockreconstructionextratxn=<n>", strprintf("Extra transactions to keep in memory for compact block reconstructions (default: %u)", DEFAULT_BLOCK_RECONSTRUCTION_EXTRA_TXN), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksonly", strprintf("Whether to reject transactions from network peers. Disables automatic broadcast and rebroadcast of transactions, unless the source peer has the 'forcerelay' permission. RPC transactions are not affected. (default: %u)", DEFAULT_BLOCKSONLY), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -529,7 +521,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-conf=<file>", strprintf("Specify path to read-only configuration file. Relative paths will be prefixed by datadir location (only useable from command line, not configuration file) (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION, OptionsCategory::OPTIONS);
     argsman.AddArg("-dbbatchsize", strprintf("Maximum database write batch size in bytes (default: %u)", DEFAULT_DB_CACHE_BATCH), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-dbcache=<n>", strprintf("Maximum database cache size <n> MiB (minimum %d, default: %d). Make sure you have enough RAM. In addition, unused memory allocated to the mempool is shared with this cache (see -maxmempool).", MIN_DB_CACHE >> 20, node::GetDefaultDBCache() >> 20), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-dbcache=<n>", strprintf("Maximum database cache size <n> MiB (minimum %d, default: %d). Make sure you have enough RAM. In addition, unused memory allocated to the mempool is shared with this cache (see -maxmempool).", MIN_DBCACHE_BYTES / 1_MiB, node::GetDefaultDBCache() / 1_MiB), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-includeconf=<file>", "Specify additional configuration file, relative to the -datadir path (only useable from configuration file, not command line)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-allowignoredconf", strprintf("For backwards compatibility, treat an unused %s file in the datadir as a warning, not an error.", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-loadblock=<file>", "Imports blocks from an external file on startup. Obfuscated blocks are not supported.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -583,10 +575,10 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-forcednsseed", strprintf("Always query for peer addresses via DNS lookup (default: %u)", DEFAULT_FORCEDNSSEED), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-listen", strprintf("Accept connections from outside (default: %u if no -proxy, -connect or -maxconnections=0)", DEFAULT_LISTEN), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-listenonion", strprintf("Automatically create Tor onion service (default: %d)", DEFAULT_LISTEN_ONION), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
-    argsman.AddArg("-maxconnections=<n>", strprintf("Maintain at most <n> automatic connections to peers (default: %u). %u slots of these are reserved for outgoing connections. See -inboundrelaypercent for more information about limits applied to transaction relay inbound peers. "
+    argsman.AddArg("-maxconnections=<n>", strprintf("Maintain at most <n> automatic connections to peers (default: %u, maximum: %u). %u slots of these are reserved for outgoing connections. See -inboundrelaypercent for more information about limits applied to transaction relay inbound peers. "
                                                     "This limit does not apply to connections manually added via -addnode or the addnode RPC, which have a separate limit of %u. "
                                                     "It does not apply to short-lived private broadcast connections either, which have a separate limit of %u.",
-                                                    DEFAULT_MAX_PEER_CONNECTIONS, MAX_OUTBOUND_FULL_RELAY_CONNECTIONS + MAX_BLOCK_RELAY_ONLY_CONNECTIONS + MAX_FEELER_CONNECTIONS, MAX_ADDNODE_CONNECTIONS, MAX_PRIVATE_BROADCAST_CONNECTIONS),
+                                                    DEFAULT_MAX_PEER_CONNECTIONS, MAX_PEER_CONNECTIONS, MAX_OUTBOUND_FULL_RELAY_CONNECTIONS + MAX_BLOCK_RELAY_ONLY_CONNECTIONS + MAX_FEELER_CONNECTIONS, MAX_ADDNODE_CONNECTIONS, MAX_PRIVATE_BROADCAST_CONNECTIONS),
                    ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-inboundrelaypercent=<n>", strprintf("Permit a maximum percent of inbound connections to relay transactions, to limit memory utilization (0 to 100, default: %u).", DEFAULT_FULL_RELAY_INBOUND_PCT), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxreceivebuffer=<n>", strprintf("Maximum per-connection receive buffer, <n>*1000 bytes (default: %u)", DEFAULT_MAXRECEIVEBUFFER), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
@@ -621,7 +613,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
                    "Connect through SOCKS5 proxy, set -noproxy to disable. " +
                    proxy_doc_for_unix_socket +
                    "Could end in =network to set the proxy only for that network. " +
-                   "The network can be any of ipv4, ipv6, tor or cjdns. " +
+                   "The network can be any of " + Join(std::vector{NET_IPV4, NET_IPV6, NET_ONION, NET_CJDNS}, ", ", GetNetworkName) + ". " +
                    "(default: disabled)",
                    ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_ELISION,
                    OptionsCategory::CONNECTION);
@@ -716,10 +708,15 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
                    OptionsCategory::NODE_RELAY);
     argsman.AddArg("-minrelaytxfee=<amt>", strprintf("Fees (in %s/kvB) smaller than this are considered zero fee for relaying, mining and transaction creation (default: %s)",
         CURRENCY_UNIT, FormatMoney(DEFAULT_MIN_RELAY_TX_FEE)), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
+    argsman.AddArg("-txsendrate=<n>",
+                   strprintf("Set the maximum ongoing rate for sending transactions to (inbound) peers (default: %u tx/s)",
+                             DEFAULT_TX_SEND_RATE),
+                   ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-privatebroadcast",
                    strprintf(
-                       "Broadcast transactions submitted via sendrawtransaction RPC using short-lived "
+                       "EXPERIMENTAL: Broadcast transactions submitted via sendrawtransaction RPC using short-lived "
                        "connections through the Tor or I2P networks, without putting them in the mempool first. "
+                       "This provides best-effort concealment of the transaction's origin. "
                        "Transactions submitted through the wallet are not affected by this option "
                        "(default: %u)",
                    DEFAULT_PRIVATE_BROADCAST),
@@ -741,6 +738,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-rpcdoccheck", strprintf("Throw a non-fatal error at runtime if the documentation for an RPC is incorrect (default: %u)", DEFAULT_RPC_DOC_CHECK), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::RPC);
     argsman.AddArg("-rpccookiefile=<loc>", "Location of the auth cookie. Relative paths will be prefixed by a net-specific datadir location. (default: data dir)", ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
     argsman.AddArg("-rpccookieperms=<readable-by>", strprintf("Set permissions on the RPC auth cookie file so that it is readable by [owner|group|all] (default: owner [via umask 0077])"), ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
+    argsman.AddArg("-rpcmaxconnections=<n>", strprintf("The maximum number of connected HTTP clients (default: %d)", DEFAULT_MAX_HTTP_CONNECTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
     argsman.AddArg("-rpcpassword=<pw>", "Password for JSON-RPC connections", ArgsManager::ALLOW_ANY | ArgsManager::SENSITIVE, OptionsCategory::RPC);
     argsman.AddArg("-rpcport=<port>", strprintf("Listen for JSON-RPC connections on <port> (default: %u, testnet3: %u, testnet4: %u, signet: %u, regtest: %u)", defaultBaseParams->RPCPort(), testnetBaseParams->RPCPort(), testnet4BaseParams->RPCPort(), signetBaseParams->RPCPort(), regtestBaseParams->RPCPort()), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::RPC);
     argsman.AddArg("-rpcservertimeout=<n>", strprintf("Timeout during HTTP requests (default: %d)", DEFAULT_HTTP_SERVER_TIMEOUT), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::RPC);
@@ -890,7 +888,7 @@ void InitLogging(const ArgsManager& args)
 
 namespace { // Variables internal to initialization process only
 
-int nMaxConnections;
+int num_p2p_max_connections;
 int available_fds;
 ServiceFlags g_local_services = ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS);
 int64_t peer_connect_timeout;
@@ -1046,8 +1044,8 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     }
 
     // -bind and -whitebind can't be set when not listening
-    size_t nUserBind = args.GetArgs("-bind").size() + args.GetArgs("-whitebind").size();
-    if (nUserBind != 0 && !args.GetBoolArg("-listen", DEFAULT_LISTEN)) {
+    size_t num_user_p2p_bind = args.GetArgs("-bind").size() + args.GetArgs("-whitebind").size();
+    if (num_user_p2p_bind != 0 && !args.GetBoolArg("-listen", DEFAULT_LISTEN)) {
         return InitError(Untranslated("Cannot set -bind or -whitebind together with -listen=0"));
     }
 
@@ -1060,32 +1058,82 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     // plus all manual connections and all bound interfaces. Any remainder will be available for connection sockets
 
     // Number of bound interfaces (we have at least one)
-    int nBind = std::max(nUserBind, size_t(1));
+    int num_p2p_bind = std::max(num_user_p2p_bind, size_t(1));
     // Maximum number of connections with other nodes, this accounts for all types of outbounds and inbounds except for manual
-    int user_max_connection = args.GetIntArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS);
-    if (user_max_connection < 0) {
+    int user_p2p_max_connections = args.GetArg<int>("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS);
+    if (user_p2p_max_connections < 0) {
         return InitError(Untranslated("-maxconnections must be greater or equal than zero"));
     }
+
+    if (user_p2p_max_connections > MAX_PEER_CONNECTIONS) {
+        InitWarning(strprintf(_("Reducing -maxconnections from %d to %d."), user_p2p_max_connections, MAX_PEER_CONNECTIONS));
+        user_p2p_max_connections = MAX_PEER_CONNECTIONS;
+    }
+
     const size_t max_private{args.GetBoolArg("-privatebroadcast", DEFAULT_PRIVATE_BROADCAST)
                              ? MAX_PRIVATE_BROADCAST_CONNECTIONS
                              : 0};
-    // Reserve enough FDs to account for the bare minimum, plus any manual connections, plus the bound interfaces
-    int min_required_fds = MIN_CORE_FDS + MAX_ADDNODE_CONNECTIONS + nBind;
 
-    // Try raising the FD limit to what we need (available_fds may be smaller than the requested amount if this fails)
-    available_fds = RaiseFileDescriptorLimit(user_max_connection + max_private + min_required_fds);
+    // HTTP server listen sockets: by default two (IPv4 and IPv6 loopback), or one per -rpcbind entry
+    int num_rpc_bind = std::max(args.GetArgs("-rpcbind").size(), size_t(2));
+    // HTTP server connected client sockets
+    int user_rpc_max_connections = args.GetArg<int>("-rpcmaxconnections", DEFAULT_MAX_HTTP_CONNECTIONS);
+    if (user_rpc_max_connections < 1) {
+        return InitError(Untranslated("-rpcmaxconnections must be greater than zero. Use -server=0 to disable HTTP."));
+    }
+    if (!args.GetBoolArg("-server", false)) {
+        num_rpc_bind = 0;
+        user_rpc_max_connections = 0;
+    }
+
+    // Reserve enough FDs to account for the bare minimum, plus any manual connections, plus the bound interfaces.
+    // Every element is an int >= 0 so summing in int64_t cannot overflow.
+    // RaiseFileDescriptorLimit() accepts an int so we check that limit before casting.
+    const int64_t total_fds = int64_t{MIN_CORE_FDS} +
+                              MAX_ADDNODE_CONNECTIONS +
+                              num_p2p_bind +
+                              num_rpc_bind +
+                              user_rpc_max_connections +
+                              user_p2p_max_connections +
+                              static_cast<int64_t>(max_private);
+    if (total_fds > std::numeric_limits<int>::max()) {
+        return InitError(Untranslated("Too many file descriptors requested. Try lower values for -rpcmaxconnections "
+                                      "or -maxconnections, or fewer settings of "
+                                      "-rpcbind, -bind and -whitebind"));
+    }
+
+    // Subset of total_fds must also be a safe int
+    int min_required_fds = MIN_CORE_FDS +
+                           MAX_ADDNODE_CONNECTIONS +
+                           num_p2p_bind +
+                           num_rpc_bind +
+                           user_rpc_max_connections;
+
+    // Try raising the FD limit to what the user wants (available_fds may be smaller than the requested amount if this fails)
+    available_fds = RaiseFileDescriptorLimit(static_cast<int>(total_fds));
     // If we are using select instead of poll, our actual limit may be even smaller
 #ifndef USE_POLL
     available_fds = std::min(FD_SETSIZE, available_fds);
 #endif
+    // The system can't support our bare minimum
     if (available_fds < min_required_fds)
         return InitError(strprintf(_("Not enough file descriptors available. %d available, %d required."), available_fds, min_required_fds));
 
-    // Trim requested connection counts, to fit into system limitations
-    nMaxConnections = std::min(available_fds - min_required_fds, user_max_connection);
+    // The system can support our minimum but not the full amount the user requested.
+    if (available_fds < total_fds) {
+        // If the user is requesting extra HTTP connections, abort. They need to change that.
+        if (user_rpc_max_connections > DEFAULT_MAX_HTTP_CONNECTIONS) {
+            return InitError(strprintf(_("Not enough file descriptors available. "
+                                         "Try reducing -rpcmaxconnections or using the default value of %d"),
+                                         DEFAULT_MAX_HTTP_CONNECTIONS));
+        }
+    }
 
-    if (nMaxConnections < user_max_connection)
-        InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), user_max_connection, nMaxConnections));
+    // Trim requested connection counts, to fit into system limitations
+    num_p2p_max_connections = std::min(available_fds - min_required_fds, user_p2p_max_connections);
+
+    if (num_p2p_max_connections < user_p2p_max_connections)
+        InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), user_p2p_max_connections, num_p2p_max_connections));
 
     // ********************************************************* Step 3: parameter-to-internal-flags
     if (auto result{init::SetLoggingCategories(args)}; !result) return InitError(util::ErrorString(result));
@@ -1465,7 +1513,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         return false;
     }
 
-    LogInfo("Using at most %i automatic connections (%i file descriptors available)", nMaxConnections, available_fds);
+    LogInfo("Using at most %i automatic connections (%i file descriptors available)", num_p2p_max_connections, available_fds);
 
     // Warn about relative -datadir path.
     if (args.IsArgSet("-datadir") && !args.GetPathArg("-datadir").is_absolute()) {
@@ -1612,7 +1660,6 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         // Netgroupman with or without it
         assert(!node.netgroupman);
         if (args.IsArgSet("-asmap") && !args.IsArgNegated("-asmap")) {
-            uint256 asmap_version{};
             if (!args.GetBoolArg("-asmap", false)) {
                 fs::path asmap_path = args.GetPathArg("-asmap");
                 if (!asmap_path.is_absolute()) {
@@ -1632,7 +1679,6 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                     InitError(strprintf(_("Could not parse asmap file %s"), fs::quoted(fs::PathToString(asmap_path))));
                     return false;
                 }
-                asmap_version = AsmapVersion(asmap);
                 node.netgroupman = std::make_unique<NetGroupManager>(NetGroupManager::WithLoadedAsmap(std::move(asmap)));
             } else {
                 #ifdef ENABLE_EMBEDDED_ASMAP
@@ -1643,7 +1689,6 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                         return false;
                     }
                     node.netgroupman = std::make_unique<NetGroupManager>(NetGroupManager::WithEmbeddedAsmap(asmap));
-                    asmap_version = AsmapVersion(asmap);
                     LogInfo("Opened asmap data (%zu bytes) from embedded byte array\n", asmap.size());
                 #else
                     // If there is no embedded data, fail and report it since
@@ -1652,7 +1697,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                     return false;
                 #endif
             }
-            LogInfo("Using asmap version %s for IP bucketing", asmap_version.ToString());
+            LogInfo("Using asmap version %s for IP bucketing", HexStr(node.netgroupman->GetAsmapVersion()));
         } else {
             node.netgroupman = std::make_unique<NetGroupManager>(NetGroupManager::NoAsmap());
             LogInfo("Using /16 prefix for IP bucketing");
@@ -1673,22 +1718,6 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     node.connman = std::make_unique<CConnman>(rng.rand64(),
                                               rng.rand64(),
                                               *node.addrman, *node.netgroupman, chainparams, args.GetBoolArg("-networkactive", true));
-
-    assert(!node.fee_estimator);
-    // Don't initialize fee estimation with old data if we don't relay transactions,
-    // as they would never get updated.
-    if (!peerman_opts.ignore_incoming_txs) {
-        bool read_stale_estimates = args.GetBoolArg("-acceptstalefeeestimates", DEFAULT_ACCEPT_STALE_FEE_ESTIMATES);
-        if (read_stale_estimates && (chainparams.GetChainType() != ChainType::REGTEST)) {
-            return InitError(strprintf(_("acceptstalefeeestimates is not supported on %s chain."), chainparams.GetChainTypeString()));
-        }
-        node.fee_estimator = std::make_unique<CBlockPolicyEstimator>(FeeestPath(args), read_stale_estimates);
-
-        // Flush estimates to disk periodically
-        CBlockPolicyEstimator* fee_estimator = node.fee_estimator.get();
-        scheduler.scheduleEvery([fee_estimator] { fee_estimator->FlushFeeEstimates(); }, FEE_FLUSH_INTERVAL);
-        validation_signals.RegisterValidationInterface(fee_estimator);
-    }
 
     for (const std::string& socket_addr : args.GetArgs("-bind")) {
         std::string host_out;
@@ -1738,7 +1767,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
             if (eq_pos + 1 == param_value.length()) {
                 return InitError(strprintf(_("Invalid -proxy address or hostname, ends with '=': '%s'"), param_value));
             }
-            net_str = ToLower(param_value.substr(eq_pos + 1)); // e.g. 127.0.0.1:9050=ipv4 -> ipv4
+            net_str = param_value.substr(eq_pos + 1); // e.g. 127.0.0.1:9050=ipv4 -> ipv4
         }
 
         Proxy proxy;
@@ -1759,16 +1788,18 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
         if (net_str.empty()) { // For all networks.
             ipv4_proxy = ipv6_proxy = name_proxy = cjdns_proxy = onion_proxy = proxy;
-        } else if (net_str == "ipv4") {
-            ipv4_proxy = name_proxy = proxy;
-        } else if (net_str == "ipv6") {
-            ipv6_proxy = name_proxy = proxy;
-        } else if (net_str == "onion") {
-            onion_proxy = proxy;
-        } else if (net_str == "cjdns") {
-            cjdns_proxy = proxy;
         } else {
-            return InitError(strprintf(_("Unrecognized network in -proxy='%s': '%s'"), param_value, net_str));
+            switch (ParseNetwork(net_str)) {
+            case NET_IPV4: ipv4_proxy = name_proxy = proxy; break;
+            case NET_IPV6: ipv6_proxy = name_proxy = proxy; break;
+            case NET_ONION: onion_proxy = proxy; break;
+            case NET_CJDNS: cjdns_proxy = proxy; break;
+            case NET_UNROUTABLE:
+            case NET_I2P:
+            case NET_INTERNAL:
+            case NET_MAX:
+                return InitError(strprintf(_("Unrecognized network in -proxy='%s': '%s'"), param_value, net_str));
+            } // no default case, so the compiler can warn about missing cases
         }
     }
     if (ipv4_proxy.IsValid()) {
@@ -1917,6 +1948,24 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     }
 
     ChainstateManager& chainman = *Assert(node.chainman);
+
+    assert(!node.fee_estimator_man);
+    // Don't initialize fee estimation with old data if we don't relay transactions,
+    // as they would never get updated.
+    if (!peerman_opts.ignore_incoming_txs) {
+        bool read_stale_estimates = args.GetBoolArg("-acceptstalefeeestimates", DEFAULT_ACCEPT_STALE_FEE_ESTIMATES);
+        if (read_stale_estimates && (chainparams.GetChainType() != ChainType::REGTEST)) {
+            return InitError(strprintf(_("acceptstalefeeestimates is not supported on %s chain."), chainparams.GetChainTypeString()));
+        }
+        MaybeMigrateLegacyFeeEstimates(args);
+        node.fee_estimator_man = std::make_unique<FeeRateEstimatorManager>(BlockPolicyFeeEstPath(args), read_stale_estimates, MempoolPolicyEstimatorPath(args), *Assert(node.mempool), chainman);
+
+        // Flush estimates to disk periodically
+        FeeRateEstimatorManager* fee_estimator_man = node.fee_estimator_man.get();
+        scheduler.scheduleEvery([fee_estimator_man] { fee_estimator_man->IntervalFlush(); }, FEE_FLUSH_INTERVAL);
+        validation_signals.RegisterValidationInterface(fee_estimator_man);
+    }
+
     auto& kernel_notifications{*Assert(node.notifications)};
 
     assert(!node.peerman);
@@ -2078,7 +2127,12 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         }
         // Load mempool from disk
         if (auto* pool{chainman.ActiveChainstate().GetMempool()}) {
-            LoadMempool(*pool, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{}, chainman.ActiveChainstate(), {});
+            const bool loaded{LoadMempool(*pool, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{}, chainman.ActiveChainstate(), {})};
+            // A shutdown request sets m_interrupt and aborts the mempool load, which is not a
+            // load failure, so only notify the fee estimator when the load actually failed.
+            if (node.fee_estimator_man && !chainman.m_interrupt && !loaded) {
+                node.fee_estimator_man->MempoolLoadFailed();
+            }
             pool->SetLoadTried(!chainman.m_interrupt);
         }
     });
@@ -2132,14 +2186,22 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     CConnman::Options connOptions;
     connOptions.m_local_services = g_local_services;
-    connOptions.m_max_automatic_connections = nMaxConnections;
+    connOptions.m_max_automatic_connections = num_p2p_max_connections;
     connOptions.m_full_relay_inbound_percent = std::clamp<int>(args.GetIntArg("-inboundrelaypercent", DEFAULT_FULL_RELAY_INBOUND_PCT), 0, 100);
     connOptions.uiInterface = &uiInterface;
     connOptions.m_banman = node.banman.get();
     connOptions.m_msgproc = node.peerman.get();
     connOptions.nSendBufferMaxSize = 1000 * args.GetIntArg("-maxsendbuffer", DEFAULT_MAXSENDBUFFER);
     connOptions.nReceiveFloodSize = 1000 * args.GetIntArg("-maxreceivebuffer", DEFAULT_MAXRECEIVEBUFFER);
-    connOptions.m_added_nodes = args.GetArgs("-addnode");
+    for (const std::string& added_node : args.GetArgs("-addnode")) {
+        // Such a value is not a valid connection target, but would otherwise be
+        // treated as one and retried indefinitely.
+        if (TrimStringView(added_node).empty()) {
+            LogWarning("Ignoring empty -addnode value");
+            continue;
+        }
+        connOptions.m_added_nodes.push_back(added_node);
+    }
     connOptions.nMaxOutboundLimit = *opt_max_upload;
     connOptions.m_peer_connect_timeout = peer_connect_timeout;
     connOptions.whitelist_forcerelay = args.GetBoolArg("-whitelistforcerelay", DEFAULT_WHITELISTFORCERELAY);
@@ -2329,7 +2391,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         if (!proxyRandomize && (g_reachable_nets.Contains(NET_ONION) || onion_may_become_reachable)) {
             InitWarning(_("Private broadcast of own transactions requested (-privatebroadcast) and "
                           "-proxyrandomize is disabled. Tor circuits for private broadcast connections "
-                          "may be correlated to other connections over Tor. For maximum privacy set "
+                          "may be correlated to other connections over Tor. To reduce this risk, set "
                           "-proxyrandomize=1."));
         }
     }

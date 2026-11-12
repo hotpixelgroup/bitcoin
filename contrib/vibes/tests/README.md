@@ -20,13 +20,26 @@ The static site and the browser demo:
 ```sh
 python3 contrib/vibes/build_site.py --out /tmp/vibes-site
 python3 -m http.server 21880 --bind 127.0.0.1 --directory /tmp/vibes-site
-# In another terminal, with playwright and axe-core installed:
+# In another terminal, install the locked development-only dependencies:
+npm ci --prefix contrib/vibes/tests --ignore-scripts
+contrib/vibes/tests/node_modules/.bin/playwright install chromium webkit
+export NODE_PATH="$PWD/contrib/vibes/tests/node_modules"
 node contrib/vibes/tests/browser_qa.cjs
 node contrib/vibes/tests/accessibility_qa.cjs
+node contrib/vibes/tests/learning_qa.cjs
 node contrib/vibes/tests/live_browser_qa.cjs
 # Install Playwright's Chromium and WebKit runtimes for this check:
 node contrib/vibes/tests/form_layout_qa.cjs
 ```
+
+`learning_qa.cjs` checks the guided route, real-recording evidence stepper,
+glossary persistence across status polls, optional reflection, immutable daily
+practice, remediation, exports and the three bounded illustrative models. It
+also audits the expanded learning controls at 1280, 390, 320 and 195 CSS pixels.
+`test_study.py`, the HTTP tests and `demo_qa.cjs` check first-attempt retention,
+daily review boundaries, malformed requests and preservation of old scores.
+CI records all thirteen real-node lessons and every supported mining-share
+setting through the same console API used by the app.
 
 `VIBES_QA_URL` overrides the test server. `VIBES_BROWSER_CHANNEL=chrome` uses
 installed Chrome. `PLAYWRIGHT_MODULE` and `AXE_MODULE` can point at existing

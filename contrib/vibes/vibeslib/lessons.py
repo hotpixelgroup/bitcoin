@@ -162,9 +162,9 @@ GROUPS = (
 
 WHITEPAPER = {"title": "Bitcoin: A Peer-to-Peer Electronic Cash System", "url": "https://bitcoin.org/bitcoin.pdf"}
 POLICY_DOC = {"title": "Bitcoin Core: transaction relay policy",
-              "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/policy/README.md"}
+              "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/README.md"}
 VALIDATION_SRC = {"title": "Bitcoin Core source: GetBlockSubsidy in validation.cpp",
-                  "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/validation.cpp"}
+                  "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/validation.cpp"}
 BIP65 = {"title": "BIP 65: OP_CHECKLOCKTIMEVERIFY", "url": "https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki"}
 ACTIVATION = {"title": "BIP 9: activation states and enforcement",
               "url": "https://github.com/bitcoin/bips/blob/master/bip-0009.mediawiki"}
@@ -205,7 +205,7 @@ CURATED = (
             {"title": "Bitcoin developer guide: wallets",
              "url": "https://developer.bitcoin.org/devguide/wallets.html"},
             {"title": "Bitcoin Core: output descriptors and spending conditions",
-             "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/doc/descriptors.md"},
+             "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/descriptors.md"},
         ],
         "followup": {
             "question": "You buy bitcoin on an exchange and leave it there. Who can move those coins on the chain?",
@@ -360,7 +360,7 @@ CURATED = (
                   "The reference node was not impressed by the larger number.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: MAX_MONEY is \"not the total money supply\"",
-                     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/consensus/amount.h"}],
+                     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/consensus/amount.h"}],
         "followup": {
             "question": "Suppose every Bitcoin Core maintainer agreed to release a version with a "
                         "higher reward. What would make the new reward real?",
@@ -425,7 +425,7 @@ CURATED = (
                   "Block 75 was when the fine print stopped being theoretical.",
         "sources": [VALIDATION_SRC,
                     {"title": "Bitcoin Core source: regtest halves every 150 blocks (chainparams.cpp)",
-                     "url": "https://github.com/bitcoin/bitcoin/blob/6b059d9dbdbd4d5b6f52993f93bf291181bf3900/src/kernel/chainparams.cpp"}],
+                     "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/src/kernel/chainparams.cpp"}],
         "followup": {
             "question": "A changed node has followed the real network without trouble for a month. "
                         "What does that show about its consensus rules?",
@@ -558,6 +558,63 @@ CURATED = (
 # Statements asked before any experiment and again afterwards, so that what
 # changed can be measured on the same questions. A mix of true and false, so
 # that always answering one way scores badly.
+CURATED += (
+    {
+        "id": "utxos", "group": "money", "kind": "scene", "scene": "utxos",
+        "title": "Where does the change in a payment come from?",
+        "summary": "Spend two 50 BTC outputs to make a 60 BTC payment. Inspect the new outputs and the fee on both nodes.",
+        "needs": "No AI and no compiling. Runs on a private chain.",
+        "question": "Two whole outputs total 100 BTC. You send 60 BTC with a fee. What happens to the rest?",
+        "options": [{"id": "change", "text": "The transaction creates a change output for the sender."},
+                    {"id": "miner", "text": "The miner refunds it in a later payment."},
+                    {"id": "balance", "text": "Part of each original output remains unspent."}],
+        "answer": "change", "belief": "A payment subtracts an amount from an on-chain account balance.",
+        "lesson": "Bitcoin payments spend whole unspent transaction outputs, or UTXOs. This wallet selected two inputs totaling 100 BTC and created a 60 BTC recipient output plus change. The difference between the input and output totals is the fee. Both original outputs are spent; the change is a new output with its own spending conditions. Wallet software normally constructs the change before broadcasting. No miner sends a refund. This scene deliberately fixes the inputs; a real wallet's coin selection may choose differently.",
+        "sources": [{"title": "Bitcoin developer guide: transactions and change", "url": "https://developer.bitcoin.org/devguide/transactions.html"}],
+        "followup": {"question": "An input is worth 20,000 satoshis. A payment output is 12,000 and the fee is 500. How much change is created?",
+                     "options": [{"id": "7500", "text": "7,500 satoshis."}, {"id": "8000", "text": "8,000 satoshis."}, {"id": "refund", "text": "Whatever the miner refunds."}],
+                     "answer": "7500", "why": "20,000 = 12,000 + 7,500 + 500. The fee is the input total minus the output total."},
+    },
+    {
+        "id": "fee-size", "group": "money", "kind": "scene", "scene": "fee-size",
+        "title": "Can two equal payments have different fees?",
+        "summary": "Send 1 BTC with one input, then 1 BTC with two inputs. Keep the fee rate and output types the same.",
+        "needs": "No AI and no compiling. Runs on a private chain.",
+        "question": "At the same fee rate, which of these otherwise similar payments costs more in total fees?",
+        "options": [{"id": "same", "text": "They cost the same because both send 1 BTC."},
+                    {"id": "two", "text": "The two-input payment, because it uses more space here."},
+                    {"id": "one", "text": "The one-input payment, because it is simpler."}],
+        "answer": "two", "belief": "Two payments of the same value always cost the same fee.",
+        "lesson": "The requested fee rate is 2 satoshis per virtual byte in both payments. The two-input transaction has a larger virtual size and pays a larger total fee. Both send 1 BTC. Input and output types, signatures and other data affect virtual size, so input count is not a universal fee formula. A wallet can sometimes replace an unconfirmed transaction with one paying more, or a recipient can pay for a child transaction; node policies and transaction dependencies matter. Neither method guarantees confirmation or reverses a confirmed payment.",
+        "sources": [BIP141, POLICY_DOC, {"title": "Bitcoin Core: mempool replacement policy", "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/policy/mempool-replacements.md"}],
+        "followup": {"question": "A transaction is 200 virtual bytes at 5 satoshis per virtual byte. What is its total fee?",
+                     "options": [{"id": "1000", "text": "1,000 satoshis."}, {"id": "5", "text": "5 satoshis."}, {"id": "percent", "text": "5% of the payment."}],
+                     "answer": "1000", "why": "200 × 5 = 1,000 satoshis. A fee rate prices space, not the amount sent."},
+    },
+    {
+        "id": "watch-only", "group": "money", "kind": "scene", "scene": "watch-only",
+        "title": "Does seeing a balance mean you can spend it?",
+        "summary": "Copy public wallet descriptors to a second node, then ask both wallets to sign the same payment.",
+        "needs": "No AI and no compiling. Uses temporary lab wallets only.",
+        "question": "Node B has the wallet's public information but no private keys. Which wallet can complete the signatures here?",
+        "options": [{"id": "both", "text": "Both wallets, because both see the coins."},
+                    {"id": "signer", "text": "Only node A's wallet, which has the private keys."},
+                    {"id": "network", "text": "Neither; the network must sign first."}],
+        "answer": "signer", "belief": "A wallet displaying my coins necessarily holds their spending keys.",
+        "lesson": "A watch-only wallet can recognize outputs and help prepare payments without possessing spending keys. In this single-signature scene, only the original wallet completed the signatures. The second node could still validate the signed payment. With a hardware signer, watching and signing can be deliberately separated. Recovery requires the secrets and wallet information for the actual spending conditions: a passphrase, descriptor or multiple signers may also be needed. Public descriptors can reveal wallet activity, even when they cannot authorize spending. This lab uses disposable keys, never a personal wallet backup.",
+        "sources": [{"title": "Bitcoin Core: output descriptors", "url": "https://github.com/bitcoin/bitcoin/blob/f0de87f040621468b956f01f526a43a010310501/doc/descriptors.md"},
+                    {"title": "Bitcoin developer guide: wallets", "url": "https://developer.bitcoin.org/devguide/wallets.html"}],
+        "followup": {"question": "A 2-of-3 wallet has three independent signing keys. Is a backup of just one key sufficient to spend by itself?",
+                     "options": [{"id": "yes", "text": "Yes, any seed is enough."}, {"id": "no", "text": "No. Two keys and the required wallet information are needed."}, {"id": "public", "text": "Yes, if the balance is visible."}],
+                     "answer": "no", "why": "The threshold is two signatures. Recovery must also reconstruct the wallet's spending script; a seed count alone is not a complete recovery plan."},
+    },
+)
+
+# Keep both the catalogue and the full route in a foundational order. IDs and
+# original answers remain stable for saved learning records.
+_ORDER = "keys utxos fees fee-size watch-only reorg relay-filter double-reward halve-reward faster-halving miners power softfork".split()
+CURATED = tuple(sorted(CURATED, key=lambda item: _ORDER.index(item["id"])))
+
 BELIEFS = (
     {"id": "coins-in-wallet-v2", "truth": False, "experiment": "keys",
      "statement": "My bitcoin are stored inside my wallet app or device."},
@@ -619,8 +676,10 @@ def public_catalogue():
 
 def payload():
     """Everything the page needs to teach with."""
+    from . import learning_content
     return {"prediction": PREDICTION, "verdicts": VERDICTS, "networks": NETWORKS,
             "groups": GROUPS, "curated": public_catalogue(),
+            "learning": learning_content.payload(),
             "beliefs": [{"id": b["id"], "statement": b["statement"], "truth": b["truth"],
                          "experiment": b["experiment"]} for b in BELIEFS],
             "static_flag_note": STATIC_FLAG_NOTE, "no_reference_note": NO_REFERENCE_NOTE}

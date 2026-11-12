@@ -11,25 +11,30 @@
 #include <common/system.h>
 #include <logging.h>
 #include <node/context.h>
-#include <node/kernel_notifications.h>
+#include <rpc/protocol.h>
 #include <rpc/server_util.h>
 #include <rpc/util.h>
 #include <sync.h>
-#include <util/signalinterrupt.h>
+#include <tinyformat.h>
+#include <util/check.h>
+#include <util/fs.h>
+#include <util/overloaded.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/time.h>
-#include <validation.h>
 
 #include <algorithm>
-#include <cassert>
-#include <chrono>
-#include <memory>
+#include <atomic>
+#include <cstddef>
+#include <exception>
+#include <list>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <span>
 #include <string_view>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 using util::SplitString;
@@ -124,24 +129,27 @@ static RPCMethod help()
     return RPCMethod{
         "help",
         "List all commands, or get help for a specified command.\n",
-                {
-                    {"command", RPCArg::Type::STR, RPCArg::DefaultHint{"all commands"}, "The command to get help on"},
-                },
-                {
-                    RPCResult{RPCResult::Type::STR, "", "The help text"},
-                    RPCResult{RPCResult::Type::ANY, "", ""},
-                },
-                RPCExamples{""},
+        {
+            {"command", RPCArg::Type::STR, RPCArg::DefaultHint{"all commands"}, "The command to get help on"},
+        },
+        {
+            RPCResult{RPCResult::Type::STR, "", "The help text"},
+            RPCResult{RPCResult::Type::ANY, "", "The command conversions. (Hidden in dump_all_command_conversions)", /*inner=*/{},
+                      RPCResultOptions{
+                          .print_elision = HelpElisionSkip{},
+                      }},
+        },
+        RPCExamples{""},
         [](const RPCMethod& self, const JSONRPCRequest& jsonRequest) -> UniValue
-{
-    auto command{self.MaybeArg<std::string_view>("command")};
-    if (command == "dump_all_command_conversions") {
-        // Used for testing only, undocumented
-        return tableRPC.dumpArgMap(jsonRequest);
-    }
+        {
+            auto command{self.MaybeArg<std::string_view>("command")};
+            if (command == "dump_all_command_conversions") {
+                // Used for testing only, undocumented
+                return tableRPC.dumpArgMap(jsonRequest);
+            }
 
-    return tableRPC.help(command.value_or(""), jsonRequest);
-},
+            return tableRPC.help(command.value_or(""), jsonRequest);
+        },
     };
 }
 
@@ -239,7 +247,7 @@ static RPCMethod getrpcinfo()
 }
 
 namespace {
-UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden);
+UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden, bool in_skip_type_check);
 UniValue OpenRPCResultSchema(const RPCResult& result);
 
 UniValue MakeObject(std::initializer_list<std::pair<std::string, UniValue>> entries)
@@ -258,21 +266,21 @@ void PushUniqueSchema(UniValue& schemas, std::unordered_set<std::string>& seen, 
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-UniValue DedupArrayItemsSchema(std::span<const RPCArg> inner, bool include_hidden)
+UniValue DedupArrayItemsSchema(std::span<const RPCArg> inner, bool include_hidden, bool in_skip_type_check)
 {
     if (inner.empty()) return UniValue{UniValue::VOBJ};
-    if (inner.size() == 1) return OpenRPCArgSchema(inner.front(), include_hidden);
+    if (inner.size() == 1) return OpenRPCArgSchema(inner.front(), include_hidden, in_skip_type_check);
 
     UniValue one_of{UniValue::VARR};
     std::unordered_set<std::string> seen;
     for (const auto& item : inner) {
-        PushUniqueSchema(one_of, seen, OpenRPCArgSchema(item, include_hidden));
+        PushUniqueSchema(one_of, seen, OpenRPCArgSchema(item, include_hidden, in_skip_type_check));
     }
 
     if (one_of.size() == 1) return one_of[0];
 
     UniValue items{UniValue::VOBJ};
-    items.pushKV("oneOf", std::move(one_of));
+    items.pushKV(in_skip_type_check ? "anyOf" : "oneOf", std::move(one_of));
     return items;
 }
 
@@ -307,7 +315,7 @@ void ApplyTypeStrOverride(UniValue& schema, const RPCArg& arg)
     };
     if (number_or_string.contains(type_label)) {
         UniValue one_of{UniValue::VARR};
-        one_of.push_back(MakeObject({{"type", "number"}}));
+        one_of.push_back(MakeObject({{"type", "integer"}}));
         one_of.push_back(MakeObject({{"type", "string"}}));
         schema = UniValue{UniValue::VOBJ};
         schema.pushKV("oneOf", std::move(one_of));
@@ -318,22 +326,27 @@ void ApplyTypeStrOverride(UniValue& schema, const RPCArg& arg)
 
 void ApplyArgFallback(UniValue& schema, const RPCArg& arg)
 {
-    if (const auto* def = std::get_if<RPCArg::Default>(&arg.m_fallback)) {
-        schema.pushKV("default", *def);
-    } else if (const auto* hint = std::get_if<RPCArg::DefaultHint>(&arg.m_fallback)) {
-        schema.pushKV("x-bitcoin-default-hint", *hint);
-    }
+    std::visit(util::Overloaded{
+                   [&](const RPCArg::Default& def) { schema.pushKV("default", def); },
+                   [&](const RPCArg::DefaultHint& hint) { schema.pushKV("x-bitcoin-default-hint", hint); },
+                   [](const RPCArg::Optional&) {},
+               },
+               arg.m_fallback);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden)
+UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden, bool in_skip_type_check)
 {
     UniValue schema{UniValue::VOBJ};
     if (arg.m_opts.skip_type_check) {
         ApplyTypeStrOverride(schema, arg);
         if (schema.empty() && arg.m_type == RPCArg::Type::ARR) {
+            UniValue items{UniValue::VOBJ};
+            items.pushKV("type", "array");
+            items.pushKV("items", DedupArrayItemsSchema(arg.m_inner, include_hidden, /*in_skip_type_check=*/true));
+
             UniValue one_of{UniValue::VARR};
-            one_of.push_back(MakeObject({{"type", "array"}}));
+            one_of.push_back(std::move(items));
             one_of.push_back(MakeObject({{"type", "object"}}));
             schema.pushKV("oneOf", std::move(one_of));
         }
@@ -346,7 +359,7 @@ UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden)
         schema = MakeObject({{"type", "string"}});
         break;
     case RPCArg::Type::STR_HEX:
-        schema = MakeObject({{"type", "string"}, {"pattern", "^[0-9a-fA-F]+$"}});
+        schema = MakeObject({{"type", "string"}, {"pattern", "^([0-9a-fA-F]{2})*$"}});
         break;
     case RPCArg::Type::NUM:
         schema = MakeObject({{"type", "number"}});
@@ -378,7 +391,7 @@ UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden)
         break;
     }
     case RPCArg::Type::ARR: {
-        UniValue items{DedupArrayItemsSchema(arg.m_inner, include_hidden)};
+        UniValue items{DedupArrayItemsSchema(arg.m_inner, include_hidden, in_skip_type_check)};
         schema.pushKV("type", "array");
         schema.pushKV("items", std::move(items));
         break;
@@ -389,7 +402,7 @@ UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden)
         UniValue required{UniValue::VARR};
         for (const auto& inner : arg.m_inner) {
             if (!include_hidden && inner.m_opts.hidden) continue;
-            UniValue prop{OpenRPCArgSchema(inner, include_hidden)};
+            UniValue prop{OpenRPCArgSchema(inner, include_hidden, in_skip_type_check)};
             if (!inner.m_description.empty()) prop.pushKV("description", inner.m_description);
             if (inner.m_opts.placeholder) prop.pushKV("x-bitcoin-placeholder", true);
             if (inner.m_opts.also_positional) prop.pushKV("x-bitcoin-also-positional", true);
@@ -405,7 +418,10 @@ UniValue OpenRPCArgSchema(const RPCArg& arg, bool include_hidden)
     case RPCArg::Type::OBJ_USER_KEYS: {
         schema.pushKV("type", "object");
         if (!arg.m_inner.empty()) {
-            schema.pushKV("additionalProperties", OpenRPCArgSchema(arg.m_inner[0], include_hidden));
+            schema.pushKV("additionalProperties", OpenRPCArgSchema(arg.m_inner[0], include_hidden, in_skip_type_check));
+            if (!arg.m_inner[0].m_description.empty()) {
+                schema.pushKV("description", arg.m_inner[0].m_description);
+            }
         } else {
             schema.pushKV("additionalProperties", true);
         }
@@ -444,7 +460,7 @@ UniValue OpenRPCResultSchema(const RPCResult& result)
     case RPCResult::Type::STR_AMOUNT:
         return MakeObject({{"type", "number"}, {"x-bitcoin-unit", "amount"}});
     case RPCResult::Type::STR_HEX:
-        return MakeObject({{"type", "string"}, {"pattern", "^[0-9a-fA-F]+$"}});
+        return MakeObject({{"type", "string"}, {"pattern", "^([0-9a-fA-F]{2})*$"}});
     case RPCResult::Type::NUM:
         return MakeObject({{"type", "number"}});
     case RPCResult::Type::NUM_TIME: {
@@ -543,7 +559,8 @@ static RPCResult OpenRPCDocResult()
                         {RPCResult::Type::OBJ, "result", "Method result.",
                             {
                                 {RPCResult::Type::STR, "name", "Result name."},
-                                {RPCResult::Type::ANY, "schema", "JSON Schema for the result."},
+                                {RPCResult::Type::ANY, "schema", "JSON Schema for the result. Numeric schemas may include "
+                                    "\"x-bitcoin-unit\" property: \"amount\" which denotes a Bitcoin amount in BTC."},
                             }},
                         {RPCResult::Type::STR, "x-bitcoin-category", "RPC category."},
                     }}}},
@@ -565,10 +582,10 @@ static RPCMethod getopenrpcinfo()
             + HelpExampleRpc("getopenrpcinfo", "")
         },
         [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
-{
-    const bool include_hidden{!request.params[0].isNull() && request.params[0].get_bool()};
-    return tableRPC.buildOpenRPCDoc(include_hidden);
-},
+        {
+            const bool include_hidden{self.Arg<bool>("show_hidden")};
+            return tableRPC.buildOpenRPCDoc(include_hidden);
+        },
     };
 }
 
@@ -584,9 +601,9 @@ static RPCMethod rpc_discover()
             + HelpExampleRpc("rpc.discover", "")
         },
         [](const RPCMethod&, const JSONRPCRequest&) -> UniValue
-{
-    return tableRPC.buildOpenRPCDoc(/*include_hidden=*/false);
-},
+        {
+            return tableRPC.buildOpenRPCDoc(/*include_hidden=*/false);
+        },
     };
 }
 
@@ -906,7 +923,7 @@ UniValue CRPCTable::buildOpenRPCDoc(bool include_hidden) const
             UniValue param{UniValue::VOBJ};
             param.pushKV("name", arg.GetFirstName());
             param.pushKV("required", !arg.IsOptional());
-            param.pushKV("schema", OpenRPCArgSchema(arg, include_hidden));
+            param.pushKV("schema", OpenRPCArgSchema(arg, include_hidden, /*in_skip_type_check=*/false));
 
             std::vector<std::string> names{SplitString(arg.m_names, '|')};
             if (names.size() > 1) {
@@ -955,9 +972,9 @@ UniValue CRPCTable::buildOpenRPCDoc(bool include_hidden) const
     if (!CLIENT_VERSION_IS_RELEASE) version += "-dev";
 
     UniValue info{UniValue::VOBJ};
-    info.pushKV("title", "Bitcoin Core JSON-RPC");
+    info.pushKV("title", CLIENT_NAME " JSON-RPC");
     info.pushKV("version", version);
-    info.pushKV("description", "Autogenerated from Bitcoin Core RPC metadata.");
+    info.pushKV("description", "Autogenerated from " CLIENT_NAME " RPC metadata.");
 
     UniValue doc{UniValue::VOBJ};
     doc.pushKV("openrpc", "1.4.1");

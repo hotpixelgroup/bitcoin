@@ -1,7 +1,7 @@
 # Closed-beta coordination and release checks
 
 Use `v31.99-10` as the immutable stable baseline. The fixes and reporting
-workflow are assigned to **`beta-v31.99-11`**, published as a prerelease with
+workflow are assigned to **`beta-v32.1-1`**, published as a prerelease with
 `latest=false`. Do not move an existing tag or replace its assets. Signing
 preparation remains on its separate deferred branch and is excluded here.
 

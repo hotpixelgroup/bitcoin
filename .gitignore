@@ -36,3 +36,6 @@ __pycache__/
 
 # macOS app build output
 /dist/
+
+# Development-only browser QA dependencies
+/contrib/vibes/tests/node_modules/
