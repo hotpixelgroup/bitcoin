@@ -110,6 +110,7 @@ if (output) fs.mkdirSync(output, {recursive: true});
         await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
         assert.equal(await page.locator('#lab-readiness').isVisible(), false);
         assert.equal(await page.locator('#start-learning').isEnabled(), true, 'ready-made lessons work without an AI sign-in');
+        await page.locator('#learning-view').selectOption('lab');
         await page.locator('#wish').fill('A custom request');
         assert.equal(await page.locator('#manifest').isDisabled(), true);
         assert.match(await page.locator('#composer-status').innerText(), /Claude Code/);

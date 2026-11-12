@@ -136,9 +136,11 @@ def main():
             finally:
                 discard_owned_review(job["id"])
     today = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    upstream = dict(line.split("=", 1) for line in (HERE / "UPSTREAM").read_text().splitlines() if "=" in line and not line.startswith("#"))
     header = ("'use strict';\n"
               f"// Results recorded from real runs of the lab on {today}: two real nodes on\n"
               "// a throwaway regtest chain. Regenerate with contrib/vibes/record_demo.py.\n"
+              f"// Bitcoin Core {upstream['version']}, upstream commit {upstream['commit']}.\n"
               "// Each slider position has its own recording; no inputs are rounded.\n")
     target = args.out.resolve()
     target.parent.mkdir(parents=True, exist_ok=True)

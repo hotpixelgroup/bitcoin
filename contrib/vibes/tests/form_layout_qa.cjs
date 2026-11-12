@@ -146,6 +146,7 @@ async function fixtureServer() {
             });
             await page.goto(fixture.config.url+'/?key='+fixture.config.key);
             await page.locator('#connection').filter({hasText:'Connected'}).waitFor();
+            await page.locator('#learning-view').selectOption('lab');
             await page.keyboard.press('Tab');
             await page.locator('summary').filter({hasText:'Build preferences and agent limits'}).press('Enter');
             await measure(page,'.checks label',`${engine}/${size.name}/preferences`);

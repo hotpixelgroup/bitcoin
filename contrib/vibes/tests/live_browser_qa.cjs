@@ -49,6 +49,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     await page.reload();
     await page.locator('#connection').filter({hasText: 'Connected'}).waitFor();
+    await page.locator('#learning-view').selectOption('lab');
     await page.locator('#wish').fill('PRIVATE-PROMPT');
     await page.locator('#prepare-report').click();
     const report = await page.locator('#report-context').inputValue();

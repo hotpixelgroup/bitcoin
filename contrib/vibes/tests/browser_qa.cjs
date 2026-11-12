@@ -42,7 +42,7 @@ function token(value) {
   try {
     // Landing page.
     await page.goto(base + '/');
-    await page.getByRole('heading', {name: 'What shall Bitcoin become?'}).waitFor();
+    await page.getByRole('heading', {name: 'Learn Bitcoin by testing it.'}).waitFor();
     assert.equal(await overflow(), false, 'landing page overflows at desktop width');
     assert.equal(await page.locator('#beta-heading').innerText(), 'Closed beta testing');
     assert.equal(await page.locator('.beta-note a').first().getAttribute('href'), 'https://github.com/hotpixelgroup/bitcoin/blob/master/doc/vibes-beta.md');
@@ -54,7 +54,7 @@ function token(value) {
     // The demo says what it is.
     await page.goto(base + '/demo.html');
     await page.getByText('No AI and no node run here').waitFor();
-    assert.equal(await page.locator('[data-curated]').count(), 10, 'ten ready-made experiments');
+    assert.equal(await page.locator('[data-curated]').count(), 13, 'thirteen ready-made experiments');
     assert.equal(await page.locator('#curated-grid h3').count(), 3, 'in three groups');
     assert.equal(await page.locator('#manifest').isDisabled(), true, 'the demo must not pretend to write code');
     assert.equal(await page.locator('#node-controls').isVisible(), false, 'no fake running node in the demo');
@@ -66,6 +66,7 @@ function token(value) {
     // A bug report starts with an explicit preview, not a dump of the page or
     // browser storage. Private draft text and URL access tokens never enter it.
     const privateText = 'PRIVATE-CONTEXT-MARKER /Users/test/wallet.dat --rpcpassword=private';
+    await page.locator('#learning-view').selectOption('lab');
     await page.locator('#wish').fill(privateText);
     await page.evaluate(() => {
       history.replaceState(null, '', location.pathname + '?key=PRIVATE-ACCESS-KEY#PRIVATE-SHARE-TOKEN');

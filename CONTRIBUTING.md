@@ -42,10 +42,10 @@ What gets merged quickly
 - Better plain-English explanations. The explanations *are* the product: what
   the lab teaches lives in `contrib/vibes/vibeslib/lessons.py`, written by
   people, and every claim in it should be something the lab can show.
-- Jokes that land, in the README and the manual. The console itself speaks
-  plainly: its text sits beside evidence, warnings and errors, where a joke
-  costs clarity. Nothing anywhere lies to make a joke work, and nothing dares
-  anyone onto the real network.
+- A dry, warm voice that explains the mechanism before one short wry beat.
+  Follow the existing [teaching voice](doc/vibes-voice.md): predictions, answers,
+  access, setup and errors stay literal. Never make the learner the joke,
+  invent evidence for a punchline or dare anyone onto the real network.
 
 What gets a slower look
 -----------------------
@@ -92,10 +92,11 @@ commit being merged, administrators included.
 Reviewing the lessons
 ---------------------
 
-Everything the lab teaches is in `contrib/vibes/vibeslib/lessons.py`: ten
+The main lessons live in `contrib/vibes/vibeslib/lessons.py`: thirteen
 experiments, each with a prediction question, an explanation, a follow-up
 question and its sources, plus ten true-or-false statements. If you know
-Bitcoin well, reading that one file critically is the most valuable review
+Bitcoin well, reading that file and `learning_content.py` (practice, glossary
+and model sources) critically is the most valuable review
 this project can receive. For each explanation, ask:
 
 - Is every sentence true as written, including the simplifications?

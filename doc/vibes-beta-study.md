@@ -15,7 +15,8 @@ quoted feedback; do not record by default.
 
 The app has no built-in analytics or automatic study upload. Demo learning
 records stay in that browser's local storage; installed-lab records stay in
-`.vibes/learning.json`. Web hosting still receives ordinary page requests, and
+`.vibes/learning.json` and `.vibes/study.json`, with optional prediction context
+in the experiment record. Web hosting still receives ordinary page requests, and
 installed setup or updates can contact GitHub. These are separate from study
 collection. Exports contain answers and identifiers, and can include times.
 Treat them as participant data, not guaranteed anonymous data. Use participant codes.
@@ -52,7 +53,7 @@ are you trying to do?” or “What does that mean to you?” Record any help gi
    wallet?**, **Can a filter keep data out of the chain?**, **Can you raise the
    block reward?**, and **How does mining power affect a stricter chain?**
    For the mining-share experiment, try two supported, well-separated settings.
-   Assign up to two more per person beforehand so all ten are tried across the
+   Assign up to two more per person beforehand so all thirteen are tried across the
    group. Do not change assignments based on scores.
 3. Let them use each follow-up normally. Note hesitation, rereading, unexpected
    actions and the learner's explanation in their own words. After two minutes
@@ -72,6 +73,37 @@ are you trying to do?” or “What does that mean to you?” Record any help gi
    my record** export, with a separate sharing choice. Debrief misconceptions
    using the lesson sources and explain the [bug-report flow](vibes-beta.md).
    Do not submit anything on their behalf without consent.
+
+## Additional coverage for the 32.1 candidate
+
+Keep the four core tasks above for comparison with earlier sessions. Assign
+the new UTXO/change, transaction-size fee and watch-only/signature lessons
+across the cohort. Include a participant who starts with the five-foundation
+path and one who selects all experiments. Observe whether they discover the
+glossary, evidence controls, Full lab view and practice without coaching.
+
+Ask learners to explain 30,000 input satoshis minus an 18,000 payment and a
+600 fee; why equal payment amounts can cost different fees; and what is missing
+when a wallet can view but cannot sign. Score these separately using the same
+0/1/2 rubric, recording assistance. Include the recovery follow-up: wallet
+scripts and thresholds can require more than one secret or a single seed.
+
+Assign the three illustrative models across the group. Ask what the model
+leaves out, and whether the learner can distinguish a model from a recorded
+experiment and a live installed-node run. Any repeated confusion here is a
+content defect to address before expansion.
+
+With separate consent, arrange a return session after seven days. Before
+opening previous explanations, ask the open questions again and use the next
+practice variants. Record elapsed days, prior practice and assistance. Keep
+delayed results separate from immediate scores. The app only suggests review;
+the coordinator arranges follow-up outside the app and does not imply a
+reminder service exists. Do not reset or rewrite first attempts for the study.
+
+Use [the observation sheet](vibes-study-observations.csv) with one row per task.
+The file contains column names only: no volunteers, results, learning gains or
+cohort completion are claimed by this release. Coordinator, recruitment,
+private contact route and optional paid-AI budget remain external prerequisites.
 
 ## Decide the gates before the first session
 

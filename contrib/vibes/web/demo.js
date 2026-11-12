@@ -5,7 +5,7 @@ const key = 'vibes-browser-demo-v4';
 const lessons = window.VibesLessons || {curated: [], beliefs: []};
 const recorded = window.VibesDemoData || {};
 const clone = value => JSON.parse(JSON.stringify(value));
-const initial = () => ({experiments: [], records: {}, job: null, learning: []});
+const initial = () => ({experiments: [], records: {}, job: null, learning: [], study: []});
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
 function validRecord(record) {
@@ -34,6 +34,7 @@ try {
       saved.learning.every(entry => isObject(entry) && typeof entry.experiment === 'string' && typeof entry.choice === 'string' && typeof entry.correct === 'boolean' && ['prediction', 'followup', 'before', 'after'].includes(entry.stage))) data = saved;
 } catch { /* Damaged or inaccessible storage starts a usable, empty visit. */ }
 if (!data) data = initial();
+data.study = window.VibesStudy?.clean(data.study) || [];
 if (!data.job || !Object.hasOwn(data.records, data.job.id)) data.job = data.experiments[0] || null;
 let storageAvailable = true;
 function persist() {
@@ -67,6 +68,8 @@ function runCurated(body = {}) {
   }
   if (!result) throw new Error('There is no recording for this exact setting. Choose another share or install the lab to run it.');
   const options = item.kind === 'scene' ? item.options : lessons.prediction.options;
+  const confidence = body.confidence || '', reason = body.reason || '';
+  if (!['', 'low', 'medium', 'high'].includes(confidence) || typeof reason !== 'string' || reason.length > 1000) throw new Error('Use a short reason and one of the confidence choices');
   if (body.prediction && body.prediction !== 'unsure' && !options.some(option => option.id === body.prediction)) throw new Error('Unknown prediction.');
   const id = Math.floor(Date.now() / 1000) + '-' + Array.from(crypto.getRandomValues(new Uint8Array(3)), n => n.toString(16).padStart(2, '0')).join('');
   const scene = item.kind === 'scene';
@@ -75,6 +78,7 @@ function runCurated(body = {}) {
   const job = {
     id, time: Date.now() / 1000, kind: scene ? 'scene' : 'ready', prompt: item.title, state: 'done',
     curated: item.id, prediction: body.prediction || null, origin: 'curated',
+    prediction_context: {confidence, reason: reason.trim()},
     build_status: result.build_status || (scene || ready ? 'not run' : 'passed'),
     test_status: result.test_status || (scene || !tested ? 'not run' : result.unit_failures.length ? 'findings' : 'passed'),
     ready_made: ready,
@@ -107,8 +111,9 @@ function recordAnswer(entry) {
   const previous = data.learning.find(row => row.stage === entry.stage &&
     (entry.job ? row.job === entry.job : row.experiment === entry.experiment));
   if (previous) return previous;
-  data.learning.push(entry);
-  return entry;
+  const saved = {...entry, time: Date.now() / 1000};
+  data.learning.push(saved);
+  return saved;
 }
 
 function beliefAnswer(stage, experiment, choice) {
@@ -170,6 +175,17 @@ async function api(path, body) {
     }
     case '/api/curated': return runCurated(body);
     case '/api/learning': return learning(body);
+    case '/api/study': {
+      if (!body) return window.VibesStudy.snapshot(data.study);
+      if (body.stage === 'reflection') {
+        const job = Object.hasOwn(data.records, body.job || '') && data.records[body.job].summary;
+        if (!job || job.curated !== body.experiment || job.state !== 'done' || ['inconclusive', 'error'].includes(job.compare?.verdict)) throw new Error('Reflect on a completed, matching experiment');
+      }
+      const result = window.VibesStudy.record(data.study, body);
+      data.study = result.entries;
+      persist();
+      return {entry: result.entry, ...window.VibesStudy.snapshot(data.study)};
+    }
     case '/api/earlier-record':
       if (!earlierRecord) throw new Error('No earlier demo record is available.');
       return clone(earlierRecord);

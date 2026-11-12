@@ -17,6 +17,7 @@ function demo(saved, writeFails = false, recordings = fixtures, earlier = null) 
   let value = saved;
   const context = {window: {VibesLessons: structuredClone(lessons), VibesDemoData: structuredClone(recordings)}, URL, crypto: webcrypto,
     localStorage: {getItem(key) { return key === 'vibes-browser-demo-v3' ? JSON.stringify(earlier) : value; }, setItem(key, next) { if (writeFails) throw new Error('storage full'); value = next; }}};
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'web/study.js'), 'utf8'), context);
   vm.runInNewContext(source, context);
   return {api: context.window.VibesDemo.api, saved: () => value};
 }
@@ -43,6 +44,17 @@ function demo(saved, writeFails = false, recordings = fixtures, earlier = null) 
     }
   }
   const summary = await d.api('/api/learning');
+  const round = (await d.api('/api/study')).round;
+  const practice = {stage: 'practice', experiment: 'utxos', question: 'utxo-sum-1', choice: '0', round};
+  assert.equal((await d.api('/api/study', practice)).entry.correct, false);
+  assert.equal((await d.api('/api/study', {...practice, choice: '2'})).entry.choice, '0', 'the first daily practice answer is immutable');
+  assert.equal((await d.api('/api/study')).entries.length, 1);
+  const resumed = demo(d.saved());
+  assert.equal((await resumed.api('/api/study')).entries[0].choice, '0');
+  assert.equal((await resumed.api('/api/learning')).summary.followup.answered, runs, 'new practice storage preserves original scores');
+  await assert.rejects(d.api('/api/study', {...practice, round: round - 1}), /new review day/);
+  await assert.rejects(d.api('/api/study', {...practice, choice: {}}), /answers/);
+  await assert.rejects(d.api('/api/study', {stage: 'reflection', experiment: 'utxos', job: 'missing', note: ''}), /matching/);
   assert.equal(summary.summary.prediction.answered, runs, 'repeated renders cannot duplicate prediction scores');
   assert.equal(summary.summary.followup.answered, runs, 'follow-up scores are idempotent per job');
   await assert.rejects(d.api('/api/curated', {id: 'power', share: 64}), /slider/);

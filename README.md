@@ -169,7 +169,7 @@ What happens to a request
    tightened, loosened, or split), what that would mean on a real network, and
    the change itself. Then you apply it or discard it.
 
-Start with the ten **ready-made experiments** at the top of the console. They
+Start with the thirteen **ready-made experiments** at the top of the console. They
 need no AI, can use prepared nodes instead of compiling, and each ends with a
 short explanation and its sources:
 
@@ -182,6 +182,15 @@ short explanation and its sources:
 Three of them change one line of the node's source. A release ships nodes
 already built with each change, so they run in seconds; you can also compile
 any of them yourself and see which of Bitcoin Core's unit tests it breaks.
+
+The **five foundations** path starts with coins, inputs and change, fees, relay
+policy and consensus. **Learning** view keeps node controls out of the way;
+choose **Full lab** whenever you want them. Each result has a step-by-step
+walkthrough, definitions and optional confidence and reflection notes.
+
+**Practice & review** offers varied questions and local review suggestions.
+Separate illustrative models explore proof of work, address reuse and Lightning
+channel balances; they do not run nodes or move money.
 
 **Check your thinking** asks ten true-or-false statements before you start and
 again afterwards, so you can see what changed. The answers stay on your
