@@ -136,7 +136,12 @@ jobs:
           echo "$CHANGED"
           test "$CHANGED" = "src/clientversion.cpp" \
             || { echo "::error::src/ differs from the upstream base in more than src/clientversion.cpp. The shipped default must not fork."; exit 1; }
-          grep -q 'MAX_MONEY = 21000000 \* COIN' src/consensus/amount.h
+          # Check the numeric values, independent of upstream C++ formatting.
+          c++ -std=c++20 -Isrc -x c++ -fsyntax-only - <<'CPP'
+          #include <consensus/amount.h>
+          static_assert(COIN == 100000000);
+          static_assert(MAX_MONEY == 21000000LL * COIN);
+          CPP
           grep -q 'nSubsidy = 50 \* COIN' src/validation.cpp
 
       - name: Dependencies
