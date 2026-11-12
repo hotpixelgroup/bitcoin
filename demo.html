@@ -124,6 +124,8 @@
     <li data-step="review">Review</li>
     <li data-step="restart">Run</li>
   </ol>
+  <p id="progress-message" class="subtle" role="status"></p>
+  <p id="progress-count" class="subtle" hidden></p>
   <div id="empty-current" class="empty">
     <span aria-hidden="true">✦</span>
     <h3>Choose an experiment to begin.</h3>
@@ -134,6 +136,7 @@
       <span class="metric-label">THE REQUEST</span>
       <p id="job-prompt"></p>
       <small id="job-meta"></small>
+      <p id="custom-prediction-context" class="subtle" hidden></p>
     </div>
     <div class="outcomes">
       <div><span class="metric-label">BUILD</span><strong id="outcome-build">Not run</strong></div>
@@ -206,7 +209,6 @@
     </div>
     <pre id="feed" tabindex="0" aria-label="Technical activity log"></pre>
   </details>
-  <p id="progress-message" class="subtle" role="status" aria-live="polite"></p>
 </section>
 
 <section id="beliefs" class="panel" tabindex="-1" aria-labelledby="beliefs-heading">
@@ -473,6 +475,7 @@
     </details>
     <label id="predict-compile-row" class="choice" hidden><input id="predict-compile" type="checkbox"> <span id="predict-compile-text"></span></label>
     <p class="subtle">Choose a prediction to test your understanding, or run without answering. Your answers stay on this machine.</p>
+    <p id="predict-provider" class="subtle" hidden></p>
     <div class="toolbar">
       <button value="cancel">Cancel</button>
       <button value="confirm" class="primary" id="predict-run">Run the experiment</button>

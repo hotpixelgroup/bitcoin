@@ -42,6 +42,9 @@ let toastTimer;
 let settings = null;
 let imported = null;        // {sender} while the draft holds someone else's request
 let diffFilter = null;
+let diffFilesKey = '';
+let renderedDiff = null;
+let baselineDiff = null;
 let followupFor = null;
 let beliefState = {};
 let beliefRenderKey = null;
@@ -52,6 +55,7 @@ let nodeAlertKey = null;
 let readinessTarget = 'node-controls';
 let learningUI = null;
 const recordingPredictions = new Set();
+const experimentKey = job => job?.id || job?.sha;
 const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
 document.body.classList.toggle('demo-mode', demo);
@@ -227,6 +231,12 @@ function askPrediction(heading, summary, question, options, item) {
   $('predict-confidence').value = '';
   $('predict-reason').value = '';
   $('predict-reflection').open = false;
+  const sendsToClaude = !item && status?.engine === 'claude';
+  const budget = status?.agent?.budget;
+  $('predict-provider').hidden = !sendsToClaude;
+  setText('predict-provider', sendsToClaude ? 'Your request goes to Claude Code. Usage follows your account plan.' +
+    (Number.isFinite(budget) ? ` Estimated cost limit: $${budget} USD for this request.` : '') : '');
+  setText('predict-run', demo ? 'Show recorded result' : sendsToClaude ? 'Send request to Claude Code' : 'Run the experiment');
 
   const slider = item?.slider;
   $('predict-slider').hidden = !slider;
@@ -436,9 +446,12 @@ async function exportLearning() {
     record.study = await api('/api/study');
     record.prediction_context = [];
     for (const job of status?.experiments || []) {
-      if (!job.curated) continue;
-      const detail = await api('/api/experiment?id=' + encodeURIComponent(job.id));
-      if (detail.summary.prediction_context) record.prediction_context.push({job: job.id, experiment: job.curated, ...detail.summary.prediction_context});
+      const context = demo && job.curated
+        ? (await api('/api/experiment?id=' + encodeURIComponent(job.id))).summary.prediction_context
+        : job.prediction_context;
+      if (context && (job.curated || context.confidence || context.reason)) {
+        record.prediction_context.push({job: job.id, experiment: job.curated || '', ...context});
+      }
     }
     const url = URL.createObjectURL(new Blob([JSON.stringify(record, null, 2)], {type: 'application/json'}));
     el('a', {href: url, download: 'bitcoin-vibes-learning-record.json'}).click();
@@ -535,6 +548,8 @@ async function manifest() {
   const auto = $('mode').value === 'auto' && !imported;
   action('/api/vibe', {
     prompt, prediction,
+    confidence: answer.confidence,
+    reason: answer.reason,
     review: !auto,
     autobuild: auto || $('autobuild').checked,
     autorestart: (auto || $('autorestart').checked) && !imported,
@@ -624,7 +639,7 @@ function renderNode(next) {
   $('console-restart-notice').hidden = demo || !next.console_restart_required;
   const agent = next.agent || {};
   $('agent-note').textContent = next.engine === 'claude'
-    ? `The agent is Claude Code using the ${agent.model} model. It can read and edit files in its own copy of the source and do nothing else: no commands, no network. It stops after ${agent.turns} steps or ${agent.minutes} minutes. Your provider bills you for each request; the amount it reports is shown afterwards.`
+    ? `Claude Code uses the ${agent.model} model and file tools. It stops after ${agent.turns} steps or ${agent.minutes} minutes. The result shows Claude Code’s cost estimate. Billing depends on your account plan.`
     : 'The mock engine makes one harmless edit to the manual, so the workflow can be rehearsed without an AI.';
 
   const update = next.update || {};
@@ -866,14 +881,16 @@ function fileKind(path) {
   return '';
 }
 
-function renderDiff(patch) {
+function renderDiff(patch, filter) {
+  if (renderedDiff && renderedDiff.patch === patch && renderedDiff.filter === filter) return;
+  renderedDiff = {patch, filter};
   const pre = $('diff');
   const top = pre.scrollTop;
   const left = pre.scrollLeft;
   pre.replaceChildren();
   let showing = true;
   for (const line of (patch || 'No source change for this experiment.').split('\n')) {
-    if (line.startsWith('diff --git ')) showing = !diffFilter || line.endsWith(' b/' + diffFilter);
+    if (line.startsWith('diff --git ')) showing = !filter || line.endsWith(' b/' + filter);
     if (!showing) continue;
     const kind = line.startsWith('+') && !line.startsWith('+++') ? 'add'
       : line.startsWith('-') && !line.startsWith('---') ? 'del'
@@ -885,23 +902,67 @@ function renderDiff(patch) {
 }
 
 function renderDiffFiles(job) {
-  $('diff-files').replaceChildren();
+  const box = $('diff-files');
   const files = job.files || [];
-  if (files.length < 2) {
-    diffFilter = null;
-    return;
+  if (files.length < 2 || !files.some(file => file.path === diffFilter)) diffFilter = null;
+  const key = JSON.stringify([experimentKey(job), files]);
+  if (key !== diffFilesKey) {
+    diffFilesKey = key;
+    box.replaceChildren();
+    if (files.length >= 2) {
+      const button = (path, label) => el('button', {class: 'text-button', 'data-path': path, text: label, onclick: () => {
+        diffFilter = path || null;
+        renderDiffPanel(selected.summary);
+      }});
+      box.append(button('', 'All files'));
+      for (const file of files) {
+        const kind = fileKind(file.path);
+        box.append(button(file.path, `${file.path}  +${file.added} −${file.removed}${kind ? '  · ' + kind : ''}`));
+      }
+    }
   }
-  const pick = path => () => {
-    diffFilter = path;
-    renderDiffFiles(job);
-    renderDiff(job.patch);
-  };
-  $('diff-files').append(el('button', {class: diffFilter ? 'text-button' : 'text-button selected', text: 'All files', onclick: pick(null)}));
-  for (const file of files) {
-    const kind = fileKind(file.path);
-    const label = `${file.path}  +${file.added} −${file.removed}${kind ? '  · ' + kind : ''}`;
-    $('diff-files').append(el('button', {class: 'text-button' + (diffFilter === file.path ? ' selected' : ''), text: label, onclick: pick(file.path)}));
+  box.hidden = !!baselineDiff || files.length < 2;
+  for (const button of box.children) {
+    const active = button.dataset.path === (diffFilter || '');
+    button.classList.toggle('selected', active);
+    button.setAttribute('aria-pressed', String(active));
   }
+}
+
+function renderDiffPanel(job) {
+  if (baselineDiff && (baselineDiff.job !== experimentKey(job) || baselineDiff.source !== status?.source)) baselineDiff = null;
+  renderDiffFiles(job);
+  const files = job.files || [];
+  $('diff-details').hidden = !job.patch;
+  setText('diff-summary', baselineDiff ? 'Current source compared with baseline' : files.length
+    ? `The change · ${files.length} file(s) · +${files.reduce((n, f) => n + f.added, 0)} / −${files.reduce((n, f) => n + f.removed, 0)}`
+    : 'The change');
+  $('compare-baseline').hidden = demo;
+  $('compare-baseline').disabled = !status?.source;
+  setText('compare-baseline', baselineDiff ? 'Show experiment diff' : 'Compare source with baseline');
+  $('download-diff').disabled = !(baselineDiff ? baselineDiff.patch : job.patch);
+  renderDiff(baselineDiff ? baselineDiff.patch || 'Your source is at the baseline: no saved experiments.' : job.patch,
+    baselineDiff ? null : diffFilter);
+}
+
+function progressCount(events, phase) {
+  if (phase?.name !== 'build' && phase?.name !== 'test') return '';
+  for (let index = events.length - 1; index >= 0 && events[index] !== phase; index--) {
+    const event = events[index];
+    if (event.t !== 'log') continue;
+    const line = event.line || '';
+    if (line.startsWith('$ ')) break;
+    if (phase.name === 'test') {
+      const suites = line.match(/^unit tests: (\d+) of (\d+) suites done$/);
+      if (suites) return `${suites[1]} of ${suites[2]} test suites finished`;
+    } else {
+      const steps = line.match(/^\[(\d+)\/(\d+)\] /);
+      if (steps) return `${steps[1]} of ${steps[2]} build steps`;
+      const percent = line.match(/^\[\s*(\d{1,3})%\] /);
+      if (percent) return `${percent[1]}% of this build`;
+    }
+  }
+  return '';
 }
 
 function eventText(event) {
@@ -914,7 +975,7 @@ function eventText(event) {
 }
 
 function renderJob(value) {
-  if (selected?.summary.id !== value.summary.id) diffFilter = null;
+  if (experimentKey(selected?.summary) !== experimentKey(value.summary)) diffFilter = null;
   selected = value;
   const job = value.summary;
   $('empty-current').hidden = true;
@@ -925,10 +986,24 @@ function renderJob(value) {
   $('job-state').className = 'pill ' + (job.state === 'error' ? 'bad' : job.state === 'done' ? 'good' : job.state === 'review' ? 'warn' : '');
   $('job-prompt').textContent = job.prompt;
   const origin = job.origin === 'imported' ? ' · imported from someone else' : job.curated ? ' · ready-made experiment' : '';
-  const cost = typeof job.cost === 'number' ? ` · provider reported cost ${job.cost.toFixed(4)}` : '';
+  const cost = Number.isFinite(job.cost) ? ` · Claude Code estimate $${job.cost.toFixed(4)} USD` : '';
   $('job-meta').textContent = `${demo ? 'Recorded result · viewed ' : ''}${new Date(job.time * 1000).toLocaleString()}${origin}${job.sha ? ' · ' + short(job.sha) : ''}${cost}`;
+  const predictionContext = !job.curated && job.prediction_context;
+  const note = [predictionContext?.confidence && `Prediction confidence: ${predictionContext.confidence}.`,
+    predictionContext?.reason && `Your reasoning: ${predictionContext.reason}`].filter(Boolean).join(' ');
+  $('custom-prediction-context').hidden = !note;
+  setText('custom-prediction-context', note);
 
-  $('outcome-build').textContent = {passed: 'Compiled', failed: 'Did not compile'}[job.build_status] || title(job.build_status);
+  const events = value.events || [];
+  const last = events.filter(event => event.t === 'phase').at(-1);
+  const working = job.state === 'running';
+  const count = working ? progressCount(events, last) : '';
+  $('progress-count').hidden = !count;
+  setText('progress-count', count);
+  setText('progress-message', last?.detail || '');
+
+  $('outcome-build').textContent = working && last?.name === 'build' ? 'Compiling'
+    : {passed: 'Compiled', failed: 'Did not compile'}[job.build_status] || title(job.build_status);
   $('outcome-test').textContent = job.test_status === 'findings'
     ? `${job.unit_failures?.length || 'Some'} no longer pass`
     : {passed: job.kind === 'scene' ? 'Not applicable' : 'All pass'}[job.test_status] || title(job.test_status);
@@ -960,14 +1035,7 @@ function renderJob(value) {
   $('explanation').hidden = !job.explanation && !['running', 'cancelling'].includes(job.state);
   $('explanation').textContent = job.explanation || (['running', 'cancelling'].includes(job.state) ? 'Working…' : '');
   renderEvidence(job.evidence);
-  renderDiffFiles(job);
-  renderDiff(job.patch);
-  $('diff-details').hidden = !job.patch;
-  const files = job.files || [];
-  $('diff-summary').textContent = files.length
-    ? `The change · ${files.length} file(s) · +${files.reduce((n, f) => n + f.added, 0)} / −${files.reduce((n, f) => n + f.removed, 0)}`
-    : 'The change';
-  $('download-diff').disabled = !job.patch;
+  renderDiffPanel(job);
 
   $('apply').hidden = job.state !== 'review';
   $('apply').textContent = job.candidate ? 'Apply checked proposal' : 'Apply proposal';
@@ -979,16 +1047,12 @@ function renderJob(value) {
   $('retry').hidden = job.state !== 'error' || job.kind !== 'build';
   $('share').hidden = !job.sha || job.kind !== 'vibe' || !!job.curated;
 
-  const events = value.events || [];
   const feed = $('feed');
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 45;
   const position = feed.scrollTop;
   feed.textContent = events.map(eventText).filter(Boolean).join('\n');
   feed.scrollTop = nearBottom ? feed.scrollHeight : position;
   $('log-count').textContent = `(${events.length} events)`;
-  const phases = events.filter(event => event.t === 'phase');
-  const last = phases.at(-1);
-  setText('progress-message', last?.detail || '');
 
   const steps = ['agent', 'build', 'test', 'compare', 'review', 'restart'];
   let phase = last?.name;
@@ -1075,8 +1139,10 @@ async function refresh() {
     if (next.job && !selectedId) selectedId = next.job.id;
     if (next.job && next.job.id === selectedId) {
       const value = await api('/api/experiment?id=' + encodeURIComponent(selectedId));
-      if (selectedId === value.summary.id) renderJob(value);
-      openStream(next.job);
+      if (selectedId === value.summary.id) {
+        renderJob(value);
+        openStream(next.job);
+      }
     }
     renderHistory();
     const completed = completedExperiments();
@@ -1125,9 +1191,12 @@ function renderHistory() {
         selectJob(job.id).catch(error => toast(error.message));
         return;
       }
+      selectedId = job.sha;
+      closeStream();
       api('/api/diff?sha=' + job.sha).then(result => {
+        if (selectedId !== job.sha) return;
         renderJob({summary: {...job, patch: result.patch, explanation: 'Saved by an earlier version of the console. No build or comparison record exists for it.'}, events: []});
-        $('current').scrollIntoView();
+        showSection('current', true);
       }).catch(error => toast(error.message));
     };
     const state = reverted.has(job.sha) ? 'Reverted'
@@ -1439,19 +1508,29 @@ $('node-log').onclick = async () => {
   }
 };
 $('compare-baseline').onclick = async () => {
+  const job = experimentKey(selected?.summary);
+  const source = status?.source;
+  if (!job || selectedId !== job || !source) return;
+  if (baselineDiff) {
+    baselineDiff = null;
+    renderDiffPanel(selected.summary);
+    return;
+  }
   try {
-    const result = await api('/api/diff?sha=HEAD&base=baseline');
-    diffFilter = null;
-    renderDiff(result.patch || 'Your source is at the baseline: no saved experiments.');
-    $('diff-details').open = true;
-    toast('Showing everything your saved experiments changed, together.');
+    const result = await api('/api/diff?sha=' + encodeURIComponent(source) + '&base=baseline');
+    if (experimentKey(selected?.summary) !== job || selectedId !== job || status?.source !== source) return;
+    baselineDiff = {job, source, patch: result.patch};
+    renderDiffPanel(selected.summary);
   } catch (error) {
     toast(error.message);
   }
 };
 $('download-diff').onclick = () => {
-  const url = URL.createObjectURL(new Blob([selected?.summary.patch || ''], {type: 'text/plain'}));
-  const anchor = el('a', {href: url, download: 'bitcoin-vibes-' + (selected?.summary.id || 'diff') + '.diff'});
+  const patch = baselineDiff ? baselineDiff.patch : selected?.summary.patch;
+  if (!patch) return;
+  const url = URL.createObjectURL(new Blob([patch], {type: 'text/plain'}));
+  const name = baselineDiff ? 'baseline' : experimentKey(selected.summary);
+  const anchor = el('a', {href: url, download: 'bitcoin-vibes-' + name + '.diff'});
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
@@ -1528,6 +1607,7 @@ $('reset-demo').onclick = async () => {
   $('feed').textContent = '';
   $('log-count').textContent = '';
   setText('progress-message', '');
+  $('progress-count').hidden = true;
   setText('beliefs-status', '');
   document.querySelector('.pipeline').hidden = true;
   $('current').setAttribute('aria-busy', 'false');
