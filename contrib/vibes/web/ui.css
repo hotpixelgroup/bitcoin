@@ -576,8 +576,11 @@ details details {
 }
 
 .request p {
-  font: 18px/1.5 var(--serif);
   overflow-wrap: anywhere;
+}
+
+#job-prompt {
+  font: 18px/1.5 var(--serif);
 }
 
 .outcomes {
@@ -727,8 +730,12 @@ pre {
   max-height: 300px;
 }
 
-#progress-message {
-  margin-bottom: 0;
+#progress-message:empty {
+  display: none;
+}
+
+#progress-count {
+  margin-top: -.5em;
 }
 
 .history-row {

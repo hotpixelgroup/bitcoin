@@ -90,16 +90,49 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('summary').filter({hasText: 'Build preferences and agent limits'}).click();
     await page.locator('#autobuild').uncheck();
 
-    const propose = async prompt => {
+    const propose = async (prompt, reason) => {
       await page.locator('#wish').fill(prompt);
       await page.locator('#manifest').click();
       await page.locator('#prediction-none').check();
+      if (reason) {
+        await page.locator('#predict-reflection summary').click();
+        await page.locator('#predict-confidence').selectOption('medium');
+        await page.locator('#predict-reason').fill(reason);
+      }
       await page.locator('#predict-run').click();
       await page.locator('#job-state').filter({hasText: 'Waiting for your review'}).waitFor();
       assert.match(await page.locator('#diff').textContent(), new RegExp(prompt));
       assert.ok(!fs.readFileSync(path.join(config.repo, 'doc/vibes.md'), 'utf8').includes(prompt), 'review does not apply source edits');
     };
-    await propose('Browser audit discarded note');
+    const reason = 'A documentation change leaves node behavior alone.';
+    await propose('Browser audit discarded note', reason);
+    assert.match(await page.locator('#custom-prediction-context').innerText(), /Prediction confidence: medium/);
+    assert.ok((await page.locator('#custom-prediction-context').innerText()).includes(reason));
+    await page.locator('#diff-details summary').click();
+    const diff = page.locator('#diff');
+    const selectDiff = () => diff.evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return selection.toString();
+    });
+    const nextExperimentPoll = async () => {
+      const response = await page.waitForResponse(res => new URL(res.url()).pathname === '/api/experiment');
+      await response.finished();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    };
+    const selectedDiff = await selectDiff();
+    assert.ok(selectedDiff.includes('Browser audit discarded note'));
+    await nextExperimentPoll();
+    assert.equal(await page.evaluate(() => window.getSelection().toString()), selectedDiff, 'polling preserves the selected diff text');
+    await page.locator('#compare-baseline').click();
+    await diff.filter({hasText: 'Your source is at the baseline'}).waitFor();
+    await nextExperimentPoll();
+    assert.match(await diff.innerText(), /Your source is at the baseline/);
+    await page.getByRole('button', {name: 'Show experiment diff', exact: true}).click();
+    assert.match(await diff.innerText(), /Browser audit discarded note/);
     await page.locator('#cancel').click();
     await page.locator('#confirm-action').click();
     await page.locator('#job-state').filter({hasText: 'Cancelled'}).waitFor();
