@@ -87,8 +87,11 @@ const base = (process.env.VIBES_QA_URL || 'http://127.0.0.1:21880').replace(/\/$
     assert.equal(record.study.entries.find(row => row.stage === 'practice').correct, false);
     assert.equal(record.prediction_context[0].confidence, 'medium');
     await page.addScriptTag({path: process.env.AXE_MODULE || require.resolve('axe-core/axe.min.js')});
-    for (const width of [1280, 390, 320, 195]) {
+    for (const width of [1280, 900, 761, 760, 390, 320, 195]) {
       await page.setViewportSize({width, height: 900});
+      await page.waitForFunction(() => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) > document.querySelector('.topbar').getBoundingClientRect().height);
+      await page.locator('a[href="#current"]:visible').click();
+      assert.equal(await page.evaluate(() => document.querySelector('#current h2').getBoundingClientRect().top >= document.querySelector('.topbar').getBoundingClientRect().bottom), true, `section heading behind sticky header at ${width}px`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `learning page overflow at ${width}px`);
       const audit = await page.evaluate(() => axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']}}));
       assert.deepEqual(audit.violations.map(row => ({id: row.id, targets: row.nodes.map(node => node.target)})), [], `learning accessibility at ${width}px`);

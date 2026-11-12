@@ -56,6 +56,14 @@ const scrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matc
 
 document.body.classList.toggle('demo-mode', demo);
 
+// The header wraps with narrow windows, zoom and connection messages. Keep
+// anchor navigation clear of its actual height, including after it changes.
+const topbar = document.querySelector('.topbar');
+const updateScrollClearance = () => document.documentElement.style.setProperty(
+  '--topbar-clearance', `${Math.ceil(topbar.getBoundingClientRect().height) + 16}px`);
+updateScrollClearance();
+new ResizeObserver(updateScrollClearance).observe(topbar);
+
 function showSection(id, focus = false) {
   const section = $(id);
   if (section.closest('[data-advanced]')) learningUI?.setView('lab');

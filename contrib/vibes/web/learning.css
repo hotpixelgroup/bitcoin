@@ -1,6 +1,6 @@
 .learning-mode [data-advanced] { display: none !important; }
 .view-control, .route-control { display: inline-flex; align-items: center; gap: .6rem; }
-.view-control { font-size: .85rem; }
+.view-control { font-size: .85rem; margin: 0; }
 .view-control select { padding: .3rem; }
 .route-control { flex-wrap: wrap; margin-top: .5rem; }
 .route-control select { max-width: 100%; }
