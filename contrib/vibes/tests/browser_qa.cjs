@@ -105,6 +105,7 @@ function token(value) {
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: /filtering node accepted|policy/i}).waitFor();
     assert.match(await page.locator('#prediction-result').innerText(), /Observed instead/);
+    await page.locator('#full-observations > summary').click();
     const rows = await page.locator('.cmp-row').allInnerTexts();
     assert.equal(rows.length, 3, 'three recorded observations');
     assert.match(rows[0], /refuses to relay it/);
@@ -142,6 +143,7 @@ function token(value) {
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: 'Loosened'}).waitFor();
     assert.match(await page.locator('#prediction-result').innerText(), /You predicted this/);
+    await page.locator('#full-observations > summary').click();
     assert.match(await page.locator('#comparison-rows').innerText(), /bad-cb-amount/);
     assert.match(await page.locator('#verdict-mainnet').innerText(), /hard[ -]fork/);
     assert.match(await page.locator('#outcome-test').innerText(), /Not run|no longer pass/);
@@ -182,6 +184,7 @@ function token(value) {
     await page.locator('#prediction-gone').check();
     await page.locator('#predict-run').click();
     await page.locator('#verdict-title').filter({hasText: 'The coins were on the chain all along'}).waitFor();
+    await page.locator('#full-observations > summary').click();
     assert.match(await page.locator('#comparison-rows').innerText(), /restored on node B: 50/);
 
     // A transient scoring failure is retried on the next render, not marked saved early.
@@ -203,11 +206,12 @@ function token(value) {
     await page.waitForFunction(async count => (await window.VibesDemo.api('/api/learning')).summary.prediction.answered === count + 1, attemptsBefore);
     assert.equal(await page.locator('#start-learning').innerText(), 'Continue learning');
     await page.locator('#start-learning').click();
-    assert.equal(await page.locator('#predict-title').innerText(), await page.evaluate(() => window.VibesLessons.curated.find(item => item.id === 'fees').title), 'continue skips experiments already explored');
+    assert.equal(await page.locator('#predict-title').innerText(), await page.evaluate(() => window.VibesLessons.curated.find(item => item.id === 'utxos').title), 'continue follows the beginner route and skips explored foundations');
     await page.keyboard.press('Escape');
     assert.match(await page.locator('#beliefs-intro').innerText(), /even if you have already started exploring/, 'late questionnaire does not claim to precede the experiments');
 
     // The last lesson leads into reflection rather than ending without a next step.
+    await page.locator('#learning-route').selectOption('all');
     await page.locator('[data-curated="softfork"]').click();
     await page.locator('#predict-options input').first().check();
     await page.locator('#predict-run').click();
@@ -288,7 +292,7 @@ function token(value) {
     // Reset clears every visible part of the old learning record.
     await page.locator('#reset-demo').click();
     await page.locator('#confirm-action').click();
-    await page.locator('#journey-progress').filter({hasText: '0 of 10'}).waitFor();
+    await page.locator('#journey-progress').filter({hasText: '0 of 13'}).waitFor();
     await page.locator('#beliefs-stage').filter({hasText: 'Not answered yet'}).waitFor();
     assert.equal(await page.locator('#beliefs-status').innerText(), '');
     assert.equal(await page.locator('#progress-message').innerText(), '');

@@ -28,6 +28,11 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
   }
   for (const id of ['node-controls', 'settings-section']) $(id)?.setAttribute('data-advanced', '');
   setView(remember('vibes-learning-view'));
+  const revealLinkedSection = () => {
+    if (/^#[a-z][a-z0-9-]*$/.test(location.hash) && $(location.hash.slice(1))?.closest('[data-advanced]')) setView('lab');
+  };
+  revealLinkedSection();
+  window.addEventListener('hashchange', revealLinkedSection);
   $('learning-view').onchange = () => setView($('learning-view').value);
   $('learning-route').value = remember('vibes-learning-route') === 'all' ? 'all' : 'beginner';
   function route() {
@@ -206,7 +211,7 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
       } catch (error) { output.textContent = error.message; }
       finally { busy = false; button.disabled = target.disabled = false; }
     };
-    box.append(el('p', {text: 'Toy SHA-256 hashes, not Bitcoin block headers. Real Bitcoin hashes headers twice and compares a numeric target. This model changes only the probability of a match.'}),
+    box.append(el('p', {text: 'Toy SHA-256 hashes, not Bitcoin block headers. Real Bitcoin hashes headers twice and compares a numeric target. The same message and nonce always give the same hash; changing the target resets to the same sequence for comparison. This model changes only the probability of a match.'}),
       el('label', {for: target.id, text: 'Target'}), target, button, output, hash,
       el('p', {text: 'Adding one required hexadecimal zero makes this toy target 16 times harder on average. More attempts per second reduce the expected wait, not the rules a node checks. Bitcoin adjusts its target every 2,016 blocks to aim for a long-run ten-minute block interval; individual waits vary.'}));
     reset();

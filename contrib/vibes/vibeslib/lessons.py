@@ -610,6 +610,11 @@ CURATED += (
     },
 )
 
+# Keep both the catalogue and the full route in a foundational order. IDs and
+# original answers remain stable for saved learning records.
+_ORDER = "keys utxos fees fee-size watch-only reorg relay-filter double-reward halve-reward faster-halving miners power softfork".split()
+CURATED = tuple(sorted(CURATED, key=lambda item: _ORDER.index(item["id"])))
+
 BELIEFS = (
     {"id": "coins-in-wallet-v2", "truth": False, "experiment": "keys",
      "statement": "My bitcoin are stored inside my wallet app or device."},

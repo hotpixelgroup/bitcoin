@@ -8,6 +8,8 @@ const demo = location.pathname.endsWith('demo.html') || new URLSearchParams(loca
 const lessons = window.VibesLessons || {prediction: {question: '', options: []}, verdicts: {}, networks: {}, groups: [], curated: [], beliefs: []};
 const startupProblem = !window.VibesLessons || !Array.isArray(lessons.curated) || !lessons.curated.length
   ? 'The experiment lessons did not load. Reload this page. If it continues, rebuild the site or restart the installed lab.'
+  : !window.VibesStudy || !window.VibesLearning
+    ? 'The learning tools did not load. Reload this page. If it continues, rebuild the site or restart the installed lab.'
   : demo && (!window.VibesDemo || !window.VibesDemoData)
     ? 'The demo recordings did not load. Reload this page or try again when the site has finished updating.' : '';
 const storageKey = demo ? 'vibes-demo-draft-v3' : 'vibes-draft-v3';
@@ -210,6 +212,9 @@ function askPrediction(heading, summary, question, options, item) {
   $('predict-summary').textContent = summary;
   $('predict-question').textContent = question;
   radioGroup($('predict-options'), 'prediction', options);
+  // The native modal starts on an answer, keeping radio arrow navigation
+  // intact. The optional glossary remains reachable with Shift+Tab.
+  if (!item?.slider) $('predict-options').querySelector('input')?.setAttribute('autofocus', '');
   learningUI?.terms($('predict-terms'), item?.id);
   $('predict-confidence').value = '';
   $('predict-reason').value = '';
