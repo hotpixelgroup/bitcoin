@@ -8,13 +8,11 @@
              ((gnu packages linux) #:select (linux-libre-headers-6.1))
              (gnu packages llvm)
              (gnu packages mingw)
-             ((gnu packages python) #:select (python-minimal))
              ((gnu packages version-control) #:select (git-minimal))
              (guix build-system trivial)
              (guix download)
              (guix gexp)
              (guix git-download)
-             ((guix licenses) #:prefix license:)
              (guix packages)
              ((guix utils) #:select (substitute-keyword-arguments)))
 
@@ -165,14 +163,18 @@ chain for " target " development."))
     (arguments
       (substitute-keyword-arguments (package-arguments base-gcc)
         ((#:configure-flags flags)
-          `(append ,flags
+          #~(append #$flags
             ;; https://gcc.gnu.org/install/configure.html
-            (list "--enable-threads=posix",
-                  "--enable-default-ssp=yes",
-                  "--enable-host-bind-now=yes",
-                  "--disable-gcov",
-                  "--disable-libgomp",
-                  building-on)))))))
+            (list "--enable-default-ssp=yes"
+                  "--enable-gprofng=no"
+                  "--enable-host-bind-now=yes"
+                  "--enable-threads=posix"
+                  "--disable-gcov"
+                  "--disable-libgomp"
+                  "--disable-libsanitizer"
+                  "--disable-lto"
+                  "--disable-nls"
+                  #$building-on)))))))
 
 (define-public linux-base-gcc
   (package
@@ -180,22 +182,25 @@ chain for " target " development."))
     (arguments
       (substitute-keyword-arguments (package-arguments base-gcc)
         ((#:configure-flags flags)
-          `(append ,flags
+           #~(append #$flags
             ;; https://gcc.gnu.org/install/configure.html
-            (list "--enable-initfini-array=yes",
-                  "--enable-default-ssp=yes",
-                  "--enable-default-pie=yes",
-                  "--enable-host-bind-now=yes",
-                  "--enable-standard-branch-protection=yes",
-                  "--enable-cet=yes",
-                  "--enable-gprofng=no",
-                  "--disable-gcov",
-                  "--disable-libgomp",
-                  "--disable-libquadmath",
-                  "--disable-libsanitizer",
-                  building-on)))
+            (list "--enable-cet=yes"
+                  "--enable-default-ssp=yes"
+                  "--enable-default-pie=yes"
+                  "--enable-gprofng=no"
+                  "--enable-host-bind-now=yes"
+                  "--enable-initfini-array=yes"
+                  "--enable-standard-branch-protection=yes"
+                  "--disable-gcov"
+                  "--disable-libgomp"
+                  "--disable-libquadmath"
+                  "--disable-libsanitizer"
+                  "--disable-lto"
+                  "--disable-nls"
+                  "--disable-tm-clone-registry"
+                  #$building-on)))
         ((#:phases phases)
-          `(modify-phases ,phases
+          #~(modify-phases #$phases
             ;; Given a XGCC package, return a modified package that replace each instance of
             ;; -rpath in the default system spec that's inserted by Guix with -rpath-link
             (add-after 'pre-configure 'replace-rpath-with-rpath-link
@@ -227,12 +232,13 @@ chain for " target " development."))
         ((#:configure-flags flags)
           `(append ,flags
             ;; https://www.gnu.org/software/libc/manual/html_node/Configuring-and-compiling.html
-            (list "--enable-stack-protector=all",
+            (list "--enable-bind-now",
                   "--enable-cet",
-                  "--enable-bind-now",
-                  "--disable-werror",
-                  "--disable-timezone-tools",
+                  "--enable-kernel=3.17.0",
+                  "--enable-stack-protector=all",
                   "--disable-profile",
+                  "--disable-timezone-tools",
+                  "--disable-werror",
                   building-on)))
     ((#:phases phases)
         `(modify-phases ,phases
@@ -266,8 +272,6 @@ chain for " target " development."))
         ;; Build tools
         cmake-minimal
         gnu-make
-        ;; Scripting
-        python-minimal ;; (3.11)
         ;; Git
         git-minimal)
   (let ((target (getenv "HOST")))
