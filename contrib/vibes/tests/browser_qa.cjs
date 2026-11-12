@@ -234,6 +234,8 @@ function token(value) {
     await page.locator('#beliefs-status').filter({hasText: 'Right before: 3 of 10. Right after: 7 of 10.'}).waitFor();
 
     // A shared request is shown as text and never as markup.
+    await page.locator('#learning-view').selectOption('learning');
+    assert.equal(await page.locator('#composer').isVisible(), false);
     const hostile = '<img src=x onerror="window.pwned=1"> Raise the subsidy';
     await page.goto(base + '/demo.html#decree=' + token({v: 1, p: hostile, sha: 'abc', ts: 1, c: [], f: []}));
     await page.getByRole('heading', {name: 'A request from someone else'}).waitFor();
@@ -242,6 +244,9 @@ function token(value) {
     assert.equal(await page.locator('#confirm-copy img').count(), 0);
     await page.locator('#confirm-action').click();
     await page.locator('#imported-note').filter({hasText: 'came from someone else'}).waitFor();
+    assert.equal(await page.locator('#learning-view').inputValue(), 'lab', 'accepting an import reveals its editor');
+    assert.equal(await page.locator('#composer').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'wish');
     assert.equal(await page.locator('#mode').inputValue(), 'review');
 
     // A shared request explicitly asks before replacing work already in the draft.

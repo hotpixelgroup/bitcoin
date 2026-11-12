@@ -4,7 +4,7 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
   const content = lessons.learning;
   let record = {entries: [], round: Math.floor(Date.now() / 86400000), now: Date.now() / 1000};
   let firstAnswers = [], completed = new Set(), queueKey = '', stepKey = '', reflectionKey = '';
-  let practiceGeneration = 0;
+  let practiceGeneration = 0, studyGeneration = 0;
   const title = id => lessons.curated.find(item => item.id === id)?.title || content.workshops.find(item => item.id === id)?.title || id;
   const confident = () => el('select', {}, [
     el('option', {value: '', text: 'Prefer not to say'}), el('option', {value: 'low', text: 'Not confident yet'}),
@@ -67,7 +67,22 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
     }
   }
   async function refresh() {
-    try { record = await api('/api/study'); queue(); } catch (error) { toast('Could not load practice: ' + error.message); }
+    const generation = studyGeneration;
+    try {
+      const current = await api('/api/study');
+      if (generation !== studyGeneration) return;
+      record = current; queue();
+    } catch (error) { if (generation === studyGeneration) toast('Could not load practice: ' + error.message); }
+  }
+  function reset() {
+    studyGeneration++; practiceGeneration++;
+    record = {entries: [], round: Math.floor(Date.now() / 86400000), now: Date.now() / 1000};
+    firstAnswers = []; completed = new Set();
+    queueKey = stepKey = reflectionKey = '';
+    $('practice-question').replaceChildren();
+    $('reflection').replaceChildren();
+    $('evidence-stepper').replaceChildren();
+    progress(); queue();
   }
   async function practice(id) {
     const generation = ++practiceGeneration;
@@ -100,6 +115,7 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
         check.disabled = true;
         try {
           const saved = await api('/api/study', {stage: 'practice', experiment: id, question: question.id, choice, round});
+          if (generation !== practiceGeneration) return;
           record = saved;
           field.querySelectorAll('input').forEach(input => { input.checked = input.value === saved.entry.choice; input.disabled = true; });
           feedback.textContent = (saved.entry.correct ? 'Correct. ' : 'Try this explanation: ') + question.why;
@@ -107,12 +123,12 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
           const item = lessons.curated.find(item => item.id === id);
           if (!saved.entry.correct && item) box.append(el('button', {text: 'Revisit the experiment', onclick: () => runCurated(item)}));
           queue();
-        } catch (error) { feedback.textContent = error.message; check.disabled = false; }
+        } catch (error) { if (generation === practiceGeneration) { feedback.textContent = error.message; check.disabled = false; } }
       };
       box.append(field, check, feedback);
       showSection('practice-section');
       box.focus({preventScroll: true});
-    } catch (error) { toast(error.message); }
+    } catch (error) { if (generation === practiceGeneration) toast(error.message); }
   }
 
   function result(job, canExplain) {
@@ -167,12 +183,15 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
     const lock = entry => { note.value = entry.note; confidence.value = entry.confidence; note.disabled = confidence.disabled = save.disabled = true; feedback.textContent = 'Your first reflection is saved.'; };
     if (saved) lock(saved);
     save.onclick = async () => {
+      const generation = studyGeneration;
       save.disabled = true;
       try {
-        record = await api('/api/study', {stage: 'reflection', experiment: id, job: job.id, note: note.value, confidence: confidence.value});
+        const saved = await api('/api/study', {stage: 'reflection', experiment: id, job: job.id, note: note.value, confidence: confidence.value});
+        if (generation !== studyGeneration) return;
+        record = saved;
         reflectionKey = JSON.stringify([job.id, canExplain, record.entry]);
         lock(record.entry); queue();
-      } catch (error) { feedback.textContent = error.message; save.disabled = false; }
+      } catch (error) { if (generation === studyGeneration) { feedback.textContent = error.message; save.disabled = false; } }
     };
   }
 
@@ -249,7 +268,7 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
   }
   workshops();
   refresh();
-  return {terms, route, result, refresh, setView,
+  return {terms, route, result, refresh, reset, setView,
     update(entries, explored) { firstAnswers = entries; completed = explored; progress(); queue(); },
   };
 }};

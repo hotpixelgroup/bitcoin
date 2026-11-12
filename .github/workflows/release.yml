@@ -403,6 +403,7 @@ jobs:
         run: |
           COMMIT=$(git rev-parse "$TAG^{commit}")
           UPSTREAM=$(sed -n 's/^commit=//p' contrib/vibes/UPSTREAM)
+          UPSTREAM_KIND=$(sed -n 's/^kind=//p' contrib/vibes/UPSTREAM)
           : > notes.md
           if [ "$PRERELEASE" = true ]; then
             cat >> notes.md <<EOF
@@ -437,7 +438,7 @@ jobs:
           | \`BitcoinVibes.dmg\` | The Mac launcher app |
           | \`SHA256SUMS\` | SHA-256 of every file above |
 
-          Built from commit \`$COMMIT\`, on Bitcoin Core \`$UPSTREAM\` (a development snapshot, not a Bitcoin Core release). Every platform passed Bitcoin Core's unit tests and this project's own tests before anything was published.
+          Built from commit \`$COMMIT\`, based on $UPSTREAM_KIND (\`$UPSTREAM\`). Every platform passed Bitcoin Core's unit tests and this project's own tests before anything was published.
 
           ## Verifying a download
 

@@ -96,6 +96,24 @@ const base = (process.env.VIBES_QA_URL || 'http://127.0.0.1:21880').replace(/\/$
       const audit = await page.evaluate(() => axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']}}));
       assert.deepEqual(audit.violations.map(row => ({id: row.id, targets: row.nodes.map(node => node.target)})), [], `learning accessibility at ${width}px`);
     }
+    // Reset must clear the visible study state immediately, without a reload.
+    await page.setViewportSize({width: 1280, height: 900});
+    await page.locator('#reset-demo').click();
+    await page.locator('#confirm-action').click();
+    await page.locator('#journey-progress').filter({hasText: '0 of 5 foundations'}).waitFor();
+    assert.match(await page.locator('#practice-queue').innerText(), /Complete an experiment/);
+    assert.equal(await page.locator('#practice-question').innerText(), '');
+    assert.equal(await page.locator('#reflection-note').count(), 0);
+    assert.equal((await page.evaluate(() => window.VibesDemo.api('/api/study'))).entries.length, 0);
+    await page.locator('[data-curated="utxos"]').click();
+    await page.locator('#prediction-change').check();
+    await page.locator('#predict-run').click();
+    await page.locator('#lesson').waitFor();
+    await page.locator('#reflection summary').click();
+    assert.equal(await page.locator('#reflection-note').inputValue(), '');
+    assert.equal(await page.locator('#reflection-note').isDisabled(), false);
+    await page.getByRole('button', {name: 'Practice this idea with a different question'}).click();
+    assert.equal(await page.locator('#practice-question input').first().isDisabled(), false);
     assert.deepEqual(errors, []);
     console.log('learning journey passed: evidence, reflections, first attempts, models, export and accessibility');
   } finally { await browser.close(); }

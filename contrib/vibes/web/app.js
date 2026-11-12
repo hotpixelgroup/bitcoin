@@ -1258,7 +1258,7 @@ async function importRequest(raw) {
   renderImportedNote();
   saveDraft();
   updateControls();
-  $('composer').scrollIntoView();
+  showSection('composer');
   $('wish').focus();
   if (demo) {
     $('share-output').hidden = false;
@@ -1417,7 +1417,7 @@ $('refine').onclick = () => {
   renderImportedNote();
   saveDraft();
   updateControls();
-  $('composer').scrollIntoView();
+  showSection('composer');
   $('wish').focus();
 };
 $('repair').onclick = () => {
@@ -1515,6 +1515,7 @@ $('copy-report-context').onclick = async () => {
 $('reset-demo').onclick = async () => {
   if (!await confirmAction('Reset the browser demo?', 'This clears the demo\'s experiments and answers. Your saved draft stays on this device.', 'Reset')) return;
   window.VibesDemo.reset();
+  learningUI?.reset();
   selectedId = null;
   selected = null;
   followupFor = null;

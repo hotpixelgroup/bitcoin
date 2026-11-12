@@ -457,9 +457,9 @@ history and node stopping remain available.
 
 **How far behind Bitcoin Core is this?** asks GitHub how many changes Bitcoin
 Core's main line has made since the commit recorded in
-`contrib/vibes/UPSTREAM`, and what the latest releases are. The base is a
-development snapshot of Bitcoin Core, not a released version, and security
-fixes made upstream after it are not included until the base moves.
+`contrib/vibes/UPSTREAM`, and what the latest releases are. The current base is
+the Bitcoin Core 32.1 release. Fixes made upstream after that pinned revision
+are not included until the base moves.
 
 ## The console itself
 
