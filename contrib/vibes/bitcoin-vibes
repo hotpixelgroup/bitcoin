@@ -3523,7 +3523,7 @@ class Console:
             if body is not None:
                 if body.get("stage") == "reflection":
                     job = self.experiment(str(body.get("job", "")))["summary"]
-                    if (job.get("curated") != body.get("experiment") or job.get("state") != "done"
+                    if (job.get("curated") != body.get("experiment") or job.get("state") not in ("done", "review")
                             or job.get("compare", {}).get("verdict") in (None, "inconclusive", "error")):
                         raise ValueError("Reflect on a completed, matching experiment")
                 entries, saved = study.record(entries, body)

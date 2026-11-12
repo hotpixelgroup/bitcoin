@@ -235,6 +235,7 @@ window.VibesLearning = {create({$, el, api, lessons, remember, toast, showSectio
     const pay = fromAlice => {
       if (closed) return;
       const value = Number(amount.value), available = fromAlice ? alice : bob;
+      if (!available) { status.textContent = 'This sender has no outgoing balance in the model. A payment in the other direction can restore it.'; return; }
       if (!Number.isSafeInteger(value) || value < 1 || value > available) { status.textContent = `Choose a whole number from 1 to ${available.toLocaleString()} sat, the sender’s available balance in this model.`; return; }
       alice += fromAlice ? -value : value; bob += fromAlice ? value : -value;
       status.textContent = 'The channel balance changed. No new on-chain payment was made in this model.'; draw();

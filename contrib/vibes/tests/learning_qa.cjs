@@ -73,6 +73,13 @@ const base = (process.env.VIBES_QA_URL || 'http://127.0.0.1:21880').replace(/\/$
     assert.equal(await page.getByRole('button', {name: 'Alice pays Bob', exact: true}).isDisabled(), true);
     await page.getByRole('button', {name: 'Reset model', exact: true}).click();
     assert.match(await page.locator('#model-lightning .takeaway').innerText(), /Alice: 80,000/);
+    await page.locator('#channel-amount').fill('80000');
+    await page.getByRole('button', {name: 'Alice pays Bob', exact: true}).click();
+    await page.locator('#channel-amount').fill('1');
+    await page.getByRole('button', {name: 'Alice pays Bob', exact: true}).click();
+    assert.match(await page.locator('#model-lightning').innerText(), /no outgoing balance/);
+    assert.match(await page.locator('#model-lightning .takeaway').innerText(), /Alice: 0 sat · Bob: 100,000 sat/);
+    await page.getByRole('button', {name: 'Reset model', exact: true}).click();
     const downloaded = page.waitForEvent('download');
     await page.locator('#study-export').click();
     const record = JSON.parse(fs.readFileSync(await (await downloaded).path(), 'utf8'));

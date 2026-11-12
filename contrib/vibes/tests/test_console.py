@@ -2186,6 +2186,11 @@ class HttpTests(ConsoleCase):
         saved = json.load(self.post('/api/study', reflection))['entry']
         self.assertEqual(saved['note'], reflection['note'])
         self.assertEqual(json.load(self.post('/api/study', {**reflection, 'note': 'replacement'}))['entry'], saved)
+        # A compiled comparison can be reflected on while the source proposal
+        # awaits review; learning must not require applying a source change.
+        job.state = 'review'
+        self.console._save_job(job)
+        self.assertEqual(json.load(self.post('/api/study', reflection))['entry'], saved)
         with self.assertRaises(urllib.error.HTTPError):
             self.post('/api/study', {**reflection, 'experiment': 'keys'})
         with self.assertRaises(urllib.error.HTTPError):
